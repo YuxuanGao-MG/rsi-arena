@@ -10,10 +10,11 @@ and one CLI (`rsi-arena bench | optimize | show`). Decision A below
 is settled: a slim runtime with the same JSON contract, no dependency on the
 earlier package. Decision D is settled: this repository.
 
-Not yet run against the live exchange: the session that built this could not
-reach kalshi.com or espn.com, so `rsi-arena bench` and `rsi-arena optimize`
-have been exercised only with fakes. The first
-real run is the next step, and its numbers go in `runs/`.
+The live data path is verified on GitHub Actions: the `loop` workflow built
+the question set from Kalshi and the fixture feed and committed it under
+`benchmarks/windows/`, 170 windows over five EPL fixtures, 34 per fixture, 115
+of them moving a cent or more over the horizon. `bench` and `optimize` wait on
+the `OPENROUTER_API_KEY` repository secret; their numbers go in `runs/`.
 
 ## Goal
 
