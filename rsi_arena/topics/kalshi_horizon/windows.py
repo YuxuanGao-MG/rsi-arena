@@ -1,25 +1,21 @@
-"""The fixed question set: instants of finished matches, with the answer attached.
+"""The question set: instants of finished matches, with the answer attached.
 
 A window is a contract, an instant, the mid then, the game state then, and the
 mid five minutes later. Building one needs the network; once built it is cached
-on disk and never fetched again, so a generation of harnesses costs only its
-model calls.
-
-Splitting is by fixture, never by window: fifty windows on one match are fifty
-correlated observations of one game.
+on disk per fixture and never fetched again, so a generation of harnesses costs
+only its model calls.
 """
 
 from __future__ import annotations
 
 import json
-import random
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from ..kalshi._history import History
-from ..kalshi.replay import HORIZON_MINUTES, MatchTimeline, fresh_quote, match_timeline, realised_mid
+from ...kalshi._history import History
+from ...kalshi.replay import HORIZON_MINUTES, MatchTimeline, fresh_quote, match_timeline, realised_mid
 
 
 @dataclass(frozen=True)
@@ -43,6 +39,10 @@ class Window:
     def id(self) -> str:
         return f"{self.ticker}@{self.at.isoformat()}"
 
+    @property
+    def group(self) -> str:
+        return self.event
+
     def to_dict(self) -> dict[str, Any]:
         return {"ticker": self.ticker, "at": self.at.isoformat(), "mid_now": self.mid_now,
                 "realised": self.realised, "game": self.game, "event": self.event}
@@ -55,24 +55,15 @@ class Window:
 
 def load_fixtures(path: str | Path) -> list[Fixture]:
     raw = json.loads(Path(path).read_text())
-    return [Fixture(league=f["league"], game=str(f["game"]), event=f["event"],
-                    tickers=tuple(f["tickers"])) for f in raw]
+    return [Fixture(league=f["league"], game=str(f["game"]), event=f["event"], tickers=tuple(f["tickers"]))
+            for f in raw]
 
 
-def split_fixtures(fixtures: list[Fixture], holdout: int, seed: int = 0) -> tuple[list[Fixture], list[Fixture]]:
-    """Train and held-out fixtures. Deterministic for a seed."""
-    order = list(fixtures)
-    random.Random(seed).shuffle(order)
-    holdout = max(0, min(holdout, len(order) - 1))
-    return order[holdout:], order[:holdout]
-
-
-def build_windows(fixtures: list[Fixture], *, history: History | None = None,
-                  every_minutes: int = 5, horizon: int = HORIZON_MINUTES,
-                  cache_dir: str | Path | None = None,
-                  timeline_for=match_timeline, log=print) -> list[Window]:
-    """Every scoreable window of every fixture. Cached per fixture."""
-    hist = history or History()
+def build_windows(fixtures: list[Fixture], *, history: History, every_minutes: int = 5,
+                  horizon: int = HORIZON_MINUTES, cache_dir: str | Path | None = None,
+                  timeline_for: Callable[[str, str], MatchTimeline | None] = match_timeline,
+                  log: Callable[[str], None] = lambda m: None) -> list[Window]:
+    """Every scoreable window of every fixture, cached per fixture."""
     root = Path(cache_dir) / "windows" if cache_dir else None
     out: list[Window] = []
     for fixture in fixtures:
@@ -84,7 +75,7 @@ def build_windows(fixtures: list[Fixture], *, history: History | None = None,
         if line is None:
             log(f"skipped {fixture.event}: no timeline")
             continue
-        built = _windows_for(fixture, line, hist, every_minutes, horizon)
+        built = _windows_for(fixture, line, history, every_minutes, horizon)
         log(f"{fixture.event}: {len(built)} windows")
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

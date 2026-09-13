@@ -4,14 +4,15 @@
 
 Built and tested offline: the harness contract and runner (`rsi_arena/harness`),
 the frozen-tool replay and match timeline (`rsi_arena/kalshi/replay.py`), the
-window builder, scorer and evaluator (`rsi_arena/bench`), the GEPA adapter, the
-paired-bootstrap gate and the loop CLI (`rsi_arena/optimize`). Decision A below
+topic-agnostic loop (`rsi_arena/loop`: Task protocol, GEPA adapter, gate,
+generation records), the Kalshi horizon topic (`rsi_arena/topics/kalshi_horizon`)
+and one CLI (`rsi-arena bench | optimize | show`). Decision A below
 is settled: a slim runtime with the same JSON contract, no dependency on the
 earlier package. Decision D is settled: this repository.
 
 Not yet run against the live exchange: the session that built this could not
-reach kalshi.com or espn.com, so `python -m rsi_arena.bench` and
-`python -m rsi_arena.optimize` have been exercised only with fakes. The first
+reach kalshi.com or espn.com, so `rsi-arena bench` and `rsi-arena optimize`
+have been exercised only with fakes. The first
 real run is the next step, and its numbers go in `runs/`.
 
 ## Goal
@@ -56,12 +57,14 @@ is the evaluator, the harness runner, and the gate.
 
 | Package | Does | Size guess |
 |---|---|---|
-| `harness/` | The JSON contract (same shape as `Agent.to_dict()` today, so configs move both ways) and a slim runner: prompt, tool and loop steps, flat state, templating, cost ledger | ~600 lines |
-| `bench/` | A fixed benchmark: `(ticker, instant)` windows with frozen tools and realised mids, cached to disk so a generation costs only its model calls. Reports pooled skill, skill on moved windows, echo rate, cost per window | ~300 |
-| `population/` | Append-only store of harnesses: id, parent, generation, scores, cost, the trace ids behind the score | ~150 |
-| `optimize/` | A `GEPAAdapter` over the benchmark, the component split of the harness JSON, and the promotion gate. The mutation and reflection logic is GEPA's | ~200 |
-| `ratings/` | Bradley–Terry over paired outcomes on shared windows; confidence intervals, so a "winner" with overlapping intervals is reported as a tie | ~150 |
-| `arena/` | Later. Battles and votes for the non-verifiable topics. Sean's server and web app could be reused here unchanged | — |
+| `harness/` | The JSON contract (same shape as the earlier `Agent.to_dict()`, so configs move both ways) and a slim runner: prompt, tool and loop steps, flat state, templating, cost ledger | built |
+| `loop/task.py` | The `Task` protocol: instances, toolbox per instance, run inputs, score, pooled statistic. `evaluate()` and `split_by_group()` written against it | built |
+| `loop/adapter.py` | `TaskAdapter` for GEPA, and one reflection prompt per component so a JSON plan is not rewritten as prose | built |
+| `loop/gate.py` | Paired bootstrap over shared instances; accept only on held-out gain, no held-in regression, bounded cost | built |
+| `loop/generation.py` | One run directory per generation with a manifest; lineage walks parents back to the seed | built |
+| `topics/kalshi_horizon/` | Windows from finished fixtures, the skill score, the task's feedback and background | built |
+| `ratings/` | Later. Bradley–Terry over paired outcomes for non-verifiable topics | — |
+| `arena/` | Later. Battles and votes; the earlier server and web app could be reused | — |
 
 ## Decisions that change the work
 

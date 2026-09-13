@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from rsi_arena.bench import Fixture, build_windows
+from rsi_arena.topics.kalshi_horizon import Fixture, build_windows
 from rsi_arena.kalshi.replay import MatchEvent, MatchTimeline, ToolCache, realised_mid, replay_tools
 
 

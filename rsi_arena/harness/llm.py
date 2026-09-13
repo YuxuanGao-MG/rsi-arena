@@ -18,7 +18,6 @@ import json
 import os
 import random
 import re
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -222,6 +221,3 @@ def run_sync(coro: Any) -> Any:
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(asyncio.run, coro).result()
 
-
-def now_ms() -> int:
-    return int(time.time() * 1000)

@@ -117,6 +117,24 @@ LoopStep.model_rebuild()
 class Plan(BaseModel):
     steps: list[AnyStep] = Field(default_factory=list)
 
+    #: The contract, in words, for whoever writes a plan by hand or by model.
+    GRAMMAR: ClassVar[str] = """A plan is {"steps": [...]}. Each step has "type", "name", and an optional
+"output_key" (the state name its result is stored under) and "skip_if" (a condition over state).
+Later steps read earlier results with {{name}} or {{name.field}}.
+
+- {"type": "tool", "tool": <tool name>, "args": {...}, "fail_ok": false}
+  Calls one tool with fixed arguments; argument strings may contain {{placeholders}}.
+- {"type": "prompt", "prompt": <text>, "system": null, "output_schema": null, "tools": [], "max_tool_iterations": 6}
+  Asks the model. With "output_schema" (a JSON Schema) the step returns parsed JSON.
+  With "tools" (a list of tool names, or ["*"] for all the harness lists) the model may
+  call tools itself, in any order, up to max_tool_iterations turns.
+- {"type": "loop", "steps": [...], "max_loops": 3, "until": <condition>, "collect": true}
+  Repeats its steps until the condition holds or max_loops is spent. Inside, loop_iteration
+  (1-based) and loop_results are readable.
+
+Conditions are small Python expressions over state names: comparisons, and/or/not, len().
+The harness's "tools" list is the whole set a plan may name."""
+
     def reads(self) -> set[str]:
         found: set[str] = set()
         for step in self.steps:

@@ -18,7 +18,7 @@ from typing import Any
 from .llm import LLM, LLMError, parse_json_loose
 from .spec import Harness, HarnessError, LoopStep, Plan, PromptStep, ToolStep
 from .template import ConditionError, evaluate, render
-from .tools import Toolbox
+from .tools import Toolbox, ToolResult
 
 
 class BudgetExceeded(RuntimeError):
@@ -107,6 +107,15 @@ class Run:
         return {"harness": self.harness, "run_id": self.run_id, "ok": self.ok,
                 "error": self.error, "error_kind": self.error_kind,
                 "cost_usd": round(self.cost_usd, 6), "calls": self.trace.calls}
+
+    def tools_seen(self) -> list[dict[str, Any]]:
+        """Every tool call and what came back, in order. What a rewriter needs to read."""
+        return [{"tool": s.name, "args": s.input, "answer": _clip(s.output, 1500), "error": s.error}
+                for s in self.trace.spans if s.kind == "tool"]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.summary(), "inputs": self.inputs, "output": self.output,
+                "state": {k: _clip(v) for k, v in self.state.items()}, "trace": self.trace.to_dict()}
 
 
 class _Ledger:
@@ -252,7 +261,6 @@ class Runner:
     async def _call_tool(self, name: str, args: dict[str, Any], ctx: _Context):
         span = ctx.span(name, "tool", input=args)
         if name not in ctx.harness.tools or name not in ctx.toolbox:
-            from .tools import ToolResult
             result = ToolResult.failed(f"tool {name!r} is not available to this harness")
         else:
             result = await asyncio.to_thread(ctx.toolbox[name].safe_call, **args)
