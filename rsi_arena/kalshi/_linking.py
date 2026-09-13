@@ -1,0 +1,463 @@
+"""Join a Kalshi event to the fixture it is about.
+
+Kalshi encodes fixtures in the event ticker::
+
+    KXMLBSPREAD-26AUG171910AZBOS      26 Aug 2026, 19:10, AZ at BOS
+    KXWNBAGAME-26AUG19MINGS           19 Aug 2026, MIN at GS
+    KXVALORANTMAP-26AUG191700C9BST-2  19 Aug 2026, 17:00, C9 vs BST, map 2
+
+Season-long events have no fixture and are skipped::
+
+    KXNFLTEAMPTS-LEAST27  KXEPLTEAMPOINTS-27
+
+Two problems, both solved here:
+
+1. **Team codes are concatenated with no separator.** ``AZBOS`` is AZ at BOS,
+   but ``MINGS`` is MIN at GS. Splitting needs to know which codes exist, so
+   ``harvest_team_codes`` reads them out of the market tickers under a series
+   rather than relying on a hardcoded table that would rot.
+
+2. **Kalshi's codes are its own.** They are not ESPN's or MLB's, so matching to
+   a game feed is done on date plus a scored name comparison.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+
+from ._client import KalshiClient
+from ._taxonomy import Sport
+
+# Sports priced as a field of entrants, not a two-sided fixture.
+FIELD_SPORTS = {Sport.GOLF, Sport.MOTORSPORT, Sport.OLYMPICS, Sport.CHESS}
+
+_MONTHS = {m: i for i, m in enumerate(
+    ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+     "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], start=1)}
+
+# YYMONDD, optional HHMM, then the concatenated team blob.
+_FIXTURE_RE = re.compile(
+    r"^(?P<yy>\d{2})(?P<mon>[A-Z]{3})(?P<dd>\d{2})(?P<hhmm>\d{4})?(?P<teams>[A-Z0-9]+)$"
+)
+
+
+@dataclass(frozen=True)
+class Fixture:
+    """A fixture parsed out of a Kalshi event ticker."""
+
+    event_ticker: str
+    series_ticker: str
+    date: date
+    start_utc: datetime | None
+    away_code: str | None
+    home_code: str | None
+    team_blob: str
+    suffix: str = ""          # trailing segment such as a map or game number
+
+    @property
+    def is_split(self) -> bool:
+        return bool(self.away_code and self.home_code)
+
+
+@dataclass(frozen=True)
+class Link:
+    """A correspondence between a Kalshi event and a game-feed fixture."""
+
+    event_ticker: str
+    league: str
+    game_id: str
+    home: str
+    away: str
+    confidence: float
+    method: str
+
+
+def parse_event_ticker(event_ticker: str, series_ticker: str | None = None,
+                       team_codes: set[str] | None = None) -> Fixture | None:
+    """Parse an event ticker into a fixture, or ``None`` if it is not one.
+
+    Pass ``team_codes`` to split the concatenated team blob; without it the
+    blob is returned whole and ``is_split`` is False.
+    """
+    if "-" not in event_ticker:
+        return None
+    series, _, rest = event_ticker.partition("-")
+    if series_ticker and series != series_ticker:
+        series = series_ticker
+
+    suffix = ""
+    if "-" in rest:                       # trailing map/game number
+        rest, _, suffix = rest.partition("-")
+
+    m = _FIXTURE_RE.match(rest)
+    if not m:
+        return None
+
+    try:
+        month = _MONTHS[m.group("mon")]
+        day = int(m.group("dd"))
+        year = 2000 + int(m.group("yy"))
+        when = date(year, month, day)
+    except (KeyError, ValueError):
+        return None
+
+    start = None
+    if m.group("hhmm"):
+        hh, mm = int(m.group("hhmm")[:2]), int(m.group("hhmm")[2:])
+        if hh < 24 and mm < 60:
+            start = datetime(year, month, day, hh, mm, tzinfo=timezone.utc)
+
+    blob = m.group("teams")
+    away = home = None
+    if team_codes:
+        away, home = split_team_blob(blob, team_codes)
+
+    return Fixture(event_ticker, series, when, start, away, home, blob, suffix)
+
+
+@dataclass(frozen=True)
+class FieldEvent:
+    """A tournament with many entrants rather than two competitors.
+
+    Golf, motorsport and open tennis draws are priced one market per entrant,
+    so there is no team blob to split — the entrants are the market tickers.
+    """
+
+    event_ticker: str
+    series_ticker: str
+    date: date | None
+    label: str
+    entrants: list[str]
+
+
+def parse_field_event(event_ticker: str, entrant_tickers: list[str],
+                      series_ticker: str | None = None) -> FieldEvent:
+    """Model an event as a field rather than a fixture.
+
+    Use when ``parse_event_ticker`` returns None or the sport has no two-sided
+    fixture — check ``SeriesClass.sport`` against FIELD_SPORTS first.
+    """
+    series, _, rest = event_ticker.partition("-")
+    when = None
+    m = re.match(r"^(\d{2})([A-Z]{3})(\d{2})", rest)
+    if m:
+        try:
+            when = date(2000 + int(m.group(1)), _MONTHS[m.group(2)], int(m.group(3)))
+        except (KeyError, ValueError):
+            when = None
+    entrants = sorted({t.rsplit("-", 1)[-1] for t in entrant_tickers if "-" in t})
+    return FieldEvent(event_ticker, series_ticker or series, when, rest, entrants)
+
+
+def field_entrants(client: KalshiClient, event_ticker: str) -> list[str]:
+    """Entrant codes for a field event, read from its market tickers."""
+    tickers = [m.get("ticker", "") for m in
+               client.paginate("/markets", "markets", {"event_ticker": event_ticker})]
+    return parse_field_event(event_ticker, tickers).entrants
+
+
+def is_fixture_event(event_ticker: str) -> bool:
+    """Whether an event ticker encodes a real fixture.
+
+    The definitive test that ``SeriesClass.is_fixture`` cannot make: a fixture
+    carries a date and team codes (``26AUG171910AZBOS``), a season-long event
+    carries neither (``LEAST27``, ``27``). Needs no API call and no team-code
+    table, because the date prefix alone settles it.
+    """
+    return parse_event_ticker(event_ticker) is not None
+
+
+def link_event(client: KalshiClient, event_ticker: str, league: str,
+               games_by_date, min_confidence: float = 0.6,
+               series_ticker: str | None = None,
+               names: dict[str, str] | None = None,
+               codes: set[str] | None = None) -> Link | None:
+    """Resolve one event to its fixture in the game feed.
+
+    ``link_series`` walks every open event under a series to find one match,
+    which is wasteful when the caller already knows which event it wants. This
+    costs one market sweep for the team codes plus one day of fixtures.
+    """
+    series = series_ticker or event_ticker.split("-")[0]
+    # A series whose outcomes are thresholds publishes no team codes at all, so
+    # a caller that pooled them across the league supplies a set that can
+    # actually split the blob.
+    codes = codes or harvest_team_codes(client, series)
+    fixture = parse_event_ticker(event_ticker, series, codes)
+    if not fixture or not fixture.is_split:
+        return None
+    try:
+        games = games_by_date(league, fixture.date.isoformat())
+    except Exception:
+        return None
+    # A caller sweeping a league already holds every market and can build the
+    # whole code-to-club map from them for nothing. Only pay for a lookup when
+    # it did not.
+    link = match_event_to_game(
+        fixture, games, min_confidence,
+        names=names if names is not None else team_names(client, event_ticker))
+    if not link:
+        return None
+    return Link(link.event_ticker, league, link.game_id, link.home, link.away,
+                link.confidence, link.method)
+
+
+def split_team_blob(blob: str, codes: set[str]) -> tuple[str | None, str | None]:
+    """Split ``AZBOS`` into ``("AZ", "BOS")`` using a set of known codes.
+
+    Kalshi writes away then home. Where more than one split is valid, the one
+    with the most balanced code lengths wins, which resolves the common
+    two-versus-three character ambiguity correctly in practice.
+    """
+    candidates: list[tuple[int, str, str]] = []
+    for i in range(2, len(blob) - 1):
+        left, right = blob[:i], blob[i:]
+        if left in codes and right in codes:
+            candidates.append((abs(len(left) - len(right)), left, right))
+    if not candidates:
+        return None, None
+    candidates.sort()
+    return candidates[0][1], candidates[0][2]
+
+
+def harvest_team_codes(client: KalshiClient, series_ticker: str,
+                       status: str | None = None) -> set[str]:
+    """Collect the team codes a series actually uses.
+
+    Market tickers end in the code they refer to — ``...-BOS4`` is a Boston
+    spread line, ``...-MIN`` a Minnesota moneyline. Stripping trailing digits
+    recovers the code. Self-bootstrapping, so no table to maintain.
+
+    ``status=None`` sweeps every market ever listed under the series, which
+    gives the full code set. Pass ``"open"`` to limit it to what is live now.
+    """
+    ignore = {"TIE", "YES", "NO", "AL", "NL"}   # AL/NL are all-star, not teams
+    codes: set[str] = set()
+    for m in client.paginate("/markets", "markets",
+                             {"series_ticker": series_ticker, "status": status}):
+        ticker = m.get("ticker", "")
+        tail = ticker.rsplit("-", 1)[-1] if "-" in ticker else ""
+        tail = re.sub(r"\d+$", "", tail)          # drop a spread or total number
+        if tail and tail.isalnum() and tail not in ignore and len(tail) <= 4:
+            codes.add(tail)
+    return codes
+
+
+def _score_match(kalshi_code: str, feed_name: str) -> float:
+    """How well a Kalshi team code, or the club name Kalshi prints, matches a
+    feed team name. 0..1.
+
+    Every rule below reads the left side as an abbreviation, which is what it
+    was written for. Passing a full club name — which linking does, since the
+    exchange publishes one — fell through to the character-sequence fallback
+    and scored *lower* the longer the name was: "Real Madrid" against "Real
+    Madrid" came out at 0.455, worse than the bare code. Real Madrid against
+    Real Sociedad then missed the 0.6 threshold by a tenth and went unlinked
+    for a whole evening.
+    """
+    if not kalshi_code or not feed_name:
+        return 0.0
+    code = kalshi_code.upper()
+    name = re.sub(r"[^A-Z ]", "", feed_name.upper())
+    words = name.split()
+    if not words:
+        return 0.0
+
+    # The same club, said the same way.
+    clean_code = re.sub(r"[^A-Z ]", "", code).strip()
+    if clean_code and clean_code == name:
+        return 1.0
+    # One name containing the other: "Real Sociedad" inside "Real Sociedad San
+    # Sebastian", or a feed that appends "FC" where the exchange does not.
+    if " " in clean_code and (clean_code in name or name in clean_code):
+        return 0.9
+
+    initials = "".join(w[0] for w in words)
+    if code == initials:
+        return 0.95
+    for w in words:
+        if w.startswith(code):
+            return 0.9
+    if name.replace(" ", "").startswith(code):
+        return 0.85
+    # every character of the code appears in order somewhere in the name
+    pos, hits = 0, 0
+    flat = name.replace(" ", "")
+    for ch in code:
+        idx = flat.find(ch, pos)
+        if idx >= 0:
+            pos, hits = idx + 1, hits + 1
+    return 0.5 * hits / len(code)
+
+
+def match_event_to_game(fixture: Fixture, games: list[dict],
+                        min_confidence: float = 0.6,
+                        names: dict[str, str] | None = None) -> Link | None:
+    """Match one parsed fixture against a league's fixtures for that date.
+
+    ``games`` is the output of ``gamestate.todays_games`` — dicts with ``id``,
+    ``home``, ``away`` and ``start``.
+
+    ``names`` maps a team code to the club name Kalshi prints for it. Scoring a
+    code against a feed name only works when the code is an abbreviation of it,
+    and plenty are not: Liverpool trades as ``LFC``, for the club's initials
+    rather than its name, so ``LFC`` against "Liverpool" scores nothing and a
+    real fixture goes unlinked. Kalshi labels the market "Liverpool", so when
+    that label is available it is scored instead of the code.
+    """
+    if not fixture.is_split:
+        return None
+    names = names or {}
+
+    def side(code: str, feed: str) -> float:
+        # Whichever reading matches better. The label is usually right, but a
+        # code can still win where Kalshi's label is the shorter of the two.
+        return max(_score_match(code, feed),
+                   _score_match(names.get(code, ""), feed) if names else 0.0)
+
+    best, best_score = None, 0.0
+    for g in games:
+        direct = (side(fixture.away_code or "", g.get("away", "")) +
+                  side(fixture.home_code or "", g.get("home", ""))) / 2
+        # Kalshi is away-then-home, but tolerate a feed that disagrees.
+        swapped = (side(fixture.away_code or "", g.get("home", "")) +
+                   side(fixture.home_code or "", g.get("away", ""))) / 2
+        score = max(direct, swapped)
+        if score > best_score:
+            best, best_score = g, score
+    if not best or best_score < min_confidence:
+        return None
+    return Link(
+        event_ticker=fixture.event_ticker, league="", game_id=str(best["id"]),
+        home=best.get("home", ""), away=best.get("away", ""),
+        confidence=round(best_score, 3), method="date+name",
+    )
+
+
+#: A fixture segment is a date then two team codes: 26AUG24BFCLAZ.
+_DATED = re.compile(r"^\d{2}[A-Z]{3}\d{2}[A-Z0-9]+$")
+
+
+def fixture_key(ticker: str) -> str:
+    """Which match a market belongs to, across every kind of bet on it.
+
+    Kalshi names a market ``SERIES-DATETEAMS-OUTCOME``, and the series says
+    what *kind* of bet it is. One fixture therefore appears under many series:
+    the winner, the spread, the first half, the corners. Keying on the event
+    ticker treats those as different games, which overstates how much
+    independent evidence a run collected and lets one match quietly take every
+    slot a supervisor has.
+
+    The middle segment is the fixture — a date and two team codes — and is the
+    same across all of them. An event ticker has no outcome on the end and is
+    keyed the same way, so a caller holding either can ask about the match.
+
+        KXSERIEAGAME-26AUG24BFCLAZ-BFC      -> 26AUG24BFCLAZ
+        KXSERIEA1HSPREAD-26AUG24BFCLAZ-LAZ2 -> 26AUG24BFCLAZ
+        KXSERIEAGAME-26AUG24BFCLAZ          -> 26AUG24BFCLAZ
+        KXNFLWINS-KC                        -> KXNFLWINS   (not a fixture)
+    """
+    parts = ticker.split("-")
+    if len(parts) >= 3:
+        return "-".join(parts[1:-1])
+    if len(parts) == 2 and _DATED.match(parts[1]):
+        # An event ticker: SERIES-DATETEAMS, with nothing after it.
+        return parts[1]
+    # Not a fixture market at all. Its own series is the best key available.
+    return ticker.rsplit("-", 1)[0]
+
+
+def team_names(client: KalshiClient, event_ticker: str) -> dict[str, str]:
+    """Team code to the club name Kalshi prints for it, from the event itself.
+
+    Every market under a fixture event is one outcome, and its subtitle is the
+    name of that outcome — "Liverpool" for the ``-LFC`` market. That is the
+    league's own dictionary, published alongside the codes, and it does not need
+    maintaining as clubs are promoted and relegated.
+    """
+    try:
+        markets = client.get("/markets", {"event_ticker": event_ticker,
+                                          "limit": 100}).get("markets", [])
+    except Exception:
+        return {}
+    return names_from_markets(markets)
+
+
+_NOT_A_CLUB = ("tie", "draw", "both teams to score", "no goal", "yes", "no")
+
+
+def names_from_markets(markets) -> dict[str, str]:
+    """Build code to club name from markets already in hand.
+
+    Only the match-winner markets carry a club as their outcome; totals,
+    corners and both-teams-to-score name a threshold instead. Those are
+    filtered out rather than special-cased per league, so a competition whose
+    market types differ still yields whatever names it does publish.
+
+    Where several markets claim a code, the **shortest** name wins. A club is
+    named more than one way across a league's series — Real Sociedad appears as
+    "Real Sociedad", "Real Sociedad San Sebastian", "Real Sociedad wins 2nd
+    Half" and, from a second-tier series swept in by mistake, "Real Sociedad
+    B". Taking whichever arrived first handed ``RSO`` to the reserve side, and
+    Real Madrid against Real Sociedad then scored too low to link and went
+    unwatched for an evening. The shortest is the bare club name, which is what
+    the fixture feed prints.
+    """
+    out: dict[str, str] = {}
+    for m in markets:
+        # The REST field is yes_sub_title; `subtitle` is the name Discovery
+        # gives it after mapping, and only exists on its own MarketRef.
+        ticker = m.get("ticker", "") if isinstance(m, dict) else getattr(m, "ticker", "")
+        subtitle = ((m.get("yes_sub_title") or m.get("subtitle") or "")
+                    if isinstance(m, dict) else (getattr(m, "subtitle", "") or "")).strip()
+        code = ticker.rsplit("-", 1)[-1] if "-" in ticker else ""
+        if not code or not subtitle or any(ch.isdigit() for ch in subtitle):
+            continue
+        if subtitle.lower() in _NOT_A_CLUB:
+            continue
+        if code not in out or len(subtitle) < len(out[code]):
+            out[code] = subtitle
+    return out
+
+
+def link_series(client: KalshiClient, series_ticker: str, league: str,
+                games_by_date, min_confidence: float = 0.6) -> list[Link]:
+    """Link every open event under a series to a fixture in the game feed.
+
+    ``games_by_date`` is a callable ``(league, iso_date) -> list[dict]``; pass
+    ``gamestate.todays_games`` wrapped to accept a date.
+    """
+    codes = harvest_team_codes(client, series_ticker)
+    links: list[Link] = []
+    cache: dict[str, list[dict]] = {}
+
+    for ev in client.paginate("/events", "events",
+                              {"series_ticker": series_ticker, "status": "open"}):
+        fixture = parse_event_ticker(ev.get("event_ticker", ""), series_ticker, codes)
+        if not fixture or not fixture.is_split:
+            continue
+        iso = fixture.date.isoformat()
+        if iso not in cache:
+            try:
+                cache[iso] = games_by_date(league, iso)
+            except Exception:
+                cache[iso] = []
+        link = match_event_to_game(fixture, cache[iso], min_confidence)
+        if link:
+            links.append(Link(link.event_ticker, league, link.game_id,
+                              link.home, link.away, link.confidence, link.method))
+    return links
+
+
+def link_league(client: KalshiClient, league: str, series_tickers: list[str],
+                games_by_date, min_confidence: float = 0.6) -> list[Link]:
+    """Link every game-level series in a league."""
+    out: list[Link] = []
+    for st in series_tickers:
+        try:
+            out += link_series(client, st, league, games_by_date, min_confidence)
+        except Exception as exc:
+            print(f"[link] {st}: {exc}")
+    return out
