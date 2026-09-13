@@ -82,7 +82,7 @@ system; EvoAgentX would replace the runtime; DGM and HGM optimise coding agents
 against coding benchmarks; Meta-Harness is the right loop but at 10M tokens a
 step it is a coding-agent proposer, not a population optimizer.
 
-## What this leaves for us to write
+## What this left for us to write (now written)
 
 - The replay evaluator as a GEPA adapter (the benchmark exists in Sean's repo
   and is yours; it needs porting or importing).

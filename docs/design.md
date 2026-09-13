@@ -1,5 +1,19 @@
 # Design: the alternative
 
+## Status, 2026-09-13
+
+Built and tested offline: the harness contract and runner (`rsi_arena/harness`),
+the frozen-tool replay and match timeline (`rsi_arena/kalshi/replay.py`), the
+window builder, scorer and evaluator (`rsi_arena/bench`), the GEPA adapter, the
+paired-bootstrap gate and the loop CLI (`rsi_arena/optimize`). Decision A below
+is settled: a slim runtime with the same JSON contract, no dependency on the
+earlier package. Decision D is settled: this repository.
+
+Not yet run against the live exchange: the session that built this could not
+reach kalshi.com or espn.com, so `python -m rsi_arena.bench` and
+`python -m rsi_arena.optimize` have been exercised only with fakes. The first
+real run is the next step, and its numbers go in `runs/`.
+
 ## Goal
 
 A recursive self-improvement loop that runs end to end in days, scored by a
