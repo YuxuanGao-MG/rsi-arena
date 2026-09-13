@@ -11,6 +11,7 @@ class Settings:
     topic: str = "kalshi-horizon-5m"
     harness: str = "harnesses/horizon-5m.json"     # a harness file, or a run directory to continue from
     benchmark: str = "benchmarks/epl-2026-09.json"
+    windows_dir: str = "benchmarks/windows"         # the question set, built once and versioned
     holdout: int = 2                               # instance groups (fixtures) the optimizer never sees
     seed: int = 0
     every: int = 5                                 # minutes between windows

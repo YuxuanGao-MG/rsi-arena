@@ -51,7 +51,7 @@ def test_build_windows_attaches_truth_and_caches(history, t0, tmp_path):
     def fake_timeline(league, game):
         calls.append(game)
         return line
-    windows = build_windows([fixture], history=history, cache_dir=tmp_path,
+    windows = build_windows([fixture], history=history, windows_dir=tmp_path,
                             timeline_for=fake_timeline, log=lambda m: None)
     # Candles exist for minutes 0..39. A window needs a fresh candle at the instant
     # and one within the staleness limit five minutes on: 5,10,...,35 qualify (the
@@ -59,6 +59,6 @@ def test_build_windows_attaches_truth_and_caches(history, t0, tmp_path):
     assert len(windows) == 14 and calls == ["g"]
     a = [w for w in windows if w.ticker == "A"][0]
     assert abs(a.realised - (a.mid_now + 0.05)) < 1e-9 and a.game["home"] == "H"
-    again = build_windows([fixture], history=history, cache_dir=tmp_path,
+    again = build_windows([fixture], history=history, windows_dir=tmp_path,
                           timeline_for=fake_timeline, log=lambda m: None)
     assert calls == ["g"] and [w.id for w in again] == [w.id for w in windows]

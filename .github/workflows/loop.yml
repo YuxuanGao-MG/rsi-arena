@@ -1,0 +1,121 @@
+# One turn of the loop, run on GitHub's machines. Trigger it from the Actions tab
+# (Run workflow) or from the API. Results are committed back to main under runs/,
+# the question set under benchmarks/windows/, and a summary is written to the run page.
+#
+# Needs one repository secret for anything but "windows": OPENROUTER_API_KEY.
+name: loop
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "windows = build the question set (no key). bench = score a harness. optimize = one generation."
+        type: choice
+        options: [windows, bench, optimize]
+        default: bench
+      harness:
+        description: "harness file, or a run directory to continue from (runs/gen1)"
+        default: harnesses/horizon-5m.json
+      run_dir:
+        description: "optimize: where this generation is written"
+        default: runs/gen1
+      split:
+        description: "bench: which fixtures"
+        type: choice
+        options: [holdout, train, all]
+        default: holdout
+      max_metric_calls:
+        description: "optimize: window evaluations GEPA may spend"
+        default: "200"
+      holdout:
+        description: "fixtures kept from the optimizer"
+        default: "2"
+      model:
+        description: "override the harness model (blank keeps the file's)"
+        default: ""
+      reflection_model:
+        description: "optimize: the model that rewrites harnesses"
+        default: anthropic/claude-sonnet-4.5
+
+permissions:
+  contents: write
+
+concurrency:
+  group: loop
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+
+      - name: Restore tool and model caches
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: loop-cache-${{ github.run_id }}
+          restore-keys: loop-cache-
+
+      - name: Check the key
+        if: inputs.command != 'windows'
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Build the question set
+        run: |
+          rsi-arena windows --holdout "${{ inputs.holdout }}" | tee windows.txt
+          { echo "### Question set"; echo '```'; cat windows.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bench
+        if: inputs.command == 'bench'
+        run: |
+          args=(--harness "${{ inputs.harness }}" --split "${{ inputs.split }}" --holdout "${{ inputs.holdout }}")
+          [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
+          mkdir -p runs/bench
+          rsi-arena bench "${args[@]}" --out "runs/bench/$(date -u +%Y%m%dT%H%M)-${{ inputs.split }}.rollouts.json" | tee bench.txt
+          { echo "### Bench"; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Optimize
+        if: inputs.command == 'optimize'
+        run: |
+          args=(--harness "${{ inputs.harness }}" --run-dir "${{ inputs.run_dir }}" --holdout "${{ inputs.holdout }}"
+                --max-metric-calls "${{ inputs.max_metric_calls }}" --reflection-model "${{ inputs.reflection_model }}")
+          [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
+          rsi-arena optimize "${args[@]}" | tee optimize.txt
+          { echo "### Generation ${{ inputs.run_dir }}"; echo '```'; cat optimize.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit results
+        if: always()
+        run: |
+          git config user.name "rsi-arena loop"
+          git config user.email "loop@users.noreply.github.com"
+          git add -A benchmarks/windows runs 2>/dev/null || true
+          if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
+          git commit -m "loop: ${{ inputs.command }} (${{ inputs.harness }}) run ${{ github.run_id }}"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 5
+          done
+          exit 1
+
+      - name: Keep the run as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ github.run_id }}
+          path: |
+            runs
+            benchmarks/windows
+          if-no-files-found: ignore

@@ -30,7 +30,18 @@ The seam is `loop.Task`: a topic says what an instance is, which tools a
 harness gets on it, what a run is worth, and how outcomes pool. Everything in
 `loop/` is written against that protocol and knows nothing about Kalshi.
 
-## Run
+## Run on GitHub
+
+No machine needed. The `loop` workflow runs on GitHub's runners and commits its
+results back to `main`:
+
+1. Add the repository secret `OPENROUTER_API_KEY` (Settings > Secrets and variables > Actions).
+2. Actions > loop > Run workflow. `windows` builds the question set and needs no
+   key; `bench` scores a harness; `optimize` runs one generation into a run
+   directory. Continue a lineage by passing a previous run directory as the harness.
+3. Read the summary on the run page; the run directory lands under `runs/`.
+
+## Run locally
 
 ```bash
 python -m venv .venv && source .venv/bin/activate

@@ -1,5 +1,6 @@
 """rsi-arena: bench a harness, run one generation of the loop, show a lineage.
 
+    rsi-arena windows                                             # build the question set, no key needed
     rsi-arena bench --split holdout
     rsi-arena optimize --run-dir runs/gen1
     rsi-arena optimize --harness runs/gen1 --run-dir runs/gen2     # continue from a run
@@ -31,6 +32,7 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--topic", default=d.topic, choices=sorted(TOPICS))
     ap.add_argument("--harness", default=d.harness, help="a harness file, or a run directory to continue from")
     ap.add_argument("--benchmark", default=d.benchmark)
+    ap.add_argument("--windows-dir", default=d.windows_dir)
     ap.add_argument("--holdout", type=int, default=d.holdout, help="fixtures the optimizer never sees")
     ap.add_argument("--seed", type=int, default=d.seed)
     ap.add_argument("--every", type=int, default=d.every, help="minutes between windows")
@@ -41,7 +43,8 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
 
 
 def _settings(args: argparse.Namespace) -> Settings:
-    s = Settings(topic=args.topic, harness=args.harness, benchmark=args.benchmark, holdout=args.holdout,
+    s = Settings(topic=args.topic, harness=args.harness, benchmark=args.benchmark,
+                 windows_dir=args.windows_dir, holdout=args.holdout,
                  seed=args.seed, every=args.every, model=args.model, cache_dir=args.cache_dir,
                  llm_cache=not args.no_llm_cache, concurrency=args.concurrency)
     for name in ("reflection_model", "max_metric_calls", "minibatch", "max_cost_ratio", "run_dir"):
@@ -61,6 +64,34 @@ def _bench(task, harness, instances, llm, s: Settings) -> list[Rollout]:
 def _dump_rollouts(path: Path, rollouts: list[Rollout]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([r.to_dict() for r in rollouts], indent=1, default=str))
+
+
+# -- windows ----------------------------------------------------------------
+
+def cmd_windows(args: argparse.Namespace) -> int:
+    """Build the question set from the exchange and the fixture feed. Needs no model key."""
+    s = _settings(args)
+    task = load_topic(s)
+    instances = task.instances()
+    train, hold = split_by_group(instances, s.holdout, s.seed)
+    groups: dict[str, list[Any]] = {}
+    for i in instances:
+        groups.setdefault(i.group, []).append(i)
+    rows = []
+    for group, items in sorted(groups.items()):
+        moved = sum(1 for w in items if abs(w.realised - w.mid_now) >= 0.01)
+        rows.append({"group": group, "windows": len(items), "moved": moved,
+                     "split": "holdout" if items[0] in hold else "train"})
+    report = {"topic": task.name, "windows_dir": s.windows_dir, "instances": len(instances),
+              "train": len(train), "holdout": len(hold), "groups": rows}
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"{task.name}: {len(instances)} windows ({len(train)} train, {len(hold)} held out) "
+              f"in {s.windows_dir}")
+        for r in rows:
+            print(f"  {r['group']:34} {r['windows']:>4} windows  {r['moved']:>4} moved >=1c  {r['split']}")
+    return 0 if instances else 1
 
 
 # -- bench ------------------------------------------------------------------
@@ -179,6 +210,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="rsi-arena", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
+
+    w = sub.add_parser("windows", help="build the question set; needs no model key")
+    _settings_args(w)
+    w.add_argument("--json", action="store_true")
+    w.set_defaults(fn=cmd_windows)
 
     b = sub.add_parser("bench", help="score one harness on the benchmark")
     _settings_args(b)

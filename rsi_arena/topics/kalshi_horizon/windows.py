@@ -1,9 +1,9 @@
 """The question set: instants of finished matches, with the answer attached.
 
 A window is a contract, an instant, the mid then, the game state then, and the
-mid five minutes later. Building one needs the network; once built it is cached
-on disk per fixture and never fetched again, so a generation of harnesses costs
-only its model calls.
+mid five minutes later. Building one needs the network; once built it is written
+per fixture under a windows directory and never fetched again. That directory
+is versioned with the benchmark: it is the question set, not a cache.
 """
 
 from __future__ import annotations
@@ -60,11 +60,11 @@ def load_fixtures(path: str | Path) -> list[Fixture]:
 
 
 def build_windows(fixtures: list[Fixture], *, history: History, every_minutes: int = 5,
-                  horizon: int = HORIZON_MINUTES, cache_dir: str | Path | None = None,
+                  horizon: int = HORIZON_MINUTES, windows_dir: str | Path | None = None,
                   timeline_for: Callable[[str, str], MatchTimeline | None] = match_timeline,
                   log: Callable[[str], None] = lambda m: None) -> list[Window]:
-    """Every scoreable window of every fixture, cached per fixture."""
-    root = Path(cache_dir) / "windows" if cache_dir else None
+    """Every scoreable window of every fixture, stored per fixture under ``windows_dir``."""
+    root = Path(windows_dir) if windows_dir else None
     out: list[Window] = []
     for fixture in fixtures:
         path = root / f"{fixture.event}.every{every_minutes}.h{horizon}.json" if root else None

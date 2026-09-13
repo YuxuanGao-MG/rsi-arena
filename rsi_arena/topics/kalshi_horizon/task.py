@@ -44,25 +44,26 @@ class KalshiHorizon:
     inputs = frozenset({"question", "game"})
 
     def __init__(self, *, fixtures=(), history: History | None = None, every_minutes: int = 5,
-                 cache_dir: str | None = None, windows: list[Window] | None = None) -> None:
+                 windows_dir: str | None = None, cache_dir: str | None = None,
+                 windows: list[Window] | None = None) -> None:
         self.fixtures = list(fixtures)
         self.history = history or History()
         self.every_minutes = every_minutes
-        self.cache_dir = cache_dir
+        self.windows_dir = windows_dir
         self.tool_cache = ToolCache(f"{cache_dir}/tools") if cache_dir else None
         self._windows = windows
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "KalshiHorizon":
         return cls(fixtures=load_fixtures(settings.benchmark), every_minutes=settings.every,
-                   cache_dir=settings.cache_dir)
+                   windows_dir=settings.windows_dir, cache_dir=settings.cache_dir)
 
     # -- Task --
 
     def instances(self) -> list[Window]:
         if self._windows is None:
             self._windows = build_windows(self.fixtures, history=self.history,
-                                          every_minutes=self.every_minutes, cache_dir=self.cache_dir,
+                                          every_minutes=self.every_minutes, windows_dir=self.windows_dir,
                                           log=lambda m: print(m, file=sys.stderr))
         return self._windows
 
