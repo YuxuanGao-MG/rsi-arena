@@ -198,7 +198,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     _dump_rollouts(run_dir / "rollouts" / "candidate.holdout.json", cand_hold)
     decision = accept(task, candidate_train=cand_train, incumbent_train=base_train,
                       candidate_holdout=cand_hold, incumbent_holdout=base_hold,
-                      max_cost_ratio=s.max_cost_ratio, seed=s.seed)
+                      max_cost_ratio=s.max_cost_ratio, seed=s.seed,
+                      unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint)
     gen.decision = decision.to_dict()
     gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits, "spent_usd": round(llm.spent_usd, 4)}
     gen.save()

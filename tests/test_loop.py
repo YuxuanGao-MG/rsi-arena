@@ -112,3 +112,59 @@ def test_generations_chain_and_promote(tmp_path):
     assert harness.context == "better" and source.endswith("best.json") and parent == str(tmp_path / "gen2")
     chain = lineage(tmp_path / "gen2")
     assert [g.path.name for g in chain] == ["gen1", "gen2"] and chain[1].accepted
+
+
+# --- identity of a harness, and of a search that found nothing ---------------
+
+
+def test_renaming_a_candidate_does_not_change_its_fingerprint() -> None:
+    """The loop calls every candidate `<name>+genN`. A fingerprint over
+    `to_dict()` therefore differed every generation whether or not anything had
+    been rewritten, and the first real run recorded a new fingerprint for a
+    search that returned the seed untouched."""
+    from rsi_arena.harness.spec import Harness
+    from rsi_arena.loop.generation import fingerprint
+
+    seed = Harness.load("harnesses/horizon-5m.json")
+    renamed = seed.model_copy(update={"name": seed.name + "+gen1",
+                                      "description": "written by gen1"})
+    assert fingerprint(renamed) == fingerprint(seed)
+
+
+def test_a_rewritten_component_does_change_it() -> None:
+    from rsi_arena.harness.spec import Harness
+    from rsi_arena.loop.generation import fingerprint
+
+    seed = Harness.load("harnesses/horizon-5m.json")
+    rewritten = seed.from_components({**seed.to_components(),
+                                      "context": seed.context + "\n\nAlso: be brief."})
+    assert fingerprint(rewritten) != fingerprint(seed)
+
+
+def test_the_same_components_on_another_model_are_another_harness() -> None:
+    """Same prompt, different model, different thing being measured."""
+    from rsi_arena.harness.spec import Harness
+    from rsi_arena.loop.generation import fingerprint
+
+    seed = Harness.load("harnesses/horizon-5m.json")
+    other = seed.model_copy(deep=True)
+    other.config.model = "openai/gpt-5"
+    assert fingerprint(other) != fingerprint(seed)
+
+
+async def test_a_search_that_returned_the_incumbent_says_so(t0, history):
+    """Not "not distinguishable from noise", which describes a rewrite that
+    tied. On the first real run there was no rewrite: GEPA's best was the seed,
+    so every paired difference was exactly zero and the report read as a near
+    miss. Telling a search that found nothing from a rewrite that failed is the
+    whole job."""
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
+
+    verdict = accept(tk, candidate_train=base[:3], incumbent_train=base[:3],
+                     candidate_holdout=base[3:], incumbent_holdout=base[3:],
+                     unchanged=True)
+    assert verdict.accepted is False
+    assert "returned the incumbent unchanged" in " ".join(verdict.reasons)
+    assert "noise" not in " ".join(verdict.reasons)
