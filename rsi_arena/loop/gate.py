@@ -50,11 +50,26 @@ class Decision:
 
 def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[Rollout],
            candidate_holdout: list[Rollout], incumbent_holdout: list[Rollout],
-           max_cost_ratio: float = 2.0, seed: int = 0) -> Decision:
+           max_cost_ratio: float = 2.0, seed: int = 0,
+           unchanged: bool = False) -> Decision:
+    """Promote a candidate, or say why not.
+
+    ``unchanged`` is for the case the first real run hit: GEPA's best was the
+    seed, so the "candidate" was the incumbent and every paired difference was
+    exactly zero. The arithmetic is right and the sentence it produces is not —
+    "not distinguishable from noise" describes a rewrite that tied, and what
+    happened was that there was no rewrite. A loop whose job is to tell an
+    improvement from a reshuffle should not report a search that found nothing
+    as a near miss.
+    """
     hold = paired_bootstrap(task, candidate_holdout, incumbent_holdout, seed=seed)
     train = paired_bootstrap(task, candidate_train, incumbent_train, seed=seed)
     reasons: list[str] = []
     ok = True
+    if unchanged:
+        return Decision(accepted=False, holdout=hold, train=train,
+                        reasons=["the search returned the incumbent unchanged; "
+                                 "nothing was proposed to gate"])
     if hold["paired"] < 2:
         ok = False
         reasons.append("no paired held-out instances to judge on")

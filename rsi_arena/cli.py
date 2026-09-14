@@ -61,6 +61,26 @@ def _bench(task, harness, instances, llm, s: Settings) -> list[Rollout]:
     return asyncio.run(evaluate(task, harness, instances, llm, concurrency=s.concurrency))
 
 
+def _closing(llm: OpenRouter):
+    """Close the client inside the loop that opened it.
+
+    ``asyncio.run`` creates a loop, runs, and closes it. A second
+    ``asyncio.run(llm.close())`` therefore tries to shut down an httpx pool whose
+    sockets belong to a loop that no longer exists, and every real run ended in
+    an ``Event loop is closed`` traceback after printing its results — exit code
+    1 on a run that worked, which on CI is indistinguishable from one that did
+    not.
+    """
+
+    async def _run(coro):
+        try:
+            return await coro
+        finally:
+            await llm.close()
+
+    return _run
+
+
 def _dump_rollouts(path: Path, rollouts: list[Rollout]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([r.to_dict() for r in rollouts], indent=1, default=str))
@@ -108,8 +128,8 @@ def cmd_bench(args: argparse.Namespace) -> int:
         print(json.dumps({"error": "no instances"}))
         return 1
     llm = _llm(s)
-    rollouts = _bench(task, harness, chosen, llm, s)
-    asyncio.run(llm.close())
+    rollouts = asyncio.run(_closing(llm)(
+        evaluate(task, harness, chosen, llm, concurrency=s.concurrency)))
     summary = {"harness": harness.name, "source": source, "fingerprint": fingerprint(harness),
                "split": args.split, **summarise(task, rollouts)}
     if args.out:
@@ -178,7 +198,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     _dump_rollouts(run_dir / "rollouts" / "candidate.holdout.json", cand_hold)
     decision = accept(task, candidate_train=cand_train, incumbent_train=base_train,
                       candidate_holdout=cand_hold, incumbent_holdout=base_hold,
-                      max_cost_ratio=s.max_cost_ratio, seed=s.seed)
+                      max_cost_ratio=s.max_cost_ratio, seed=s.seed,
+                      unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint)
     gen.decision = decision.to_dict()
     gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits, "spent_usd": round(llm.spent_usd, 4)}
     gen.save()
