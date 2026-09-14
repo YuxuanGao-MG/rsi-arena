@@ -1,0 +1,1888 @@
+Iteration 0: Base program full valset score: 0.5165749543322159 over 102 / 102 examples
+Iteration 1: Selected program 0 score: 0.5165749543322159
+Iteration 1: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,
+their win probability rises as the clock runs without an equalizer. Time is their
+ally. The price drifts up, not down. This is not "time decay toward no" — that
+applies to "will X happen" contracts, not "will team Y win" contracts when Y is
+already winning.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely.
+
+**When you predict zero movement, widen your market.** If the game is quiet and you
+expect no change, you still face uncertainty about whether something will happen.
+A 1-2 cent half-width on a zero-delta forecast is overconfident. Use 2-3 cents
+minimum unless the book is locked and the clock is stopped.
+
+**Large sudden moves are possible and you must flag them.** Goals happen. A 0-0 game
+can become 1-0 in the next minute, moving the price 10-30 cents instantly. If the
+game is live and close, your half-width must reflect this. A 3-cent market when a
+goal would move the price 20 cents is not defensible. Either predict the direction
+if you see momentum, or quote a wide market (5-10 cents) to cover the risk.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price
+should drift up 1-2 cents over five minutes, say so.
+Iteration 1: Accepted candidate (subsample score 3.732758620689655 -> 4.275862068965517); running full eval.
+Iteration 1: Valset score for new program: 0.49137576332499683 (coverage 102 / 102)
+Iteration 1: Val aggregate for new program: 0.49137576332499683
+Iteration 1: Individual valset scores for new program: {0: 0.5714285714285715, 1: 0.5, 2: 0.125, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.25, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.0, 13: 0.5172413793103449, 14: 0.0, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.125, 20: 0.75, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.24999999999999933, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5416666666666667, 31: 0.6500000000000001, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.25, 36: 0.6250000000000002, 37: 0.75, 38: 0.5, 39: 0.6250000000000002, 40: 0.0, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.4833333333333333, 47: 0.33333333333333337, 48: 0.8333333333333331, 49: 0.5999999999999999, 50: 0.0, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.35, 58: 0.5, 59: 0.666666666666667, 60: 0.0, 61: 0.0, 62: 0.75, 63: 0.5258620689655173, 64: 0.0, 65: 0.9, 66: 0.8333333333333334, 67: 0.0, 68: 0.5178571428571428, 69: 0.7500000000000004, 70: 0.0, 71: 0.0, 72: 0.5, 73: 0.5, 74: 0.0, 75: 1.0, 76: 0.666666666666667, 77: 0.5, 78: 0.5, 79: 0.24999999999999933, 80: 0.6875000000000002, 81: 0.48461538461538456, 82: 0.5126582278481013, 83: 0.75, 84: 0.75, 85: 0.4482758620689655, 86: 0.6111111111111113, 87: 0.0, 88: 0.25, 89: 0.5, 90: 0.25, 91: 0.8333333333333346, 92: 0.9, 93: 0.75, 94: 0.5, 95: 0.5, 96: 0.0, 97: 0.3749999999999998, 98: 0.4782608695652174, 99: 0.4655172413793103, 100: 0.75, 101: 0.5833333333333335}
+Iteration 1: Objective aggregate scores for new program: {'skill': 0.49137576332499683, 'cost': 1.0}
+Iteration 1: New valset pareto front scores: {0: 0.5714285714285715, 1: 0.5, 2: 0.5, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5172413793103449, 14: 0.25, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.5, 20: 0.75, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5416666666666667, 31: 0.6500000000000001, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.6250000000000002, 37: 0.75, 38: 0.5, 39: 0.6250000000000002, 40: 0.0, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.5, 47: 0.33333333333333337, 48: 0.8333333333333331, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.666666666666667, 60: 0.5, 61: 0.5, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.5, 68: 0.5178571428571428, 69: 0.7500000000000004, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.666666666666667, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.8333333333333334, 84: 0.8333333333333334, 85: 0.5, 86: 0.6111111111111113, 87: 0.5, 88: 0.75, 89: 0.5, 90: 0.5, 91: 0.8333333333333346, 92: 0.9, 93: 0.75, 94: 0.5, 95: 0.5, 96: 0.5, 97: 0.5, 98: 0.4782608695652174, 99: 0.5344827586206897, 100: 0.9999999999999993, 101: 0.75}
+Iteration 1: Objective pareto front scores: {'skill': 0.5165749543322159, 'cost': 1.0}
+Iteration 1: Valset pareto front aggregate score: 0.5931183215330722
+Iteration 1: Updated valset pareto front programs: {0: {1}, 1: {0, 1}, 2: {0}, 3: {0, 1}, 4: {0, 1}, 5: {0, 1}, 6: {0, 1}, 7: {0}, 8: {1}, 9: {0, 1}, 10: {0, 1}, 11: {0, 1}, 12: {0}, 13: {1}, 14: {0}, 15: {0, 1}, 16: {0, 1}, 17: {1}, 18: {0, 1}, 19: {0}, 20: {1}, 21: {0, 1}, 22: {1}, 23: {1}, 24: {0, 1}, 25: {1}, 26: {0}, 27: {0, 1}, 28: {0, 1}, 29: {0, 1}, 30: {1}, 31: {1}, 32: {0, 1}, 33: {0, 1}, 34: {0, 1}, 35: {0}, 36: {1}, 37: {0, 1}, 38: {0, 1}, 39: {1}, 40: {0, 1}, 41: {0, 1}, 42: {1}, 43: {0, 1}, 44: {0, 1}, 45: {0, 1}, 46: {0}, 47: {0, 1}, 48: {1}, 49: {0}, 50: {0}, 51: {0, 1}, 52: {0, 1}, 53: {0, 1}, 54: {0, 1}, 55: {1}, 56: {0, 1}, 57: {0}, 58: {0, 1}, 59: {1}, 60: {0}, 61: {0}, 62: {1}, 63: {1}, 64: {0}, 65: {1}, 66: {1}, 67: {0}, 68: {1}, 69: {1}, 70: {0}, 71: {0}, 72: {0, 1}, 73: {0, 1}, 74: {0}, 75: {1}, 76: {0, 1}, 77: {0, 1}, 78: {0, 1}, 79: {0}, 80: {1}, 81: {0}, 82: {1}, 83: {0}, 84: {0}, 85: {0}, 86: {1}, 87: {0}, 88: {0}, 89: {0, 1}, 90: {0}, 91: {1}, 92: {1}, 93: {1}, 94: {0, 1}, 95: {0, 1}, 96: {0}, 97: {0}, 98: {1}, 99: {0}, 100: {0}, 101: {0}}
+Iteration 1: Updated objective pareto front programs: {'skill': {0}, 'cost': {0, 1}}
+Iteration 1: Best valset aggregate score so far: 0.5165749543322159
+Iteration 1: Best program as per aggregate score on valset: 0
+Iteration 1: Best score on valset: 0.5165749543322159
+Iteration 1: Linear pareto front program index: 0
+Iteration 1: New program candidate index: 1
+Iteration 2: Selected program 1 score: 0.49137576332499683
+Iteration 2: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.75,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 20
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "analyze_recent_action",
+      "output_key": "analysis",
+      "prompt": "Contract: {{question}}\nGame state: {{game}}\nCurrent book: {{quote}}\nMinute bars (last 45m): {{path}}\nRecent prints: {{tape}}\n\nAnalyze the price action over the last 10-15 minutes:\n\n1. Has there been a large jump (10+ cents) in the last few minutes that suggests a goal or major event NOT YET reflected in the game state?\n2. Has the price been stable, drifting slowly, or bouncing around?\n3. Is the current mid consistent with the score and time, or does it look like it's still absorbing recent news?\n4. What is the typical spread and how liquid is this book?\n\nBe specific about timing - look at the timestamps.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "recent_jump": {
+            "type": "boolean",
+            "description": "True if there was a 10+ cent move in the last 5-10 minutes"
+          },
+          "jump_direction": {
+            "type": "string",
+            "description": "up, down, or none"
+          },
+          "jump_size_cents": {
+            "type": "number",
+            "description": "Size of the recent jump if any, in cents"
+          },
+          "price_stability": {
+            "type": "string",
+            "description": "stable, drifting, volatile, or absorbing"
+          },
+          "current_mid_cents": {
+            "type": "number",
+            "description": "Current mid price in cents"
+          },
+          "five_minutes_ago_cents": {
+            "type": "number",
+            "description": "Mid price approximately 5 minutes ago, in cents"
+          },
+          "spread_cents": {
+            "type": "number",
+            "description": "Current spread in cents"
+          },
+          "diagnosis": {
+            "type": "string",
+            "description": "What is happening in this market right now? Is it still digesting news, quiet, or balanced?"
+          }
+        },
+        "required": [
+          "recent_jump",
+          "jump_direction",
+          "jump_size_cents",
+          "price_stability",
+          "current_mid_cents",
+          "spread_cents",
+          "diagnosis"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nCurrent quote: {{quote}}\n\nMarket analysis: {{analysis}}\n\nNow forecast the next 5 minutes:\n\nKey rules:\n1. If there was a recent large jump ({{analysis.recent_jump}}), the market may still be absorbing it - continuation in the same direction is possible, OR mean reversion if it overshot.\n2. Time decay is TINY - a typical move is only 1-3 cents over 5 minutes. Don't predict large time-decay moves unless very late in the game (85+ minutes).\n3. Zero cents is often correct on a stable book.\n4. The only things that move prices significantly are: goals (10-30 cents instantly), red cards (5-15 cents), and very late game time (80+ minutes, 1-2 cents per 5 min).\n5. If the price jumped recently but the game state doesn't show a new goal, the market may know something - predict continuation or consolidation.\n6. Wide spreads (2+ cents) mean thin books where noise dominates - be conservative.\n\nHow many cents will the mid MOVE (not where will it be) over the next 5 minutes?",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. This is the CHANGE, not the price level."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents. Minimum 2 cents for thin books, can be 1-1.5 for liquid markets where you're confident."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1. How sure, given the book thickness and price action."
+          },
+          "driver": {
+            "type": "string",
+            "description": "The primary reason for your prediction: recent jump still absorbing, thin book noise, time decay, or expecting stability."
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would prove this wrong within 5 minutes."
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 2: Accepted candidate (subsample score 4.267241379310345 -> 4.683908045977011); running full eval.
+Iteration 2: Valset score for new program: 0.509362436780627 (coverage 102 / 102)
+Iteration 2: Val aggregate for new program: 0.509362436780627
+Iteration 2: Individual valset scores for new program: {0: 0.4285714285714285, 1: 0.5, 2: 0.75, 3: 0.0, 4: 0.5, 5: 0.25, 6: 0.5, 7: 0.41666666666666663, 8: 0.5, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.0, 13: 0.5172413793103449, 14: 0.0, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.125, 20: 1.0, 21: 0.5, 22: 0.5, 23: 0.5, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.45833333333333326, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.5, 37: 0.5, 38: 0.5, 39: 0.7500000000000003, 40: 0.5, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.16666666666666663, 48: 0.8333333333333331, 49: 0.30000000000000016, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.4, 58: 0.5, 59: 0.5, 60: 0.0, 61: 0.0, 62: 0.0, 63: 0.5258620689655173, 64: 0.0, 65: 0.9, 66: 0.8333333333333334, 67: 0.0, 68: 0.5357142857142858, 69: 0.666666666666667, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.0, 75: 0.8333333333333334, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.124999999999999, 80: 0.24999999999999967, 81: 0.4769230769230769, 82: 0.5126582278481013, 83: 0.8333333333333334, 84: 0.8333333333333334, 85: 0.4482758620689655, 86: 0.38888888888888873, 87: 0.0, 88: 0.75, 89: 0.5, 90: 1.0, 91: 0.9999999999999982, 92: 0.7, 93: 0.875, 94: 0.5, 95: 0.5, 96: 1.0, 97: 0.6875000000000002, 98: 0.5, 99: 0.0, 100: 0.9999999999999993, 101: 0.8333333333333334}
+Iteration 2: Objective aggregate scores for new program: {'skill': 0.509362436780627, 'cost': 0.5092464705882352}
+Iteration 2: New valset pareto front scores: {0: 0.5714285714285715, 1: 0.5, 2: 0.75, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5172413793103449, 14: 0.25, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.5, 20: 1.0, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5416666666666667, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.6250000000000002, 37: 0.75, 38: 0.5, 39: 0.7500000000000003, 40: 0.5, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.33333333333333337, 48: 0.8333333333333331, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.666666666666667, 60: 0.5, 61: 0.5, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.5, 68: 0.5357142857142858, 69: 0.7500000000000004, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.8333333333333334, 84: 0.8333333333333334, 85: 0.5, 86: 0.6111111111111113, 87: 0.5, 88: 0.75, 89: 0.5, 90: 1.0, 91: 0.9999999999999982, 92: 0.9, 93: 0.875, 94: 0.5, 95: 0.5, 96: 1.0, 97: 0.6875000000000002, 98: 0.5, 99: 0.5344827586206897, 100: 0.9999999999999993, 101: 0.8333333333333334}
+Iteration 2: Objective pareto front scores: {'skill': 0.5165749543322159, 'cost': 1.0}
+Iteration 2: Valset pareto front aggregate score: 0.6245931215980258
+Iteration 2: Updated valset pareto front programs: {0: {1}, 1: {0, 1, 2}, 2: {2}, 3: {0, 1}, 4: {0, 1, 2}, 5: {0, 1}, 6: {0, 1, 2}, 7: {0}, 8: {1}, 9: {0, 1, 2}, 10: {0, 1, 2}, 11: {0, 1, 2}, 12: {0}, 13: {1, 2}, 14: {0}, 15: {0, 1, 2}, 16: {0, 1, 2}, 17: {1}, 18: {0, 1, 2}, 19: {0}, 20: {2}, 21: {0, 1, 2}, 22: {1}, 23: {1}, 24: {0, 1, 2}, 25: {1, 2}, 26: {0, 2}, 27: {0, 1, 2}, 28: {0, 1, 2}, 29: {0, 1, 2}, 30: {1}, 31: {2}, 32: {0, 1, 2}, 33: {0, 1, 2}, 34: {0, 1, 2}, 35: {0, 2}, 36: {1}, 37: {0, 1}, 38: {0, 1, 2}, 39: {2}, 40: {2}, 41: {0, 1, 2}, 42: {1, 2}, 43: {0, 1, 2}, 44: {0, 1, 2}, 45: {0, 1, 2}, 46: {2}, 47: {0, 1}, 48: {1, 2}, 49: {0}, 50: {0, 2}, 51: {0, 1, 2}, 52: {0, 1, 2}, 53: {0, 1, 2}, 54: {0, 1, 2}, 55: {1, 2}, 56: {0, 1, 2}, 57: {0}, 58: {0, 1, 2}, 59: {1}, 60: {0}, 61: {0}, 62: {1}, 63: {1, 2}, 64: {0}, 65: {1, 2}, 66: {1, 2}, 67: {0}, 68: {2}, 69: {1}, 70: {0, 2}, 71: {0, 2}, 72: {0, 1, 2}, 73: {0, 1, 2}, 74: {0}, 75: {1}, 76: {2}, 77: {0, 1, 2}, 78: {0, 1, 2}, 79: {0}, 80: {1}, 81: {0}, 82: {1, 2}, 83: {0, 2}, 84: {0, 2}, 85: {0}, 86: {1}, 87: {0}, 88: {0, 2}, 89: {0, 1, 2}, 90: {2}, 91: {2}, 92: {1}, 93: {2}, 94: {0, 1, 2}, 95: {0, 1, 2}, 96: {2}, 97: {2}, 98: {2}, 99: {0}, 100: {0, 2}, 101: {2}}
+Iteration 2: Updated objective pareto front programs: {'skill': {0}, 'cost': {0, 1}}
+Iteration 2: Best valset aggregate score so far: 0.5165749543322159
+Iteration 2: Best program as per aggregate score on valset: 0
+Iteration 2: Best score on valset: 0.5165749543322159
+Iteration 2: Linear pareto front program index: 0
+Iteration 2: New program candidate index: 2
+Iteration 3: Selected program 2 score: 0.509362436780627
+Iteration 3: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 3: New subsample score 4.733333333333332 is not better than old score 4.733333333333332, skipping
+Iteration 4: Selected program 2 score: 0.509362436780627
+Iteration 4: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**Direction matters more than you think.** Wrong-direction forecasts score worse than
+predicting zero. If you predict +1c and the market moves -1c, you score negative
+skill. If you predict 0c when it moves -1c, you score zero skill. Getting the sign
+wrong is costly. When uncertain about direction, predict zero and widen your quote.
+
+**Time decay for a team WINNING goes UP, not down.** This is the most common error.
+If Chelsea leads 1-0 at 70', their win probability RISES as the clock runs without
+an equalizer. Each passing minute makes it harder for the opponent to score. The
+price drifts UP. This is not "time decay toward no" — that applies to "will X happen"
+contracts. A team defending a lead grows MORE likely to win as time expires.
+
+**Time decay for a team LOSING goes DOWN.** If Chelsea trails 0-1 at 70', their win
+probability FALLS as time passes. Fewer minutes remain to equalize and then win.
+The price drifts DOWN.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely. But this is a weak effect early in the match.
+
+**Absorption takes time but not as much as you think.** A goal moves the price
+10-30 cents instantly, but full absorption happens within 2-3 minutes, not 10-15.
+If a goal happened 6+ minutes ago and candlesticks show the price has been stable
+for 3+ minutes, it is fully priced. Do not predict continued "absorption drift"
+long after the event. The market is faster than you expect.
+
+**After absorption, time decay dominates.** Once a goal is absorbed and the price
+stabilizes, the next driver is time decay. If the score is not level, the winning
+team's price drifts up (or the losing team's price drifts down) at roughly 0.5-1.5
+cents per five minutes in the first half, and faster (1-3 cents per five minutes)
+in the second half when time remaining matters more.
+
+**When you predict zero movement, widen your market significantly.** If the game is
+quiet and you expect no change, you still face uncertainty about whether something
+will happen. A 2-3 cent half-width on a zero-delta forecast is overconfident when
+the game is live. Use 3-5 cents for a quiet game in the first half, 5-8 cents in
+the second half when goals are more likely and move the price further.
+
+**Large sudden moves are possible and you must account for them in width.** Goals
+happen. A 0-0 game can become 1-0 in the next minute, moving the price 15-25 cents
+instantly. If the game is live and close, your half-width must reflect this. A 3-cent
+market when a goal would move the price 20 cents is not defensible. Either predict
+the direction if you see signs of momentum, or quote a wide market (5-10 cents) to
+cover the two-sided risk.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price should
+drift up 1-2 cents over five minutes due to time decay, say so. But if you are
+unsure of the direction, zero is better than guessing wrong.
+
+**Check the score and clock to determine time decay direction.** Before predicting:
+1. Is one team winning? The winning team's price drifts UP as time passes.
+2. Is the score level? Both team prices drift DOWN slightly (draw becomes more likely).
+3. How much time remains? More time remaining = slower decay. Less time = faster decay.
+4. Has a recent goal been absorbed? Check candlesticks. If stable for 3+ minutes, it's priced.
+
+**When trailing by a goal late in the match, decay accelerates downward.** A team
+losing 0-1 at 80' has their price collapse faster than at 60'. The effect is
+nonlinear. Do not underestimate late-game time decay.
+Iteration 4: Accepted candidate (subsample score 3.138888888888889 -> 4.243055555555555); running full eval.
+Iteration 4: Found a better program on the valset with score 0.5167568670917984.
+Iteration 4: Valset score for new program: 0.5167568670917984 (coverage 102 / 102)
+Iteration 4: Val aggregate for new program: 0.5167568670917984
+Iteration 4: Individual valset scores for new program: {0: 0.4285714285714285, 1: 0.5, 2: 0.125, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.5, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.0, 13: 0.48275862068965514, 14: 0.0, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.125, 20: 0.75, 21: 0.5, 22: 0.5, 23: 0.5, 24: 0.5, 25: 0.5, 26: 0.0, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5625, 31: 0.5000000000000003, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.5, 37: 0.75, 38: 0.5, 39: 0.5, 40: 0.0, 41: 0.5, 42: 0.75, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.5333333333333334, 47: 0.0, 48: 0.8333333333333331, 49: 0.7999999999999999, 50: 0.0, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 0.25, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.5, 60: 0.75, 61: 0.75, 62: 0.5, 63: 0.47413793103448276, 64: 0.0, 65: 0.8, 66: 0.8333333333333334, 67: 0.0, 68: 0.5178571428571428, 69: 0.666666666666667, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 0.6666666666666667, 76: 0.666666666666667, 77: 0.5, 78: 0.5, 79: 0.37499999999999967, 80: 0.3749999999999998, 81: 0.4769230769230769, 82: 0.47468354430379756, 83: 0.9166666666666667, 84: 0.9166666666666667, 85: 0.4655172413793103, 86: 0.38888888888888873, 87: 1.0, 88: 0.875, 89: 0.5, 90: 0.75, 91: 0.8333333333333346, 92: 0.8, 93: 0.875, 94: 0.5, 95: 0.5, 96: 0.0, 97: 0.6875000000000002, 98: 0.46739130434782605, 99: 0.47413793103448276, 100: 0.875, 101: 0.8333333333333334}
+Iteration 4: Objective aggregate scores for new program: {'skill': 0.5167568670917984, 'cost': 0.4333935294117649}
+Iteration 4: New valset pareto front scores: {0: 0.5714285714285715, 1: 0.5, 2: 0.75, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5172413793103449, 14: 0.25, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.5, 20: 1.0, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5625, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.6250000000000002, 37: 0.75, 38: 0.5, 39: 0.7500000000000003, 40: 0.5, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.33333333333333337, 48: 0.8333333333333331, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.666666666666667, 60: 0.75, 61: 0.75, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.5, 68: 0.5357142857142858, 69: 0.7500000000000004, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.9166666666666667, 84: 0.9166666666666667, 85: 0.5, 86: 0.6111111111111113, 87: 1.0, 88: 0.875, 89: 0.5, 90: 1.0, 91: 0.9999999999999982, 92: 0.9, 93: 0.875, 94: 0.5, 95: 0.5, 96: 1.0, 97: 0.6875000000000002, 98: 0.5, 99: 0.5344827586206897, 100: 0.9999999999999993, 101: 0.8333333333333334}
+Iteration 4: Objective pareto front scores: {'skill': 0.5167568670917984, 'cost': 1.0}
+Iteration 4: Valset pareto front aggregate score: 0.637460768656849
+Iteration 4: Updated valset pareto front programs: {0: {1}, 1: {0, 1, 2, 3}, 2: {2}, 3: {0, 1, 3}, 4: {0, 1, 2, 3}, 5: {0, 1, 3}, 6: {0, 1, 2, 3}, 7: {0, 3}, 8: {1}, 9: {0, 1, 2, 3}, 10: {0, 1, 2, 3}, 11: {0, 1, 2, 3}, 12: {0}, 13: {1, 2}, 14: {0}, 15: {0, 1, 2, 3}, 16: {0, 1, 2, 3}, 17: {1, 3}, 18: {0, 1, 2, 3}, 19: {0}, 20: {2}, 21: {0, 1, 2, 3}, 22: {1}, 23: {1}, 24: {0, 1, 2, 3}, 25: {1, 2}, 26: {0, 2}, 27: {0, 1, 2, 3}, 28: {0, 1, 2, 3}, 29: {0, 1, 2, 3}, 30: {3}, 31: {2}, 32: {0, 1, 2, 3}, 33: {0, 1, 2, 3}, 34: {0, 1, 2, 3}, 35: {0, 2, 3}, 36: {1}, 37: {0, 1, 3}, 38: {0, 1, 2, 3}, 39: {2}, 40: {2}, 41: {0, 1, 2, 3}, 42: {1, 2}, 43: {0, 1, 2, 3}, 44: {0, 1, 2, 3}, 45: {0, 1, 2, 3}, 46: {2}, 47: {0, 1}, 48: {1, 2, 3}, 49: {0, 3}, 50: {0, 2}, 51: {0, 1, 2, 3}, 52: {0, 1, 2, 3}, 53: {0, 1, 2, 3}, 54: {0, 1, 2, 3}, 55: {1, 2}, 56: {0, 1, 2, 3}, 57: {0, 3}, 58: {0, 1, 2, 3}, 59: {1}, 60: {3}, 61: {3}, 62: {1}, 63: {1, 2}, 64: {0}, 65: {1, 2}, 66: {1, 2, 3}, 67: {0}, 68: {2}, 69: {1}, 70: {0, 2, 3}, 71: {0, 2, 3}, 72: {0, 1, 2, 3}, 73: {0, 1, 2, 3}, 74: {0, 3}, 75: {1}, 76: {2}, 77: {0, 1, 2, 3}, 78: {0, 1, 2, 3}, 79: {0}, 80: {1}, 81: {0}, 82: {1, 2}, 83: {3}, 84: {3}, 85: {0}, 86: {1}, 87: {3}, 88: {3}, 89: {0, 1, 2, 3}, 90: {2}, 91: {2}, 92: {1}, 93: {2, 3}, 94: {0, 1, 2, 3}, 95: {0, 1, 2, 3}, 96: {2}, 97: {2, 3}, 98: {2}, 99: {0}, 100: {0, 2}, 101: {2, 3}}
+Iteration 4: Updated objective pareto front programs: {'skill': {3}, 'cost': {0, 1}}
+Iteration 4: Best valset aggregate score so far: 0.5167568670917984
+Iteration 4: Best program as per aggregate score on valset: 3
+Iteration 4: Best score on valset: 0.5167568670917984
+Iteration 4: Linear pareto front program index: 3
+Iteration 4: New program candidate index: 3
+Iteration 5: Selected program 2 score: 0.509362436780627
+Iteration 5: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.75,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 20
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "analyze_market",
+      "output_key": "market_analysis",
+      "prompt": "Contract: {{question}}\nGame state: {{game}}\nCurrent book: {{quote}}\nMinute bars (last 45m): {{path}}\nRecent prints: {{tape}}\n\nAnalyze the market microstructure:\n\n1. Price trajectory over the last 10 minutes: Identify the mid price 5 minutes ago, 2 minutes ago, and now. Is there a trend?\n\n2. Recent jumps: Has there been a jump of 10+ cents in the last 3-7 minutes? If so, how long ago and in what direction?\n\n3. Absorption status: If there was a recent jump, has the price been stable for 3+ minutes since (fully absorbed), or is it still drifting in the same direction (partial absorption)?\n\n4. Book quality: What is the spread? What does the volume pattern suggest about liquidity?\n\n5. Noise vs signal: In a thin book (spread 1.5+ cents, low volume), small moves are often noise that mean-reverts.\n\nBe precise about timestamps and price levels.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "current_mid_cents": {
+            "type": "number"
+          },
+          "five_min_ago_cents": {
+            "type": "number"
+          },
+          "two_min_ago_cents": {
+            "type": "number"
+          },
+          "recent_jump": {
+            "type": "boolean",
+            "description": "Was there a 10+ cent jump in the last 3-7 minutes?"
+          },
+          "jump_minutes_ago": {
+            "type": "number",
+            "description": "If recent_jump is true, how many minutes ago (0 if no jump)"
+          },
+          "jump_size_cents": {
+            "type": "number"
+          },
+          "jump_direction": {
+            "type": "string",
+            "enum": ["up", "down", "none"]
+          },
+          "price_stable_since_jump": {
+            "type": "boolean",
+            "description": "If there was a jump, has price been flat for 3+ minutes?"
+          },
+          "spread_cents": {
+            "type": "number"
+          },
+          "book_quality": {
+            "type": "string",
+            "enum": ["liquid", "moderate", "thin"],
+            "description": "liquid if spread < 1.5c, thin if >= 2c"
+          },
+          "drift_pattern": {
+            "type": "string",
+            "description": "stable, upward_drift, downward_drift, noisy, or still_absorbing"
+          }
+        },
+        "required": [
+          "current_mid_cents",
+          "five_min_ago_cents",
+          "recent_jump",
+          "jump_minutes_ago",
+          "price_stable_since_jump",
+          "spread_cents",
+          "book_quality",
+          "drift_pattern"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "analyze_game_phase",
+      "output_key": "game_phase",
+      "prompt": "Game: {{game}}\nContract: {{question}}\n\nAnalyze what phase this game is in and what that means for price movement:\n\n1. Game minute and period: Extract the clock (e.g., \"35'\" in period 1 means 35 minutes elapsed)\n\n2. Score situation: Who is winning and by how much?\n\n3. Time remaining: Roughly how many minutes are left in regulation? (90 total, or 45 per half)\n\n4. Phase classification:\n   - Early (0-20'): Market still finding equilibrium, small drifts common\n   - Mid-first (20-45'): Stable, goals dominate\n   - Early-second (45-65'): Market recalibrating after halftime\n   - Mid-second (65-75'): Stable phase\n   - Late (75-85'): Time decay becomes significant (1-2 cents per 5 min for team with lead)\n   - Very late (85-90'+): Strong time decay (2-4 cents per 5 min for team with lead)\n\n5. Time decay relevance: Is the current score difference such that time passing helps one team? Only matters in Late and Very Late phases.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "clock_minute": {
+            "type": "number",
+            "description": "Elapsed game minutes"
+          },
+          "period": {
+            "type": "string"
+          },
+          "score_home": {
+            "type": "number"
+          },
+          "score_away": {
+            "type": "number"
+          },
+          "minutes_remaining": {
+            "type": "number",
+            "description": "Approximate minutes left in regulation"
+          },
+          "phase": {
+            "type": "string",
+            "enum": ["early", "mid_first", "early_second", "mid_second", "late", "very_late"]
+          },
+          "team_helped_by_time": {
+            "type": "string",
+            "description": "home, away, or neither - who benefits from clock running"
+          },
+          "time_decay_active": {
+            "type": "boolean",
+            "description": "True only if phase is late/very_late AND score is not level"
+          },
+          "time_decay_rate_cents_per_5min": {
+            "type": "number",
+            "description": "Expected cents per 5 minutes from time alone. 0 if not late game with lead, 1-2 if late, 2-4 if very_late"
+          }
+        },
+        "required": [
+          "clock_minute",
+          "score_home",
+          "score_away",
+          "minutes_remaining",
+          "phase",
+          "team_helped_by_time",
+          "time_decay_active",
+          "time_decay_rate_cents_per_5min"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "forecast",
+      "output_key": "prediction",
+      "prompt": "Market analysis: {{market_analysis}}\nGame phase: {{game_phase}}\nCurrent quote: {{quote}}\n\nForecast the mid price change over the next 5 minutes:\n\n**Decision tree:**\n\n1. **Recent jump still absorbing** (jump within last 3-5 min AND not stable since):\n   - Predict continuation: 30-50% of jump size in same direction\n   - Wider half-width (3-4 cents)\n\n2. **Thin book noise** (book_quality=thin AND no jump AND not late game):\n   - Likely mean reversion if there was drift\n   - If drifted up 1-2c recently, predict -0.5 to -1c\n   - If drifted down, predict +0.5 to +1c\n   - If stable, predict 0\n   - Wider half-width (2.5-3 cents)\n\n3. **Time decay dominant** (time_decay_active=true AND price stable):\n   - Predict the time_decay_rate_cents_per_5min in favor of team helped by time\n   - If contract is FOR the team helped by time: positive delta\n   - If contract is AGAINST the team helped by time: negative delta\n   - Moderate half-width (2-3 cents)\n\n4. **Early game settling** (phase=early AND no jump AND drift_pattern!=stable):\n   - Small moves are common as market finds level\n   - If upward drift, predict +0.5 to +1c\n   - If downward drift, predict -0.5 to -1c\n   - Moderate half-width (2.5 cents)\n\n5. **Stable mid-game** (none of above):\n   - Predict 0\n   - Tight half-width (1.5-2 cents) if liquid, wider (2.5) if not\n\n**Key calibration points:**\n- Goals cause 10-30 cent instant moves (not predictable here)\n- Time decay: ONLY matters 75+ minutes with a lead (1-4 cents per 5 min)\n- Early game (0-20'): markets drift 0.5-1 cent frequently\n- Thin books mean-revert after noise\n- Round-trip cost is 2-3 cents, so be confident\n\nReturn delta_cents (the CHANGE, can be negative, zero is valid) and half_width_cents.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "Predicted change in mid price over next 5 minutes. Negative for down, positive for up, 0 for no move."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of your two-sided quote. Minimum 1.5 for very confident liquid markets, typically 2-3, up to 4 for uncertain situations."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1 confidence level"
+          },
+          "primary_driver": {
+            "type": "string",
+            "description": "Which case from the decision tree applies: absorbing_jump, thin_book_noise, time_decay, early_game_settling, or stable_midgame"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "One sentence explaining the forecast"
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "primary_driver",
+          "reasoning"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 5: New subsample score 4.5 is not better than old score 4.5, skipping
+Iteration 6: Selected program 0 score: 0.5165749543322159
+Iteration 6: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.75,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 20
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "analyze_context",
+      "output_key": "context",
+      "prompt": "Contract: {{question}}\nGame state: {{game}}\nCurrent book: {{quote}}\nMinute bars (last 45m): {{path}}\nRecent trades: {{tape}}\n\nAnalyze the match and market context:\n\n1. RECENT EVENT TIMING: Look at recent_events in game state. How many minutes ago did the last goal, card, or substitution occur? Is it fresh (0-3 min) or absorbed (5+ min)?\n\n2. PRICE TRAJECTORY: Look at the last 5-10 candlestick bars. Is the mid still moving in one direction, or has it stabilized? Calculate the cents-per-minute drift rate.\n\n3. TAPE PRESSURE: Look at the last 10-15 trades. Are they predominantly one-sided (all yes or all no)? Is volume accelerating or dying down?\n\n4. TIME DECAY: Given the current score, clock, and period, estimate cents-per-minute time decay. A team protecting a 1-goal lead loses ~0.3-0.5 cents per minute in the final 20 minutes. A 0-0 draw drifts toward 50-50 as time passes.\n\n5. ABSORPTION CHECK: If there was a recent goal/card, compare the timestamp to current time. Markets take 2-5 minutes to fully absorb. If the event was <3 minutes ago and the price is still moving in candlesticks, the move is NOT complete.\n\nProvide a structured analysis.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "last_event_minutes_ago": {
+            "type": "number",
+            "description": "Minutes since the last meaningful event (goal, card), or 999 if none recent"
+          },
+          "price_trajectory": {
+            "type": "string",
+            "description": "rising, falling, stable, or absorbing (still moving after event)"
+          },
+          "trajectory_rate_cents_per_min": {
+            "type": "number",
+            "description": "Average cents per minute in last 3-5 bars, signed"
+          },
+          "tape_bias": {
+            "type": "string",
+            "description": "buying, selling, or balanced"
+          },
+          "time_decay_cents_per_min": {
+            "type": "number",
+            "description": "Expected drift from time alone given score and clock, signed"
+          },
+          "absorption_complete": {
+            "type": "boolean",
+            "description": "True if recent events are fully priced, false if still absorbing"
+          },
+          "summary": {
+            "type": "string",
+            "description": "One sentence describing what will drive the next 5 minutes"
+          }
+        },
+        "required": [
+          "last_event_minutes_ago",
+          "price_trajectory",
+          "trajectory_rate_cents_per_min",
+          "tape_bias",
+          "time_decay_cents_per_min",
+          "absorption_complete",
+          "summary"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Based on the analysis:\n{{context}}\n\nCurrent mid: {{quote.mid}}\n\nPredict the 5-minute price change. Combine:\n- Absorption momentum: If absorption_complete=false and trajectory shows movement, that continues for 1-3 more minutes\n- Time decay: time_decay_cents_per_min * 5 minutes\n- Tape pressure: If heavily one-sided and thin book, adds 0.5-1 cent bias\n- Mean reversion: If the book is thin and recently spiked on a single order, it may drift back 1-2 cents\n\nDO NOT predict 0 unless you truly believe the market is stable, absorbed, and has no time decay. Zero is the lazy answer that scores zero skill.\n\nFor half_width_cents: Quote tighter (1-2c) when you see a clear directional signal. Quote wider (3-4c) when uncertain. This is your bid-ask spread around your prediction.\n\nCalculate delta_cents as a NUMBER representing the expected CHANGE from the current mid.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, positive for up. This is a CHANGE, not a price level."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of the two-sided market you would stand behind. Tighter (1-2c) when confident, wider (3-4c) when uncertain."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1. How sure are you?"
+          },
+          "driver": {
+            "type": "string",
+            "description": "The primary force: ongoing absorption, time decay, tape pressure, or mean reversion"
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What event would prove this wrong before 5 minutes pass"
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 6: New subsample score 4.033653846153847 is not better than old score 4.05, skipping
+Iteration 7: Selected program 3 score: 0.5167568670917984
+Iteration 7: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.5,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 30
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "detect_unrecorded_event",
+      "output_key": "event_detection",
+      "prompt": "Contract: {{question}}\nGame state: {{game}}\nCurrent book: {{quote}}\nMinute bars (last 30m): {{path}}\nRecent prints: {{tape}}\n\nYour task: determine if there was a GOAL OR MAJOR EVENT in the last 1-3 minutes that is NOT YET in the game state.\n\nLook for:\n1. A large sudden move (15+ cents) in the last 1-3 minutes\n2. Heavy trading volume accompanying the move\n3. The move direction makes sense for a goal (e.g., if HOME team contract dropped 20c, AWAY likely scored)\n4. The current game state does NOT show this goal yet\n\nBe specific:\n- Extract the exact minute bars showing the jump\n- Calculate the size of the move\n- Check if timestamps show this is VERY recent (within 1-3 minutes of now)\n- Cross-check: does the direction match a plausible goal given the current score?\n\nIf you find strong evidence of an unrecorded goal, the price is STILL ABSORBING and will likely continue moving in the same direction for another 1-3 minutes.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "unrecorded_event_likely": {
+            "type": "boolean",
+            "description": "True if there is strong evidence of a goal/event in last 1-3 min not in game state"
+          },
+          "event_type": {
+            "type": "string",
+            "description": "likely_goal, likely_card, or none"
+          },
+          "direction": {
+            "type": "string",
+            "description": "up, down, or none - which way the price moved"
+          },
+          "move_size_cents": {
+            "type": "number",
+            "description": "Size of the recent move in cents"
+          },
+          "minutes_ago": {
+            "type": "number",
+            "description": "How many minutes ago did this move happen (1-3 is very fresh)"
+          },
+          "still_absorbing": {
+            "type": "boolean",
+            "description": "True if the move is so recent (1-2 min) that continuation is likely"
+          },
+          "current_mid_cents": {
+            "type": "number",
+            "description": "Current mid price in cents"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "Explain what you see in the data and why you conclude there is/isn't an unrecorded event"
+          }
+        },
+        "required": [
+          "unrecorded_event_likely",
+          "event_type",
+          "direction",
+          "move_size_cents",
+          "minutes_ago",
+          "still_absorbing",
+          "current_mid_cents",
+          "reasoning"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "assess_stability",
+      "output_key": "stability",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nQuote: {{quote}}\nPath: {{path}}\n\nEvent detection: {{event_detection}}\n\nNow assess the current market state:\n\n1. If there was NO unrecorded event, how stable is the price over the last 5-10 minutes?\n2. What is the spread and liquidity like?\n3. Is this a thin book (spread 2+ cents) where noise dominates?\n4. For time decay: what minute are we at, and is this late enough (70+ min) for meaningful decay?\n\nProvide concrete numbers from the candlestick data.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "price_stable_last_5min": {
+            "type": "boolean",
+            "description": "True if price varied less than 2 cents in last 5 minutes"
+          },
+          "spread_cents": {
+            "type": "number",
+            "description": "Current spread"
+          },
+          "thin_book": {
+            "type": "boolean",
+            "description": "True if spread >= 2 cents, indicating thin liquidity"
+          },
+          "game_minute": {
+            "type": "number",
+            "description": "Current game minute (approximate)"
+          },
+          "late_game": {
+            "type": "boolean",
+            "description": "True if minute >= 70, where time decay becomes significant"
+          },
+          "very_late_game": {
+            "type": "boolean",
+            "description": "True if minute >= 80, where time decay accelerates"
+          },
+          "typical_5min_drift_cents": {
+            "type": "number",
+            "description": "How much has price typically drifted over 5-min windows recently"
+          }
+        },
+        "required": [
+          "price_stable_last_5min",
+          "spread_cents",
+          "thin_book",
+          "game_minute",
+          "late_game",
+          "very_late_game",
+          "typical_5min_drift_cents"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "forecast",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nQuote: {{quote}}\n\nEvent detection: {{event_detection}}\nStability assessment: {{stability}}\n\nNow forecast the CHANGE in mid price over the next 5 minutes.\n\nDECISION TREE:\n\n**Case 1: Unrecorded event still absorbing** ({{event_detection.still_absorbing}} = true)\n- If minutes_ago <= 2 and move_size >= 15 cents: predict CONTINUATION of 40-60% of the original move\n- Direction: same as {{event_detection.direction}}\n- Confidence: high if volume confirms\n- Example: 25c drop 1 minute ago → predict -10 to -15c more\n\n**Case 2: Recent event but absorption complete** (unrecorded_event_likely = true but still_absorbing = false)\n- Event was 3-5 minutes ago, price has stabilized\n- Predict small continuation (1-2c) or zero\n- Thin book: predict 0 (consolidation phase)\n\n**Case 3: No recent event, late game time decay** (late_game = true, leading/trailing)\n- Minute 70-79: ~1-2 cents per 5 min toward eventual winner\n- Minute 80-89: ~2-4 cents per 5 min toward eventual winner\n- Minute 90+: ~3-6 cents per 5 min toward eventual winner\n- Leading team's contract drifts UP, trailing team's drifts DOWN\n- BUT: if score is tied, no time decay\n\n**Case 4: No recent event, early/mid game** (minute < 70)\n- Time decay is NEGLIGIBLE (0-1 cent per 5 min)\n- Predict 0 unless there's clear momentum in the tape\n- Thin books: definitely predict 0\n\n**Case 5: Thin book noise** (spread >= 2 cents)\n- Be very conservative: predict 0 or very small moves\n- Width should be large (3-5 cents)\n\nRULES:\n- Typical moves are 1-3 cents. Only predict 5+ cents if still absorbing a goal.\n- Zero is often correct.\n- Don't predict large time decay before minute 70.\n- Half-width should reflect uncertainty: 1-2c for liquid stable books, 3-5c for thin or volatile books, 5-8c when still absorbing.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of your two-sided quote. 1-2 for stable liquid books, 3-5 for thin/uncertain, 5-8 for absorbing events."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1, your confidence level"
+          },
+          "primary_driver": {
+            "type": "string",
+            "description": "Which case from the decision tree: unrecorded_event_absorbing, event_complete, late_game_decay, early_game_stable, or thin_book_noise"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "Explain your forecast in 2-3 sentences"
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "primary_driver",
+          "reasoning"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 7: New subsample score 4.3675406871609415 is not better than old score 4.48658830620856, skipping
+Iteration 8: Selected program 2 score: 0.509362436780627
+Iteration 8: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 8: New subsample score 5.0155172413793085 is not better than old score 5.0155172413793085, skipping
+Iteration 9: Selected program 2 score: 0.509362436780627
+Iteration 9: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,
+their win probability rises as the clock runs without an equalizer. Time is their
+ally. The price drifts up, not down. This is not "time decay toward no" — that
+applies to "will X happen" contracts, not "will team Y win" contracts when Y is
+already winning.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely.
+
+**Predicting zero movement earns zero skill, no matter how wide your market.** You
+are scored against a no-change baseline. If you predict delta_cents: 0 and the price
+doesn't move, you earn exactly 0 skill (not positive skill). If the price moves 3
+cents and you predicted 0, you score the same as predicting nothing. The only way to
+earn positive skill is to call directional moves that actually happen. If the game
+state suggests drift, predict the drift. Don't hide behind "zero with wide width."
+
+**When the game is live and balanced, either predict the direction or admit you
+don't know.** If you think the price will hold steady, predict zero with a 5-8 cent
+half-width to cover goal risk. If you see drift (time decay, mean reversion, order
+flow absorption), predict the direction even if it's just 1-2 cents. Small correct
+predictions earn skill; zero predictions never do.
+
+**Look for mean reversion after order flow spikes.** If the price jumped 3-5 cents
+in the last 1-2 minutes on no new information (no goal, no card), it's likely a
+single large order moving a thin book. Predict reversion back toward the pre-spike
+level over the next five minutes. This is one of the highest-conviction patterns.
+
+**Time decay for a winning team is real and predictable.** A team leading 1-0 at 70'
+gains roughly 1-3 cents per five minutes as the clock runs down. A team leading 1-0
+at 80' gains 2-4 cents per five minutes. These are not coin flips — predict the
+drift upward. This is free skill if you take it.
+
+**Goals that just happened but aren't fully priced are rare but critical.** If
+recent_events shows a goal at 68' and you're forecasting at 68', the price may still
+be moving. Check the candlesticks: if the last bar spiked 20 cents, the move is done.
+If it moved 10 cents and the tape is still active, another 5-10 cents may come. But
+if the goal was 3+ minutes ago, it's fully priced.
+
+**At 0-0 mid-match, predict small decay or zero with wide width.** Both team
+contracts are decaying slowly toward draw territory, but over five minutes the effect
+is 0-2 cents. If you don't see a clear directional catalyst, predict -1 cent with
+5-6 cent half-width. You'll catch slow drift when it happens and avoid big misses
+when a goal comes.
+
+**You must predict moves that actually happen to earn skill.** The scoring system
+rewards you only for reducing error relative to no-change. If the price moves 3 cents
+and you predicted 2 cents, you earn skill. If the price moves 3 cents and you
+predicted 0 cents, you earn zero skill. If the price moves 0 cents and you predicted
+2 cents, you lose skill. The lesson: when you see time decay, mean reversion, or
+absorption patterns, call them. Don't default to zero.
+Iteration 9: New subsample score 4.3731884057971016 is not better than old score 5.125, skipping
+Iteration 10: Selected program 0 score: 0.5165749543322159
+Iteration 10: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 10: New subsample score 4.45 is not better than old score 4.45, skipping
+Iteration 11: Selected program 2 score: 0.509362436780627
+Iteration 11: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.25,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 30
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "detect_absorption",
+      "output_key": "absorption",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nQuote: {{quote}}\nLast 15 min bars: {{path}}\nRecent trades: {{tape}}\n\nDetect if the market is STILL ABSORBING a recent goal or major event:\n\n1. Look at the minute bars - was there a jump of 10+ cents in the LAST 1-3 MINUTES?\n2. Check if game.recent_events shows a goal in the last 1-5 minutes.\n3. If yes to either: the market may still be moving in that direction (continuation) for another 2-5 minutes.\n4. If the jump was 5+ minutes ago, it's fully absorbed - no continuation expected.\n\nBe precise about timestamps. A goal at minute 17 when we're at minute 20 is 3 minutes old.\n\nKey insight: Goals cause 15-30 cent moves that take 2-4 minutes to fully absorb. If we're in that window, predict continuation. If not, predict zero.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "recent_goal_or_jump": {
+            "type": "boolean",
+            "description": "True if there was a goal in the last 5 minutes OR a 10+ cent price jump in the last 3 minutes"
+          },
+          "minutes_since_event": {
+            "type": "number",
+            "description": "How many minutes ago was the goal or jump? null if none."
+          },
+          "jump_direction": {
+            "type": "string",
+            "enum": ["up", "down", "none"],
+            "description": "Direction of the recent jump if any"
+          },
+          "magnitude_cents": {
+            "type": "number",
+            "description": "Size of the jump in cents, 0 if none"
+          },
+          "still_absorbing": {
+            "type": "boolean",
+            "description": "True if the event was less than 3 minutes ago and the market likely hasn't finished moving"
+          },
+          "current_mid_cents": {
+            "type": "number"
+          },
+          "three_minutes_ago_cents": {
+            "type": "number",
+            "description": "Mid price 3 minutes ago"
+          }
+        },
+        "required": ["recent_goal_or_jump", "minutes_since_event", "jump_direction", "magnitude_cents", "still_absorbing", "current_mid_cents", "three_minutes_ago_cents"]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nQuote: {{quote}}\nAbsorption analysis: {{absorption}}\n\nForecast the next 5 minutes using these rules:\n\n**DEFAULT TO ZERO**: Most 5-minute windows have no meaningful price movement. Only predict non-zero if one of these applies:\n\n1. **Still absorbing a recent goal** ({{absorption.still_absorbing}} = true): If a goal/major event happened less than 3 minutes ago and the price jumped {{absorption.magnitude_cents}} cents, it may continue another 20-40% of that move in the same direction. Predict continuation.\n\n2. **Thin book mean reversion**: If the spread is 2+ cents and the price just jumped 3+ cents in the last 1-2 minutes (but no goal in game state), it was likely a single order moving a thin book. Predict 50% retracement.\n\n3. **Very late game time decay** (85+ minutes): If one team leads and clock is 85'+, predict 0.5-1.0 cents per 5 minutes in favor of the leader. But ONLY at 85+, not at 60' or 70'.\n\nIf NONE of these apply, predict delta_cents = 0.\n\n**Calibration**:\n- Typical goal causes 20 cent jump over 3-4 minutes (5-7 cents per minute initially, slowing down)\n- At 2 minutes post-goal: predict 2-4 cents continuation\n- At 5+ minutes post-goal: predict 0 cents\n- Time decay before 80': essentially zero, maybe 0.2 cents per 5 min\n- Time decay 80-85': 0.5 cents per 5 min for leading team\n- Time decay 85'+: 1-1.5 cents per 5 min for leading team\n\n**Half-width**: \n- Use current spread as baseline (quote.spread * 100 cents)\n- Add 1-2 cents for your forecast uncertainty\n- Tighter (1.5-2 cents) when predicting zero on a stable liquid book\n- Wider (3-4 cents) when predicting non-zero or book is thin\n\nOutput delta_cents (the CHANGE in mid, negative for down), half_width_cents, confidence, driver, falsifier.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move (the most common answer). This is the CHANGE, not the price level."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of the tightest two-sided market you would stand behind, in cents. Typically current spread plus 1-2 cents for uncertainty."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1. How sure you are."
+          },
+          "driver": {
+            "type": "string",
+            "description": "The primary reason: 'still absorbing recent goal', 'thin book reversion', 'late-game time decay', or 'stable/no catalyst'."
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would prove this wrong within 5 minutes."
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 11: Accepted candidate (subsample score 3.4107142857142847 -> 4.107142857142858); running full eval.
+Iteration 11: Valset score for new program: 0.49683626658893915 (coverage 102 / 102)
+Iteration 11: Val aggregate for new program: 0.49683626658893915
+Iteration 11: Individual valset scores for new program: {0: 0.5, 1: 0.5, 2: 0.5, 3: 0.5, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.5, 8: 0.5, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.4913793103448276, 14: 0.0, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.875, 20: 0.5, 21: 0.4374999999999999, 22: 0.5, 23: 0.5, 24: 0.5, 25: 0.5, 26: 0.0, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5, 31: 0.5000000000000003, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.25, 36: 0.5, 37: 1.0, 38: 0.5, 39: 0.5750000000000002, 40: 0.0, 41: 0.5, 42: 0.5, 43: 0.5, 44: 0.5, 45: 0.5, 46: 0.4666666666666667, 47: 0.5, 48: 0.8333333333333331, 49: 0.5, 50: 0.0, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 0.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.8333333333333339, 60: 0.5, 61: 0.5, 62: 0.5, 63: 0.5086206896551724, 64: 0.5, 65: 0.6, 66: 0.5833333333333333, 67: 0.5, 68: 0.6071428571428572, 69: 0.5, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 0.8333333333333334, 76: 0.5, 77: 0.5, 78: 0.5, 79: 0.5, 80: 0.3749999999999998, 81: 0.46923076923076923, 82: 0.5063291139240507, 83: 0.75, 84: 0.75, 85: 0.5689655172413793, 86: 0.5, 87: 0.5, 88: 0.5, 89: 0.5, 90: 0.5, 91: 0.5, 92: 0.5, 93: 0.5, 94: 0.5, 95: 0.5, 96: 0.5, 97: 0.6250000000000002, 98: 0.4565217391304348, 99: 0.4482758620689655, 100: 0.5, 101: 0.33333333333333315}
+Iteration 11: Objective aggregate scores for new program: {'skill': 0.49683626658893915, 'cost': 0.6249923529411765}
+Iteration 11: New valset pareto front scores: {0: 0.5714285714285715, 1: 0.5, 2: 0.75, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5172413793103449, 14: 0.25, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.875, 20: 1.0, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5625, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.6250000000000002, 37: 1.0, 38: 0.5, 39: 0.7500000000000003, 40: 0.5, 41: 0.5, 42: 1.0, 43: 0.5, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.5, 48: 0.8333333333333331, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.8333333333333339, 60: 0.75, 61: 0.75, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.5, 68: 0.6071428571428572, 69: 0.7500000000000004, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.9166666666666667, 84: 0.9166666666666667, 85: 0.5689655172413793, 86: 0.6111111111111113, 87: 1.0, 88: 0.875, 89: 0.5, 90: 1.0, 91: 0.9999999999999982, 92: 0.9, 93: 0.875, 94: 0.5, 95: 0.5, 96: 1.0, 97: 0.6875000000000002, 98: 0.5, 99: 0.5344827586206897, 100: 0.9999999999999993, 101: 0.8333333333333334}
+Iteration 11: Objective pareto front scores: {'skill': 0.5167568670917984, 'cost': 1.0}
+Iteration 11: Valset pareto front aggregate score: 0.6506835865196264
+Iteration 11: Updated valset pareto front programs: {0: {1}, 1: {0, 1, 2, 3, 4}, 2: {2}, 3: {0, 1, 3}, 4: {0, 1, 2, 3, 4}, 5: {0, 1, 3, 4}, 6: {0, 1, 2, 3, 4}, 7: {0, 3}, 8: {1}, 9: {0, 1, 2, 3, 4}, 10: {0, 1, 2, 3, 4}, 11: {0, 1, 2, 3, 4}, 12: {0, 4}, 13: {1, 2}, 14: {0}, 15: {0, 1, 2, 3, 4}, 16: {0, 1, 2, 3, 4}, 17: {1, 3}, 18: {0, 1, 2, 3, 4}, 19: {4}, 20: {2}, 21: {0, 1, 2, 3}, 22: {1}, 23: {1}, 24: {0, 1, 2, 3, 4}, 25: {1, 2}, 26: {0, 2}, 27: {0, 1, 2, 3, 4}, 28: {0, 1, 2, 3, 4}, 29: {0, 1, 2, 3, 4}, 30: {3}, 31: {2}, 32: {0, 1, 2, 3, 4}, 33: {0, 1, 2, 3, 4}, 34: {0, 1, 2, 3, 4}, 35: {0, 2, 3}, 36: {1}, 37: {4}, 38: {0, 1, 2, 3, 4}, 39: {2}, 40: {2}, 41: {0, 1, 2, 3, 4}, 42: {1, 2}, 43: {4}, 44: {0, 1, 2, 3, 4}, 45: {0, 1, 2, 3, 4}, 46: {2}, 47: {4}, 48: {1, 2, 3, 4}, 49: {0, 3}, 50: {0, 2}, 51: {0, 1, 2, 3, 4}, 52: {0, 1, 2, 3, 4}, 53: {0, 1, 2, 3, 4}, 54: {0, 1, 2, 3, 4}, 55: {1, 2}, 56: {0, 1, 2, 3, 4}, 57: {0, 3, 4}, 58: {0, 1, 2, 3, 4}, 59: {4}, 60: {3}, 61: {3}, 62: {1}, 63: {1, 2}, 64: {0}, 65: {1, 2}, 66: {1, 2, 3}, 67: {0, 4}, 68: {4}, 69: {1}, 70: {0, 2, 3, 4}, 71: {0, 2, 3, 4}, 72: {0, 1, 2, 3, 4}, 73: {0, 1, 2, 3, 4}, 74: {0, 3, 4}, 75: {1}, 76: {2}, 77: {0, 1, 2, 3, 4}, 78: {0, 1, 2, 3, 4}, 79: {0}, 80: {1}, 81: {0}, 82: {1, 2}, 83: {3}, 84: {3}, 85: {4}, 86: {1}, 87: {3}, 88: {3}, 89: {0, 1, 2, 3, 4}, 90: {2}, 91: {2}, 92: {1}, 93: {2, 3}, 94: {0, 1, 2, 3, 4}, 95: {0, 1, 2, 3, 4}, 96: {2}, 97: {2, 3}, 98: {2}, 99: {0}, 100: {0, 2}, 101: {2, 3}}
+Iteration 11: Updated objective pareto front programs: {'skill': {3}, 'cost': {0, 1}}
+Iteration 11: Best valset aggregate score so far: 0.5167568670917984
+Iteration 11: Best program as per aggregate score on valset: 3
+Iteration 11: Best score on valset: 0.5167568670917984
+Iteration 11: Linear pareto front program index: 3
+Iteration 11: New program candidate index: 4
+Iteration 12: Selected program 2 score: 0.509362436780627
+Iteration 12: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 12: New subsample score 2.5 is not better than old score 2.5, skipping
+Iteration 13: Selected program 2 score: 0.509362436780627
+Iteration 13: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays or inflates probabilities depending on who benefits
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning drifts UPWARD as time passes, not downward.** If a team leads 1-0
+at 65 minutes, their win probability rises as the clock runs without an equalizer.
+Time is their ally. The price drifts up, not down. Each minute that passes without
+the trailing team scoring makes the leader's victory more certain.
+
+This is NOT "time decay toward no" — that only applies to "will X happen" contracts
+(e.g., "will there be a goal"), not "will team Y win" contracts when Y is already
+winning.
+
+**A team LOSING sees their win price drift DOWNWARD as time passes.** If you're
+forecasting a contract on the trailing team, time passage without an equalizer
+makes their situation worse. Their win probability decays as the clock runs down.
+
+**Scoreless draws decay both team-win contracts toward lower values.** At 0-0, both
+team-win contracts decay as time passes without a goal, because a draw becomes more
+likely. The market drifts toward pricing in a 0-0 result.
+
+**After a goal equalizes a match, expect UPWARD drift, not downward.** When a
+trailing team scores to level the match (e.g., 0-1 becomes 1-1), momentum often
+favors them. The market may continue to adjust upward for several minutes as it
+reprices their improved position and potential momentum. Don't assume the spike
+"settles back down" — check the tape to see if the drift is continuing upward.
+
+**When you predict zero movement, widen your market significantly.** If the game is
+quiet and you expect no change, you still face uncertainty about whether something
+will happen. A 1-2 cent half-width on a zero-delta forecast is overconfident. Use
+3-4 cents minimum for live matches where goals are possible. Only use tight markets
+(1-2 cents) when the match is effectively decided or the clock is stopped.
+
+**Large sudden moves are possible and you must account for them in your width.**
+Goals happen. A 0-0 game can become 1-0 in the next minute, moving the price 10-30
+cents instantly. If the game is live and the score is close, your half-width must
+reflect this risk. A 3-cent market when a goal would move the price 20 cents is
+indefensible. Either:
+  - Predict a directional move if you see a reason (time decay, momentum)
+  - Or quote a wide market (4-6 cents) to cover the two-sided goal risk
+
+**The current mid is not your baseline. Zero delta is not a safe default.** 
+Predicting delta_cents: 0 because the mid is currently stable earns exactly zero
+skill. You are rewarded only for correctly anticipating moves that actually happen.
+If the game state (score, time, recent events) suggests the price should drift 1-2
+cents over five minutes, predict that drift. Time passage alone often justifies a
+1-2 cent directional forecast when one team is winning.
+
+**Time decay accelerates as the match approaches 90 minutes.** At 60', five minutes
+of time passage has moderate impact. At 75', five minutes is significant — it takes
+you to 80' with only 10+ minutes remaining. At 85', five minutes essentially decides
+the match. Scale your directional forecasts accordingly: a team winning at 75' will
+see faster upward drift than the same team winning at 60'.
+
+## Reasoning checklist
+
+Before making your forecast:
+
+1. **Is there a recent event?** Check if goals/cards in recent_events are already
+   priced by looking at candlesticks. A goal 4 minutes ago is almost certainly
+   absorbed unless the tape shows ongoing movement.
+
+2. **Who benefits from time passage?** 
+   - Team winning → their win price drifts UP
+   - Team losing → their win price drifts DOWN
+   - 0-0 draw → both team-win prices drift DOWN
+   
+3. **How much time is five minutes?** At 60', it's 5 of 30 remaining. At 75', it's
+   5 of 15 remaining. At 85', it's most of the remaining match. Adjust drift size.
+
+4. **Is the book showing momentum?** Check recent trades and candlestick direction.
+   If the price has been drifting steadily in one direction for 5+ minutes, assume
+   it continues unless there's a clear reason it would reverse.
+
+5. **What's the two-sided risk?** If the match is live, a goal could happen. If
+   you're predicting zero or a small drift, make sure your half-width covers the
+   chance of a sudden 15-25 cent spike from a goal.
+Iteration 13: New subsample score 3.6500000000000004 is not better than old score 4.025, skipping
+Iteration 14: Selected program 3 score: 0.5167568670917984
+Iteration 14: Proposed new text for tools: market_quote
+Iteration 14: New subsample score 0.0 is not better than old score 3.8333333333333335, skipping
+Iteration 15: Selected program 3 score: 0.5167568670917984
+Iteration 15: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns
+
+**Check recent_events timestamps against the clock.** Events are listed with minute
+markers (e.g., "4' goal"). If the clock shows "10'" and a goal is listed at "4'",
+that goal happened 6 game-minutes ago. Always calculate the time elapsed since any
+event before deciding if it's already priced.
+
+**Absorption is fast: 2-3 minutes, not longer.** A goal causes an immediate 10-30
+cent move, then the price stabilizes within 2-3 minutes. Check candlesticks: if the
+price has been flat for 3+ minutes after an event, absorption is complete. Do not
+predict continued "drift from absorption" 6+ minutes after a goal. The market has
+already moved.
+
+**Example:** Goal at 4', forecasting at 10' (6 minutes later). Check candlesticks.
+If they show the price spiked at ~15:04-15:06 and has been stable since 15:07, the
+goal is fully priced by 10'. Your forecast should focus on what happens next, not
+on residual absorption.
+
+**Time decay for a WINNING team goes UP.** If Newcastle leads 1-0, their win
+probability RISES as time passes without an equalizer. Each minute makes it harder
+for the opponent to score. The price drifts UP. This is NOT "decay toward no" — a
+team defending a lead becomes MORE likely to win as time expires.
+
+**Time decay for a LOSING team goes DOWN.** If Liverpool trails 0-1, their win
+probability FALLS as time passes. Fewer minutes remain to equalize and then win.
+The price drifts DOWN.
+
+**Time decay magnitude:**
+- First half (0-45'): Slow. ~0.5-1.0 cent per 5 minutes for winning team up,
+  or losing team down.
+- Early second half (45-70'): Moderate. ~1.0-2.0 cents per 5 minutes.
+- Late second half (70-90'): Fast. ~2-4 cents per 5 minutes, accelerating as
+  time runs out.
+
+**Level scorelines have weak time decay.** At 1-1 or 0-0, both team-win contracts
+drift slightly down (draw becomes more likely), but this is a weak effect, especially
+before 60'. Do not overpredict movement on level scores early in the match.
+
+**After absorption, time decay dominates.** Once the price stabilizes post-goal,
+time decay takes over. If a team is winning, their price drifts up. If losing, down.
+The direction is determined by the score, not by whether the market "overreacted."
+
+**Wrong-direction forecasts are costly.** If you predict +1c and the market moves
+-1c, you score worse than predicting 0c. Getting the sign wrong is very bad. When
+uncertain about direction, predict zero and widen your quote to 5-8 cents.
+
+**Zero is not a cop-out, but it needs a wide market.** If you predict no movement,
+you still face event risk (goals happen). Use half_width 5-8 cents for live games
+in the second half, 3-5 cents in the first half. A 2-3 cent market on zero delta
+when the game is live is overconfident — a goal would move the price 15-25 cents
+and you'd be caught.
+
+**Predicting zero when time decay applies wastes edge.** If a team leads 1-0 at 70'
+and you know their price should drift up 2 cents over 5 minutes, predict +2, don't
+predict zero. You are rewarded ONLY for calling moves that actually happen. Zero
+scores exactly zero skill. Correct directional calls score positive skill.
+
+**Read the score and clock before every forecast:**
+1. Who is winning? Winning team's price drifts UP. Losing team's price drifts DOWN.
+2. Is it level? Weak downward drift for both team-win contracts (draw more likely).
+3. How much time remains? More time = slower decay. Less time = faster, especially
+   after 70'.
+4. Has a recent goal been absorbed? Check candlesticks. If stable 3+ min, it's priced.
+
+**Typical time decay forecast examples:**
+- Newcastle leads 1-0 at 10': Newcastle price up +0.5 to +1c per 5 min.
+- Liverpool trails 0-1 at 65': Liverpool price down -1.5 to -2.5c per 5 min.
+- Liverpool trails 0-1 at 80': Liverpool price down -3 to -4c per 5 min (accelerating).
+- 1-1 at 45': Both team prices down -0.5c per 5 min (weak effect, wide market).
+
+**Don't confuse mean reversion with time decay direction.** After a goal, if the
+price spikes down hard, there may be a small bounce-back as the market corrects
+overshoot. But once that's done (2-3 minutes), time decay reasserts itself in the
+direction determined by the score. A trailing team's price doesn't "recover" over
+time — it decays further down.
+
+**Check the tape for recent large trades.** If previous_trades shows sudden large
+volume at a different price level in the last 1-2 minutes, the mid may have just
+moved and could revert if the book was thin. But don't assume reversion without
+evidence. If volume is steady and the mid hasn't moved recently, the book is probably
+in equilibrium.
+
+**When in doubt about direction, predict zero with wide markets.** But when the
+score and clock clearly indicate time decay direction, trust it. The pattern is
+reliable: winning teams drift up, losing teams drift down, faster as time expires.
+
+**Use the candlesticks to confirm your narrative.** If you think a goal is still
+being absorbed, the candlesticks should show the price actively moving in the last
+2-3 bars. If they show it flat, absorption is done. If you think time decay should
+be pushing the price down, check if the last few bars show a consistent downward
+drift. The data will confirm or refute your story.
+Iteration 15: New subsample score 4.038690476190476 is not better than old score 5.241071428571431, skipping
+Iteration 16: Selected program 2 score: 0.509362436780627
+Iteration 16: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.5,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 30
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "measure_stability",
+      "output_key": "stability",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nCurrent book: {{quote}}\nLast 30 minutes of bars: {{path}}\nRecent tape: {{tape}}\n\nMeasure price stability:\n\n1. What was the mid price 5 minutes ago? 10 minutes ago?\n2. What is the maximum absolute change in mid over any 1-minute period in the last 10 minutes?\n3. Has the mid stayed within a 2-cent range for the last 5+ minutes?\n4. Look at the timestamps carefully - when was the last significant move (5+ cents)?\n\nBe precise with numbers and timestamps.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "current_mid_cents": {
+            "type": "number",
+            "description": "Current mid in cents"
+          },
+          "mid_5min_ago_cents": {
+            "type": "number",
+            "description": "Mid approximately 5 minutes ago"
+          },
+          "mid_10min_ago_cents": {
+            "type": "number",
+            "description": "Mid approximately 10 minutes ago"
+          },
+          "max_1min_move_last_10min": {
+            "type": "number",
+            "description": "Largest absolute 1-minute move in last 10 minutes, in cents"
+          },
+          "stable_last_5min": {
+            "type": "boolean",
+            "description": "True if mid stayed within 2 cents for last 5+ minutes"
+          },
+          "minutes_since_large_move": {
+            "type": "number",
+            "description": "Minutes since last 5+ cent move, or 999 if more than 30 min ago"
+          },
+          "spread_cents": {
+            "type": "number",
+            "description": "Current spread"
+          },
+          "assessment": {
+            "type": "string",
+            "description": "absorbed_and_stable, still_absorbing, or volatile"
+          }
+        },
+        "required": [
+          "current_mid_cents",
+          "mid_5min_ago_cents",
+          "max_1min_move_last_10min",
+          "stable_last_5min",
+          "minutes_since_large_move",
+          "spread_cents",
+          "assessment"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "check_late_game",
+      "output_key": "late_game",
+      "prompt": "Game state: {{game}}\nCurrent mid: {{stability.current_mid_cents}} cents\n\nIs this late-game time decay territory?\n\nMatch clock: {{game.clock}}\nScore: {{game.home_score}}-{{game.away_score}}\n\nLate game is 75+ minutes. Time decay matters when:\n- One team leads AND clock is 75'+\n- The leading team's win probability increases as time passes\n\nBe conservative: time decay is SMALL even late. A typical move from 75' to 80' is only 1-3 cents.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "clock_minutes": {
+            "type": "number",
+            "description": "Match clock in minutes"
+          },
+          "is_late_game": {
+            "type": "boolean",
+            "description": "True if 75+ minutes"
+          },
+          "leader": {
+            "type": "string",
+            "description": "home, away, or none"
+          },
+          "time_decay_direction": {
+            "type": "string",
+            "description": "up, down, or none - which way time decay pushes the price"
+          },
+          "time_decay_5min_cents": {
+            "type": "number",
+            "description": "Expected drift from time decay over 5 minutes, in cents. Usually 0-2 cents even at 75+."
+          }
+        },
+        "required": [
+          "clock_minutes",
+          "is_late_game",
+          "leader",
+          "time_decay_direction",
+          "time_decay_5min_cents"
+        ]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "forecast",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nQuote: {{quote}}\n\nStability analysis: {{stability}}\nLate game analysis: {{late_game}}\n\nForecast the next 5 minutes using this decision tree:\n\n**Rule 1: If stable_last_5min is TRUE ({{stability.stable_last_5min}}) and NOT late game ({{late_game.is_late_game}}):**\n- Predict delta_cents = 0\n- The price has absorbed all news. Absent a goal/card, it won't move.\n\n**Rule 2: If minutes_since_large_move < 3 (currently {{stability.minutes_since_large_move}}):**\n- Price may still be absorbing\n- Predict small continuation: 0.5-1.5 cents in the direction of recent move\n- But if it's been stable for 2+ minutes, predict 0 instead\n\n**Rule 3: If late game (75+) with a leader:**\n- Add the time_decay_5min_cents ({{late_game.time_decay_5min_cents}}) to base prediction\n- This is the ONLY case where game state matters more than price action\n\n**Rule 4: Wide spread (2+ cents):**\n- Thin book, noise dominates\n- Be more conservative, widen half_width\n\n**Key insight from feedback:**\nMost 5-minute periods see 0-1 cent moves. The harness earns skill by:\n1. Predicting 0 when stable (most common)\n2. Catching late-game drift (75+ minutes)\n3. Avoiding false signals from early/mid game time decay\n\nTypical moves: 0-1c normal, 1-3c late game, 10-30c on goals.\nRound-trip fees are 2-3 cents, so only predict moves you'd trade on.\n\nWhat is your delta_cents forecast?",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next 5 minutes. Negative for down, 0 is often correct."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half-width of your quote. Minimum 1.5 for liquid stable markets, 2-3 for thin or uncertain, 3-4 if very uncertain."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1, your confidence level"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "Which rule(s) drove your prediction and why"
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "reasoning"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 16: New subsample score 0.0 is not better than old score 4.5249999999999995, skipping
+Iteration 17: Selected program 0 score: 0.5165749543322159
+Iteration 17: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+**ZERO IS RARELY THE RIGHT ANSWER.** The game state creates directional pressure even
+when nothing new happens. A scoreless match at 30' has more time for goals than at
+75'. A team protecting a lead sees their win probability rise each minute without
+conceding. The restart after halftime often shifts momentum. These are not "nothing
+happening" — they are the game state evolving, and you must call the direction.
+
+The typical move is 1-3 cents. Predict zero only when the book is genuinely stuck:
+stable score, middle of a period, no recent events, candlesticks flat. Otherwise,
+time is moving and so is the price.
+
+**How many cents it moves.** Not where the price is — where it goes. This is a delta
+from the current mid. Negative means down, positive means up. The move that actually
+happens in the next five minutes.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. A 1-cent half-width is very
+confident; 4+ cents admits uncertainty. Quote what you would trade, not what you
+cannot lose on.
+
+Domain facts:
+- "Will X win" contracts decay toward no as time passes without X scoring or extending
+  their lead. A 0-0 draw at 20' has more time for goals than at 70'.
+- The team protecting a lead gains probability each minute the score holds.
+- Halftime restart often creates 2-4 cent moves as the market reprices momentum.
+- Late substitutions (65'+) signal tactical shift: attacking subs increase goal
+  probability for that team, defensive subs reduce it.
+- Yellow cards rarely move the price unless it's a second yellow (red).
+- A thin book (wide spread, low recent volume) will drift after any single trade;
+  predict mean reversion if candlesticks show the mid was pushed off its level.
+Iteration 17: New subsample score 4.333333333333332 is not better than old score 5.083333333333332, skipping
+Iteration 18: Selected program 1 score: 0.49137576332499683
+Iteration 18: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 18: New subsample score 4.791666666666668 is not better than old score 4.791666666666668, skipping
+Iteration 19: Selected program 4 score: 0.49683626658893915
+Iteration 19: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 19: New subsample score 3.992506631299735 is not better than old score 3.992506631299735, skipping
+Iteration 20: Selected program 1 score: 0.49137576332499683
+Iteration 20: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning gets MORE LIKELY as time passes, not less.** This is the most
+common error. If a team leads 1-0 at 65 minutes, their win probability rises as the
+clock runs without an equalizer. Time is their ally. The price drifts UP, not down.
+Every minute without an equalizer makes their win more certain. This is not "time
+decay toward no" — that applies to "will X happen" contracts, not "will team Y win"
+contracts when Y is already winning.
+
+Conversely, a losing team's win probability decays downward as time passes. If
+Liverpool trails 0-1 at 50 minutes, their win probability falls as the clock
+advances without an equalizer. Fewer minutes remain to mount a comeback.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely.
+
+**Live games have option value that must be priced into your width.** At 70 minutes
+with a one-goal lead, the game is still live. A goal in the next 5 minutes would
+move the price 15-25 cents instantly. If you predict delta_cents of +1 (slow drift
+in the leading team's favor), you cannot quote half_width_cents of 3 — that says
+you're confident nothing dramatic happens. Either widen your market to 6-10 cents to
+cover goal risk, or don't forecast at all. The examples show goals happening during
+the forecast window repeatedly; narrow markets got run over.
+
+**When you predict zero or small movement, widen your market significantly.** If the
+game is quiet and you expect no change or a 1-cent drift, you still face uncertainty
+about whether something will happen. A 1-2 cent half-width on a zero-delta forecast
+is overconfident. Use 4-6 cents minimum unless the clock is stopped or the game is
+completely dead (80+ minutes with a multi-goal lead).
+
+**Check whether recent price action already reflects the current game state.** Look
+at the candlesticks for the last 5-10 minutes. If the price has been stable at the
+current level, the market has absorbed all known information. If it moved sharply
+1-2 minutes ago and stabilized, that move already priced in whatever happened. Don't
+predict the same move again. Your delta is where it goes NEXT, not where it already
+went.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price
+should drift up 1-2 cents over five minutes, say so.
+
+**Time decay for the winning team is real but slow in open games.** A one-goal lead
+at 50 minutes gives 40 minutes to hold. Time decay might be +0.5 to +1.5 cents over
+5 minutes. At 70 minutes with 20 remaining, it's faster: +1 to +2 cents per 5
+minutes. At 85 minutes it accelerates further. But always upward for the winner,
+downward for the loser.
+
+**Multiple substitutions or yellow cards are noise unless they change the run of
+play.** Don't overweight substitutions at 66-70 minutes; they're routine. Focus on
+score, clock, and whether the tape shows momentum (large volume, one-sided flow).
+
+**If candlesticks show the price fell sharply in the last 1-2 minutes, investigate
+why.** It might be a goal you're about to forecast (check timing). It might be the
+market front-running a goal based on game flow you can't see. Or it might be a thin
+book drifting on a single order. If volume spiked and price moved, assume an event
+happened. If volume was light, it might drift back.
+
+**You cannot see the game; you only see score, clock, and price action.** Do not
+invent narratives about momentum or pressure unless the tape shows it (volume,
+one-sided trades, rapid price moves). The market sees the game live. If the price
+isn't moving, the game isn't creating chances. If it is moving, something is
+happening.
+Iteration 20: New subsample score 2.6474200399800094 is not better than old score 2.770502248875562, skipping
+Iteration 21: Selected program 2 score: 0.509362436780627
+Iteration 21: Proposed new text for tools: market_quote, candlesticks, previous_trades
+Iteration 21: New subsample score 4.916666666666667 is not better than old score 4.916666666666667, skipping
+Iteration 22: Selected program 1 score: 0.49137576332499683
+Iteration 22: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 1.0,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 20
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "analyze",
+      "output_key": "analysis",
+      "prompt": "Contract: {{question}}\nGame state: {{game}}\nCurrent book: {{quote}}\nMinute bars (last 60min): {{path}}\nRecent prints: {{tape}}\n\nAnalyze the market state:\n\n1. RECENT EVENT ABSORPTION: Look at recent_events. If a goal/card happened in the last 1-3 minutes, compare current mid to the candlestick history. Has the price already spiked and stabilized? Or is it still moving?\n\n2. TIME DECAY DIRECTION: \n   - If a team is WINNING: their win probability INCREASES as time passes without the other team scoring. Their price should drift UP.\n   - If a team is LOSING: their win probability DECREASES as time passes. Their price should drift DOWN.\n   - If DRAWING: both win probabilities decrease; the draw becomes more likely.\n   \n3. MAGNITUDE: Goals that just happened (0-2 min ago) can cause 10-20 cent moves as they're absorbed. Time decay in stable situations is typically 0-2 cents per 5 minutes.\n\n4. BOOK QUALITY: Wide spread or thin tape means less confidence.\n\nProvide structured analysis of these factors.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "event_status": {
+            "type": "string",
+            "description": "absorbed|absorbing|stable - whether recent events are already priced in"
+          },
+          "time_decay_direction": {
+            "type": "string",
+            "description": "up|down|neutral - which way time passing should move this contract"
+          },
+          "expected_magnitude": {
+            "type": "string",
+            "description": "large|medium|small - expected size of move based on situation"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "Why you assess it this way"
+          }
+        },
+        "required": ["event_status", "time_decay_direction", "expected_magnitude", "reasoning"]
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Based on your analysis: {{analysis}}\n\nGiven:\n- Current mid: {{quote.mid}}\n- Game: {{game}}\n- Event status: {{analysis.event_status}}\n- Time decay direction: {{analysis.time_decay_direction}}\n- Expected magnitude: {{analysis.expected_magnitude}}\n\nPredict the move over the next 5 minutes:\n\n- If event_status is 'absorbed' and situation is stable: predict small moves (0-2 cents) in the time_decay_direction\n- If event_status is 'absorbing': predict continued medium moves (3-8 cents) in the direction the price has been trending\n- If expected_magnitude is 'large': be bold with 8-15 cent predictions when warranted\n- If the book is wide (spread > 2 cents) or thin: increase half_width_cents to reflect uncertainty\n\nIMPORTANT: \n- Zero cents is valid for truly stable situations\n- Time decay for a WINNING team means price goes UP\n- Time decay for a LOSING team means price goes DOWN\n- Recent goals (< 3 min) often cause continued drift as the book adjusts\n- Early in matches (< 15'), volatility is higher",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. This is the CHANGE, not a price level."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of the tightest two-sided market you would stand behind. Wider when uncertain or thin book."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1. How sure you are given book quality and situation clarity."
+          },
+          "driver": {
+            "type": "string",
+            "description": "The one thing you expect to move it, or why nothing will."
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would show this call was wrong before settlement."
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 22: Accepted candidate (subsample score 3.466133004926108 -> 4.182266009852217); running full eval.
+Iteration 22: Found a better program on the valset with score 0.5363531308548142.
+Iteration 22: Valset score for new program: 0.5363531308548142 (coverage 102 / 102)
+Iteration 22: Val aggregate for new program: 0.5363531308548142
+Iteration 22: Individual valset scores for new program: {0: 0.7142857142857141, 1: 0.5, 2: 0.25, 3: 1.0, 4: 0.4375, 5: 0.5, 6: 0.5, 7: 0.33333333333333337, 8: 0.5, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.0, 13: 0.5258620689655172, 14: 0.0, 15: 0.5, 16: 0.5, 17: 1.0, 18: 0.5, 19: 0.125, 20: 0.75, 21: 0.5, 22: 1.0, 23: 0.75, 24: 0.5, 25: 0.9999999999999987, 26: 0.0, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5625, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.75, 35: 0.0, 36: 0.5, 37: 0.7500000000000013, 38: 0.5, 39: 0.8749999999999998, 40: 0.0, 41: 0.5, 42: 1.0, 43: 0.0, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.16666666666666663, 48: 1.0, 49: 0.7999999999999999, 50: 0.0, 51: 0.5, 52: 0.5, 53: 0.0, 54: 0.5, 55: 0.75, 56: 0.33333333333333337, 57: 0.35, 58: 0.5, 59: 0.7500000000000004, 60: 0.75, 61: 0.5, 62: 0.0, 63: 0.5258620689655173, 64: 0.0, 65: 0.8, 66: 0.75, 67: 0.75, 68: 0.5357142857142858, 69: 0.9999999999999991, 70: 0.0, 71: 0.0, 72: 0.5, 73: 0.5, 74: 0.5, 75: 0.8333333333333334, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.124999999999999, 80: 0.6875000000000002, 81: 0.48461538461538456, 82: 0.4810126582278481, 83: 0.75, 84: 0.75, 85: 0.39655172413793094, 86: 0.8333333333333337, 87: 0.75, 88: 0.875, 89: 0.5, 90: 0.75, 91: 0.9999999999999982, 92: 0.9, 93: 0.875, 94: 0.5, 95: 0.5, 96: 0.0, 97: 0.6875000000000002, 98: 0.46739130434782605, 99: 0.5517241379310345, 100: 0.875, 101: 0.75}
+Iteration 22: Objective aggregate scores for new program: {'skill': 0.5363531308548142, 'cost': 0.4922317647058823}
+Iteration 22: New valset pareto front scores: {0: 0.7142857142857141, 1: 0.5, 2: 0.75, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5258620689655172, 14: 0.25, 15: 0.5, 16: 0.5, 17: 1.0, 18: 0.5, 19: 0.875, 20: 1.0, 21: 0.5, 22: 1.0, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5625, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.75, 35: 0.5, 36: 0.6250000000000002, 37: 1.0, 38: 0.5, 39: 0.8749999999999998, 40: 0.5, 41: 0.5, 42: 1.0, 43: 0.5, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.5, 48: 1.0, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.8333333333333339, 60: 0.75, 61: 0.75, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.75, 68: 0.6071428571428572, 69: 0.9999999999999991, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.9166666666666667, 84: 0.9166666666666667, 85: 0.5689655172413793, 86: 0.8333333333333337, 87: 1.0, 88: 0.875, 89: 0.5, 90: 1.0, 91: 0.9999999999999982, 92: 0.9, 93: 0.875, 94: 0.5, 95: 0.5, 96: 1.0, 97: 0.6875000000000002, 98: 0.5, 99: 0.5517241379310345, 100: 0.9999999999999993, 101: 0.8333333333333334}
+Iteration 22: Objective pareto front scores: {'skill': 0.5363531308548142, 'cost': 1.0}
+Iteration 22: Valset pareto front aggregate score: 0.6720817051540533
+Iteration 22: Updated valset pareto front programs: {0: {5}, 1: {0, 1, 2, 3, 4, 5}, 2: {2}, 3: {0, 1, 3, 5}, 4: {0, 1, 2, 3, 4}, 5: {0, 1, 3, 4, 5}, 6: {0, 1, 2, 3, 4, 5}, 7: {0, 3}, 8: {1}, 9: {0, 1, 2, 3, 4, 5}, 10: {0, 1, 2, 3, 4, 5}, 11: {0, 1, 2, 3, 4, 5}, 12: {0, 4}, 13: {5}, 14: {0}, 15: {0, 1, 2, 3, 4, 5}, 16: {0, 1, 2, 3, 4, 5}, 17: {5}, 18: {0, 1, 2, 3, 4, 5}, 19: {4}, 20: {2}, 21: {0, 1, 2, 3, 5}, 22: {5}, 23: {1}, 24: {0, 1, 2, 3, 4, 5}, 25: {1, 2, 5}, 26: {0, 2}, 27: {0, 1, 2, 3, 4, 5}, 28: {0, 1, 2, 3, 4, 5}, 29: {0, 1, 2, 3, 4, 5}, 30: {3, 5}, 31: {2, 5}, 32: {0, 1, 2, 3, 4, 5}, 33: {0, 1, 2, 3, 4, 5}, 34: {5}, 35: {0, 2, 3}, 36: {1}, 37: {4}, 38: {0, 1, 2, 3, 4, 5}, 39: {5}, 40: {2}, 41: {0, 1, 2, 3, 4, 5}, 42: {1, 2, 5}, 43: {4}, 44: {0, 1, 2, 3, 4, 5}, 45: {0, 1, 2, 3, 4, 5}, 46: {2, 5}, 47: {4}, 48: {5}, 49: {0, 3, 5}, 50: {0, 2}, 51: {0, 1, 2, 3, 4, 5}, 52: {0, 1, 2, 3, 4, 5}, 53: {0, 1, 2, 3, 4}, 54: {0, 1, 2, 3, 4, 5}, 55: {1, 2}, 56: {0, 1, 2, 3, 4}, 57: {0, 3, 4}, 58: {0, 1, 2, 3, 4, 5}, 59: {4}, 60: {3, 5}, 61: {3}, 62: {1}, 63: {1, 2, 5}, 64: {0}, 65: {1, 2}, 66: {1, 2, 3}, 67: {5}, 68: {4}, 69: {5}, 70: {0, 2, 3, 4}, 71: {0, 2, 3, 4}, 72: {0, 1, 2, 3, 4, 5}, 73: {0, 1, 2, 3, 4, 5}, 74: {0, 3, 4, 5}, 75: {1}, 76: {2, 5}, 77: {0, 1, 2, 3, 4, 5}, 78: {0, 1, 2, 3, 4, 5}, 79: {0}, 80: {1, 5}, 81: {0}, 82: {1, 2}, 83: {3}, 84: {3}, 85: {4}, 86: {5}, 87: {3}, 88: {3, 5}, 89: {0, 1, 2, 3, 4, 5}, 90: {2}, 91: {2, 5}, 92: {1, 5}, 93: {2, 3, 5}, 94: {0, 1, 2, 3, 4, 5}, 95: {0, 1, 2, 3, 4, 5}, 96: {2}, 97: {2, 3, 5}, 98: {2}, 99: {5}, 100: {0, 2}, 101: {2, 3}}
+Iteration 22: Updated objective pareto front programs: {'skill': {5}, 'cost': {0, 1}}
+Iteration 22: Best valset aggregate score so far: 0.5363531308548142
+Iteration 22: Best program as per aggregate score on valset: 5
+Iteration 22: Best score on valset: 0.5363531308548142
+Iteration 22: Linear pareto front program index: 5
+Iteration 22: New program candidate index: 5
+Iteration 23: Selected program 4 score: 0.49683626658893915
+Iteration 23: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 4' and the clock shows 10', that's six minutes
+for the market to react — assume it did unless the tape shows ongoing absorption.
+
+**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,
+their win probability rises as the clock runs without an equalizer. Time is their
+ally. The price drifts up, not down. This is not "time decay toward no" — that
+applies to "will X happen" contracts, not "will team Y win" contracts when Y is
+already winning. Expect +0.5 to +1.5 cents per five minutes late in the match.
+
+**A team losing decays downward.** The mirror image: if you're forecasting the
+losing team's win contract, it decays toward zero as time passes. The longer they
+fail to equalize, the less likely they win. Expect -0.5 to -1.5 cents per five
+minutes late in the match.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely. Expect -0.3 to -0.8 cents per five minutes as the match
+progresses without a goal.
+
+**After a goal, check if the market has absorbed it.** If recent_events shows a
+goal but candlesticks show the price already spiked and stabilized minutes ago,
+the move is done. If the goal is fresh (within 1-2 minutes of current time) and
+the tape shows ongoing volume at a new level, there may be further drift of 1-3
+cents in the same direction as the initial move.
+
+**When you predict zero movement, widen your market.** If the game is quiet and you
+expect no change, you still face uncertainty about whether something will happen.
+A 1-2 cent half-width on a zero-delta forecast is overconfident. Use 3-5 cents
+minimum unless the book is locked and the clock is stopped. Live soccer has goal
+risk every minute.
+
+**Large sudden moves are possible and you must flag them.** Goals happen. A 0-0 game
+can become 1-0 in the next minute, moving the price 10-30 cents instantly. If the
+game is live and close, your half-width must reflect this. A 2-3 cent market when a
+goal would move the price 20 cents is not defensible. Either predict the direction
+if you see momentum, or quote a wide market (5-10 cents) to cover the risk.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price
+should drift up 1-2 cents over five minutes, say so. Time decay on a leading team
+is real and predictable — call it.
+
+**Never predict zero with narrow width on a live match.** The pattern from the
+feedback is clear: zero-delta predictions with 2.5-cent width repeatedly get burned
+when the price moves 1-3 cents. If you truly expect no move, you must quote 4-6
+cents to account for noise, thin book drift, and minor time decay. If the game
+state implies directional drift (time decay for a leading/losing team), predict
+that drift even if small.
+
+**Volatility after recent goals stays elevated.** When a goal was scored 2-5 minutes
+ago, even if mostly absorbed, the book remains thinner and more volatile than
+pre-goal. Quote 4-6 cent half-width instead of 2-3 for the next several minutes.
+
+**Predict the drift, not the spike.** You are forecasting the next five minutes, not
+the next goal. If a team is winning and time is passing, predict the slow upward
+drift (+1 to +2 cents) from time decay. Don't predict zero just because no goal is
+imminent. The market moves continuously, not only on events.
+Iteration 23: Accepted candidate (subsample score 3.9375 -> 4.09375); running full eval.
+Iteration 23: Valset score for new program: 0.4985122251162527 (coverage 102 / 102)
+Iteration 23: Val aggregate for new program: 0.4985122251162527
+Iteration 23: Individual valset scores for new program: {0: 0.5, 1: 0.5, 2: 0.0, 3: 0.5, 4: 0.4062499999999999, 5: 0.5, 6: 0.5, 7: 0.5, 8: 0.5, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.49310344827586206, 14: 0.0, 15: 0.5, 16: 0.5, 17: 0.5, 18: 0.5, 19: 0.5, 20: 0.5, 21: 0.5937500000000001, 22: 0.5, 23: 0.5, 24: 0.5, 25: 0.5, 26: 0.0, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5, 31: 0.2500000000000002, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.0, 36: 0.5, 37: 0.9, 38: 0.5, 39: 0.5, 40: 0.0, 41: 0.5, 42: 0.5, 43: 0.5, 44: 0.5, 45: 0.5, 46: 0.5, 47: 0.5, 48: 0.6666666666666667, 49: 0.5999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 0.5, 56: 0.5, 57: 0.35, 58: 0.5, 59: 0.7500000000000004, 60: 0.5, 61: 0.5, 62: 0.5, 63: 0.5086206896551724, 64: 0.5, 65: 0.6599999999999999, 66: 0.5833333333333333, 67: 0.5, 68: 0.6071428571428572, 69: 0.5, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 0.6666666666666667, 76: 0.5, 77: 0.5, 78: 0.5, 79: 0.5, 80: 0.5, 81: 0.46923076923076923, 82: 0.449367088607595, 83: 0.5, 84: 0.6666666666666667, 85: 0.6034482758620691, 86: 0.5, 87: 0.5, 88: 0.7500000000000013, 89: 0.5, 90: 0.5, 91: 0.6666666666666673, 92: 0.5, 93: 0.875, 94: 0.5, 95: 0.5, 96: 0.5, 97: 0.5, 98: 0.46739130434782605, 99: 0.4482758620689655, 100: 0.75, 101: 0.6666666666666665}
+Iteration 23: Objective aggregate scores for new program: {'skill': 0.4985122251162527, 'cost': 0.5687452941176471}
+Iteration 23: New valset pareto front scores: {0: 0.7142857142857141, 1: 0.5, 2: 0.75, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5258620689655172, 14: 0.25, 15: 0.5, 16: 0.5, 17: 1.0, 18: 0.5, 19: 0.875, 20: 1.0, 21: 0.5937500000000001, 22: 1.0, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5625, 31: 1.0, 32: 0.5, 33: 0.5, 34: 0.75, 35: 0.5, 36: 0.6250000000000002, 37: 1.0, 38: 0.5, 39: 0.8749999999999998, 40: 0.5, 41: 0.5, 42: 1.0, 43: 0.5, 44: 0.5, 45: 0.5, 46: 0.5499999999999999, 47: 0.5, 48: 1.0, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.8333333333333339, 60: 0.75, 61: 0.75, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.75, 68: 0.6071428571428572, 69: 0.9999999999999991, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.7500000000000004, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.9166666666666667, 84: 0.9166666666666667, 85: 0.6034482758620691, 86: 0.8333333333333337, 87: 1.0, 88: 0.875, 89: 0.5, 90: 1.0, 91: 0.9999999999999982, 92: 0.9, 93: 0.875, 94: 0.5, 95: 0.5, 96: 1.0, 97: 0.6875000000000002, 98: 0.5, 99: 0.5517241379310345, 100: 0.9999999999999993, 101: 0.8333333333333334}
+Iteration 23: Objective pareto front scores: {'skill': 0.5363531308548142, 'cost': 1.0}
+Iteration 23: Valset pareto front aggregate score: 0.6733388890620994
+Iteration 23: Updated valset pareto front programs: {0: {5}, 1: {0, 1, 2, 3, 4, 5, 6}, 2: {2}, 3: {0, 1, 3, 5}, 4: {0, 1, 2, 3, 4}, 5: {0, 1, 3, 4, 5, 6}, 6: {0, 1, 2, 3, 4, 5, 6}, 7: {0, 3}, 8: {1}, 9: {0, 1, 2, 3, 4, 5, 6}, 10: {0, 1, 2, 3, 4, 5, 6}, 11: {0, 1, 2, 3, 4, 5, 6}, 12: {0, 4, 6}, 13: {5}, 14: {0}, 15: {0, 1, 2, 3, 4, 5, 6}, 16: {0, 1, 2, 3, 4, 5, 6}, 17: {5}, 18: {0, 1, 2, 3, 4, 5, 6}, 19: {4}, 20: {2}, 21: {6}, 22: {5}, 23: {1}, 24: {0, 1, 2, 3, 4, 5, 6}, 25: {1, 2, 5}, 26: {0, 2}, 27: {0, 1, 2, 3, 4, 5, 6}, 28: {0, 1, 2, 3, 4, 5, 6}, 29: {0, 1, 2, 3, 4, 5, 6}, 30: {3, 5}, 31: {2, 5}, 32: {0, 1, 2, 3, 4, 5, 6}, 33: {0, 1, 2, 3, 4, 5, 6}, 34: {5}, 35: {0, 2, 3}, 36: {1}, 37: {4}, 38: {0, 1, 2, 3, 4, 5, 6}, 39: {5}, 40: {2}, 41: {0, 1, 2, 3, 4, 5, 6}, 42: {1, 2, 5}, 43: {4, 6}, 44: {0, 1, 2, 3, 4, 5, 6}, 45: {0, 1, 2, 3, 4, 5, 6}, 46: {2, 5}, 47: {4, 6}, 48: {5}, 49: {0, 3, 5}, 50: {0, 2, 6}, 51: {0, 1, 2, 3, 4, 5, 6}, 52: {0, 1, 2, 3, 4, 5, 6}, 53: {0, 1, 2, 3, 4, 6}, 54: {0, 1, 2, 3, 4, 5, 6}, 55: {1, 2}, 56: {0, 1, 2, 3, 4, 6}, 57: {0, 3, 4}, 58: {0, 1, 2, 3, 4, 5, 6}, 59: {4}, 60: {3, 5}, 61: {3}, 62: {1}, 63: {1, 2, 5}, 64: {0}, 65: {1, 2}, 66: {1, 2, 3}, 67: {5}, 68: {4, 6}, 69: {5}, 70: {0, 2, 3, 4, 6}, 71: {0, 2, 3, 4, 6}, 72: {0, 1, 2, 3, 4, 5, 6}, 73: {0, 1, 2, 3, 4, 5, 6}, 74: {0, 3, 4, 5, 6}, 75: {1}, 76: {2, 5}, 77: {0, 1, 2, 3, 4, 5, 6}, 78: {0, 1, 2, 3, 4, 5, 6}, 79: {0}, 80: {1, 5}, 81: {0}, 82: {1, 2}, 83: {3}, 84: {3}, 85: {6}, 86: {5}, 87: {3}, 88: {3, 5}, 89: {0, 1, 2, 3, 4, 5, 6}, 90: {2}, 91: {2, 5}, 92: {1, 5}, 93: {2, 3, 5, 6}, 94: {0, 1, 2, 3, 4, 5, 6}, 95: {0, 1, 2, 3, 4, 5, 6}, 96: {2}, 97: {2, 3, 5}, 98: {2}, 99: {5}, 100: {0, 2}, 101: {2, 3}}
+Iteration 23: Updated objective pareto front programs: {'skill': {5}, 'cost': {0, 1}}
+Iteration 23: Best valset aggregate score so far: 0.5363531308548142
+Iteration 23: Best program as per aggregate score on valset: 5
+Iteration 23: Best score on valset: 0.5363531308548142
+Iteration 23: Linear pareto front program index: 5
+Iteration 23: New program candidate index: 6

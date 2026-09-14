@@ -1,0 +1,143 @@
+{
+  "run_dir": "runs/gen1-1k",
+  "topic": "kalshi-horizon-5m",
+  "created": "2026-09-14T18:20:31+00:00",
+  "parent": null,
+  "incumbent": "harnesses/horizon-5m.json",
+  "incumbent_fingerprint": "86093763a226",
+  "candidate_fingerprint": "5e50b3730c47",
+  "settings": {
+    "topic": "kalshi-horizon-5m",
+    "harness": "harnesses/horizon-5m.json",
+    "benchmark": "benchmarks/epl-2026-09.json",
+    "windows_dir": "benchmarks/windows",
+    "holdout": 2,
+    "seed": 0,
+    "every": 5,
+    "model": null,
+    "reflection_model": "anthropic/claude-sonnet-4.5",
+    "cache_dir": ".cache",
+    "llm_cache": true,
+    "concurrency": 4,
+    "max_metric_calls": 1000,
+    "minibatch": 8,
+    "max_cost_ratio": 2.0,
+    "run_dir": "runs/gen1-1k",
+    "extra": {}
+  },
+  "split": {
+    "train_groups": [
+      "KXEPLGAME-26AUG23NEWLFC",
+      "KXEPLGAME-26SEP06ARSCFC",
+      "KXEPLGAME-26SEP06EVEMUN"
+    ],
+    "holdout_groups": [
+      "KXEPLGAME-26SEP05FULCRY",
+      "KXEPLGAME-26SEP05NFOTOT"
+    ],
+    "train": 102,
+    "holdout": 68
+  },
+  "baseline": {
+    "train": {
+      "instances": 102,
+      "statistic": 0.0,
+      "mean_value": 0.5166,
+      "failed_runs": 0,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
+      "skill": 0.0,
+      "skill_on_moves": 0.0172,
+      "mae": 0.0375,
+      "naive_mae": 0.0375,
+      "echoed": 67,
+      "coverage": 0.7451,
+      "moved": 67,
+      "unmeasurable": 29,
+      "unscored": 0
+    },
+    "holdout": {
+      "instances": 68,
+      "statistic": -0.0118,
+      "mean_value": 0.5165,
+      "failed_runs": 0,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
+      "skill": -0.0118,
+      "skill_on_moves": 0.0187,
+      "mae": 0.0442,
+      "naive_mae": 0.0437,
+      "echoed": 37,
+      "coverage": 0.6471,
+      "moved": 48,
+      "unmeasurable": 17,
+      "unscored": 0
+    }
+  },
+  "candidate": {
+    "train": {
+      "instances": 102,
+      "statistic": -0.0444,
+      "mean_value": 0.5364,
+      "failed_runs": 0,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
+      "skill": -0.0444,
+      "skill_on_moves": 0.0646,
+      "mae": 0.0392,
+      "naive_mae": 0.0375,
+      "echoed": 6,
+      "coverage": 0.8431,
+      "moved": 67,
+      "unmeasurable": 29,
+      "unscored": 0
+    },
+    "holdout": {
+      "instances": 68,
+      "statistic": -0.0387,
+      "mean_value": 0.54,
+      "failed_runs": 0,
+      "cost_usd": 1.8808,
+      "cost_per_instance": 0.02766,
+      "skill": -0.0387,
+      "skill_on_moves": 0.0408,
+      "mae": 0.0454,
+      "naive_mae": 0.0437,
+      "echoed": 9,
+      "coverage": 0.75,
+      "moved": 48,
+      "unmeasurable": 17,
+      "unscored": 0
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reasons": [
+      "held-out gain -0.027 is not distinguishable from noise (95% interval -0.099 to +0.043)",
+      "regresses on held-in instances by -0.044"
+    ],
+    "holdout": {
+      "paired": 68,
+      "diff": -0.0269,
+      "low": -0.099,
+      "high": 0.0434
+    },
+    "train": {
+      "paired": 102,
+      "diff": -0.0444,
+      "low": -0.1469,
+      "high": 0.0267
+    }
+  },
+  "search": {
+    "candidates": 7,
+    "metric_calls": 1082,
+    "best_idx": 5,
+    "best_train_value": 0.5364
+  },
+  "llm": {
+    "calls": 1314,
+    "cache_hits": 1066,
+    "spent_usd": 18.3652
+  }
+}
