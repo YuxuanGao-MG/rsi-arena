@@ -86,14 +86,14 @@ async def test_gate_promotes_a_real_gain_and_rejects_silence(t0, history):
     base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
     good = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle))
     same = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
-    assert paired_bootstrap(tk, good, base)["low"] > 0
-    ci = paired_bootstrap(tk, same, base)
+    assert paired_bootstrap(tk, good, base, min_groups=1)["low"] > 0
+    ci = paired_bootstrap(tk, same, base, min_groups=1)
     assert ci["low"] <= 0 <= ci["high"]
     d = accept(tk, candidate_train=good[:3], incumbent_train=base[:3],
-               candidate_holdout=good[3:], incumbent_holdout=base[3:])
+               candidate_holdout=good[3:], incumbent_holdout=base[3:], min_groups=1)
     assert d.accepted, d.reasons
     d = accept(tk, candidate_train=good[:3], incumbent_train=base[:3],
-               candidate_holdout=same[3:], incumbent_holdout=base[3:])
+               candidate_holdout=same[3:], incumbent_holdout=base[3:], min_groups=1)
     assert not d.accepted and "noise" in d.reasons[0]
 
 
@@ -164,7 +164,46 @@ async def test_a_search_that_returned_the_incumbent_says_so(t0, history):
 
     verdict = accept(tk, candidate_train=base[:3], incumbent_train=base[:3],
                      candidate_holdout=base[3:], incumbent_holdout=base[3:],
-                     unchanged=True)
+                     unchanged=True, min_groups=1)
     assert verdict.accepted is False
     assert "returned the incumbent unchanged" in " ".join(verdict.reasons)
     assert "noise" not in " ".join(verdict.reasons)
+
+
+# --- the bootstrap has to respect the split it was given ---------------------
+
+
+async def test_the_interval_is_drawn_over_matches_not_windows(t0, history):
+    """Thirty-four windows of one match are one match seen thirty-four times:
+    overlapping horizons, one scoreline, and a goal that moves all of them at
+    once. Resampling them independently claims thirty-four facts and reports an
+    interval far tighter than the evidence supports."""
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
+    good = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle))
+
+    ci = paired_bootstrap(tk, good, base, min_groups=1)
+    assert ci["groups"] == len({r.instance.group for r in base})
+    assert ci["groups"] < ci["paired"], "more windows than matches, as always"
+
+
+async def test_too_few_matches_is_no_sample_rather_than_a_small_one(t0, history):
+    """With two matches a cluster bootstrap can only draw {A,A}, {A,B}, {B,B};
+    the interval collapses toward the observed difference and reads as
+    precision. The first thousand-call run was gated on exactly two held-out
+    fixtures, so the number it reported could not have meant anything either
+    way."""
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
+    good = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle))
+
+    ci = paired_bootstrap(tk, good, base, min_groups=99)
+    assert ci["usable"] is False
+    assert ci["low"] == ci["high"] == 0.0, "no interval, rather than a narrow one"
+
+    verdict = accept(tk, candidate_train=good, incumbent_train=base,
+                     candidate_holdout=good, incumbent_holdout=base, min_groups=99)
+    assert verdict.accepted is False
+    assert "too few to draw an interval" in " ".join(verdict.reasons)

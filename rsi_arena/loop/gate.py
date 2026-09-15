@@ -19,22 +19,57 @@ from typing import Any
 from .task import Outcome, Rollout, Task
 
 
+#: Below this many groups a resampling interval is theatre. With two matches a
+#: cluster bootstrap can only draw {A,A}, {A,B} and {B,B}, and the interval it
+#: reports collapses toward the observed difference — narrow, and meaningless.
+MIN_GROUPS = 8
+
+
 def paired_bootstrap(task: Task, candidate: list[Rollout], incumbent: list[Rollout], *,
-                     n: int = 2000, seed: int = 0, level: float = 0.95) -> dict[str, Any]:
-    """Interval of statistic(candidate) minus statistic(incumbent), on shared instances."""
+                     n: int = 2000, seed: int = 0, level: float = 0.95,
+                     min_groups: int = MIN_GROUPS) -> dict[str, Any]:
+    """Interval of statistic(candidate) minus statistic(incumbent), on shared instances.
+
+    **Resampled by group, not by instance.** Thirty-four windows of one match
+    are one match seen thirty-four times: their five-minute horizons overlap,
+    they share a scoreline, and a goal moves all of them at once. Drawing them
+    independently pretends to thirty-four facts and reports an interval far
+    tighter than the evidence supports — the split already refuses to put one
+    match on both sides, and this is the same refusal applied to the arithmetic.
+
+    Below :data:`MIN_GROUPS` the interval is reported as unusable rather than
+    narrow, because too few clusters is not a small sample, it is no sample.
+    """
     by_id = {r.instance.id: r.outcome for r in incumbent}
-    pairs: list[tuple[Outcome, Outcome]] = [(r.outcome, by_id[r.instance.id])
-                                            for r in candidate if r.instance.id in by_id]
+    pairs: list[tuple[str, Outcome, Outcome]] = [
+        (r.instance.group, r.outcome, by_id[r.instance.id])
+        for r in candidate if r.instance.id in by_id]
     if len(pairs) < 2:
-        return {"paired": len(pairs), "diff": 0.0, "low": 0.0, "high": 0.0}
+        return {"paired": len(pairs), "groups": 0, "diff": 0.0,
+                "low": 0.0, "high": 0.0, "usable": False}
+
+    clusters: dict[str, list[tuple[Outcome, Outcome]]] = {}
+    for group, cand, inc in pairs:
+        clusters.setdefault(group, []).append((cand, inc))
+    keys = sorted(clusters)
 
     def diff(sample: list[tuple[Outcome, Outcome]]) -> float:
         return task.statistic([c for c, _ in sample]) - task.statistic([i for _, i in sample])
 
+    observed = diff([(c, i) for _, c, i in pairs])
+    if len(keys) < min_groups:
+        return {"paired": len(pairs), "groups": len(keys), "diff": round(observed, 4),
+                "low": 0.0, "high": 0.0, "usable": False}
+
     rng = random.Random(seed)
-    draws = sorted(diff([pairs[rng.randrange(len(pairs))] for _ in pairs]) for _ in range(n))
+    draws = []
+    for _ in range(n):
+        drawn = [pair for _ in keys for pair in clusters[keys[rng.randrange(len(keys))]]]
+        draws.append(diff(drawn))
+    draws.sort()
     lo, hi = draws[int((1 - level) / 2 * n)], draws[min(n - 1, int((1 + level) / 2 * n))]
-    return {"paired": len(pairs), "diff": round(diff(pairs), 4), "low": round(lo, 4), "high": round(hi, 4)}
+    return {"paired": len(pairs), "groups": len(keys), "diff": round(observed, 4),
+            "low": round(lo, 4), "high": round(hi, 4), "usable": True}
 
 
 @dataclass
@@ -51,7 +86,7 @@ class Decision:
 def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[Rollout],
            candidate_holdout: list[Rollout], incumbent_holdout: list[Rollout],
            max_cost_ratio: float = 2.0, seed: int = 0,
-           unchanged: bool = False) -> Decision:
+           unchanged: bool = False, min_groups: int = MIN_GROUPS) -> Decision:
     """Promote a candidate, or say why not.
 
     ``unchanged`` is for the case the first real run hit: GEPA's best was the
@@ -62,8 +97,10 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
     improvement from a reshuffle should not report a search that found nothing
     as a near miss.
     """
-    hold = paired_bootstrap(task, candidate_holdout, incumbent_holdout, seed=seed)
-    train = paired_bootstrap(task, candidate_train, incumbent_train, seed=seed)
+    hold = paired_bootstrap(task, candidate_holdout, incumbent_holdout, seed=seed,
+                            min_groups=min_groups)
+    train = paired_bootstrap(task, candidate_train, incumbent_train, seed=seed,
+                             min_groups=min_groups)
     reasons: list[str] = []
     ok = True
     if unchanged:
@@ -73,6 +110,12 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
     if hold["paired"] < 2:
         ok = False
         reasons.append("no paired held-out instances to judge on")
+    elif not hold.get("usable", True):
+        ok = False
+        reasons.append(
+            f"{hold.get('groups', 0)} held-out fixtures is too few to draw an "
+            f"interval from; {min_groups} is the minimum, so no gain can be "
+            f"promoted no matter how large")
     elif hold["low"] <= 0:
         ok = False
         reasons.append(f"held-out gain {hold['diff']:+.3f} is not distinguishable from noise "
