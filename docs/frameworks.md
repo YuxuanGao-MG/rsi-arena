@@ -92,3 +92,75 @@ step it is a coding-agent proposer, not a population optimizer.
 - The acceptance gate and the generation record.
 - Nothing else. The optimizer, the archive and the reflection prompt come from
   the framework.
+
+## Revisited 2026-09-14
+
+Re-checked a day later against everything published since, including two pieces
+doing the rounds this week. **The choice stands: GEPA.** What follows is what
+changed and what did not.
+
+### The two things in the news are not frameworks
+
+- **Theseus Labs, *The Last AI Built by Humans*** ([arXiv 2609.11873](http://arxiv.org/abs/2609.11873))
+  is a **taxonomy and a metric**, not a codebase — no repository accompanies it.
+  It is still the most useful thing published this week, for two reasons below.
+- **Atria Dawn Preview** (Shanghai AI Lab, weights on HuggingFace) is an agent
+  **model**, not infrastructure. It belongs in the `--model` flag as a candidate
+  task or reflection model, not under the loop.
+
+Neither displaces an optimizer, and reading them as competitors to GEPA is a
+category error worth naming once so it is not made again.
+
+### Where this loop sits on their ladder
+
+Theseus grade RSI by what the agent owns in the improvement loop: execution
+(L1), strategy (L2), experience acquisition (L3), environment adaptation (L4),
+recursive meta-improvement (L5).
+
+**This loop is L2.** GEPA designs the update and the gate decides whether it
+survives, and both persist across generations — that is more than execution
+autonomy. But the questions are ours: we chose the five fixtures, the window
+spacing, the staleness rule and the split. The system cannot decide it needs a
+different kind of match.
+
+The step to L3 is therefore already in the backlog, described as "more
+fixtures". The difference that matters is not more of them but **who picks
+them**: a loop that reads its own per-window failures and asks for the fixtures
+it is worst on is acquiring experience; one handed a fixed set is not. The
+per-instance scores GEPA already reflects over are the raw material.
+
+Their four questions for real recursion are worth pinning to the gate, because
+three of them we answer and one we do not:
+
+| Question | Here |
+| --- | --- |
+| Measurable — reproducible under independent evaluation? | held-out fixtures, paired bootstrap |
+| Persistent — does it survive, or decay? | generation lineage; nothing yet re-scores an old winner |
+| Transferable — does it carry across tasks? | **not answered** — one topic, one league |
+| Rollbackable — can a bad improvement be withdrawn? | the incumbent is never overwritten; a rejected candidate is a file |
+
+The unanswered one is the honest gap: every number here is EPL soccer
+five-minute horizon. A rewrite that helps only there is a lucky prompt, not an
+improvement, and nothing in the loop would currently tell the difference.
+
+### One new candidate, too young to depend on
+
+**RoboPhD** ([arXiv 2604.04347](https://arxiv.org/pdf/2604.04347) ·
+[code](https://github.com/andborth/RoboPhD) · MIT · 30 stars · pushed
+2026-09-08) — *Evolving Diverse Complex Agents Under Tight Evaluation Budgets*.
+That title is both of our open backlog items in one line: population diversity
+and cheap-first evaluation. Thirty stars and six days old is not a dependency,
+but it is the paper to read before writing our own selection rule.
+
+### Health of what we picked, and what we did not
+
+| | Stars | Last push | License | Note |
+| --- | --- | --- | --- | --- |
+| **GEPA** | 6,565 | 2026-09-11 | MIT | ICLR 2026 oral. Active. Still the fit |
+| OpenEvolve | 7,367 | 2026-07-18 | Apache-2.0 | **Two months quiet.** Lift the cascade-evaluation idea; do not take the dependency |
+| Self-Harness | 105 | 2026-07-02 | **none** | The acceptance rule is the right one and we implemented it ourselves. With no licence, do not copy its code |
+| ShinkaEvolve | 1.4k | — | Apache-2.0 | Still the second engine if the harness becomes Python |
+
+The licence on Self-Harness is worth stating plainly because the original
+recommendation said "adopt the rule verbatim". Adopt the *rule*; the code is not
+ours to take.

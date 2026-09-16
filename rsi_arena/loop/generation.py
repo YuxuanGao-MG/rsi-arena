@@ -23,7 +23,21 @@ BEST = "best.json"
 
 
 def fingerprint(harness: Harness) -> str:
-    canon = json.dumps(harness.to_dict(), sort_keys=True, default=str).encode()
+    """Identity of what the loop can change, and nothing else.
+
+    Over the components and the model, not over ``to_dict()``. The loop renames
+    every candidate ``<name>+genN``, so a fingerprint that included the name
+    differed every generation whether or not anything had been rewritten — and
+    a run where GEPA returned the incumbent unchanged still recorded a new
+    fingerprint, reading as "a new harness tied" when the truth was "the search
+    found nothing". Telling those two apart is the entire job.
+
+    The model is in because the same components on a different model are a
+    different harness; the description is out because prose about a harness is
+    not the harness.
+    """
+    canon = json.dumps({**harness.to_components(), "model": harness.config.model},
+                       sort_keys=True, default=str).encode()
     return hashlib.sha256(canon).hexdigest()[:12]
 
 

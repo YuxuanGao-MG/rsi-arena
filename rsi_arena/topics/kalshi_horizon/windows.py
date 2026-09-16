@@ -71,11 +71,24 @@ def build_windows(fixtures: list[Fixture], *, history: History, every_minutes: i
         if path is not None and path.exists():
             out.extend(Window.from_dict(w) for w in json.loads(path.read_text()))
             continue
-        line = timeline_for(fixture.league, fixture.game)
+        # One fixture's feed dropping its connection used to take the whole
+        # build with it: 67 of 177 matches built, then a RemoteDisconnected and
+        # nothing else. Each fixture is written as it finishes, so a re-run
+        # resumes — but losing the remaining hundred to one transient socket is
+        # not a failure worth propagating.
+        try:
+            line = timeline_for(fixture.league, fixture.game)
+        except Exception as exc:
+            log(f"skipped {fixture.event}: {type(exc).__name__}: {exc}")
+            continue
         if line is None:
             log(f"skipped {fixture.event}: no timeline")
             continue
-        built = _windows_for(fixture, line, history, every_minutes, horizon)
+        try:
+            built = _windows_for(fixture, line, history, every_minutes, horizon)
+        except Exception as exc:
+            log(f"skipped {fixture.event}: {type(exc).__name__}: {exc}")
+            continue
         log(f"{fixture.event}: {len(built)} windows")
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

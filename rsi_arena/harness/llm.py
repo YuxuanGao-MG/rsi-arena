@@ -87,21 +87,58 @@ class OpenRouter:
         self.timeout_s = timeout_s
         self.max_retries = max_retries
         self.app_title = app_title
-        self._gate = asyncio.Semaphore(concurrency)
+        self.concurrency = concurrency
+        # Both of these bind to whichever loop first touches them, and the loop
+        # changes underneath us: `run_sync` opens a fresh `asyncio.run` per call,
+        # so GEPA's tenth evaluation runs on its tenth loop while the client's
+        # sockets and the semaphore still belong to the first. That surfaced as
+        # `Event loop is closed` at teardown and would have surfaced as a bound
+        # -to-a-different-loop error partway through the first real optimize.
+        self._loop: Any = None
+        self._gate: asyncio.Semaphore | None = None
         self._client: httpx.AsyncClient | None = None
         self.calls = 0
         self.cache_hits = 0
         self.spent_usd = 0.0
 
+    def _bind(self) -> None:
+        """Attach to the running loop, discarding anything bound to an older one.
+
+        Dropping a client without awaiting `aclose` leaks its sockets, but the
+        loop that owned them is already closed and closing them from here is
+        exactly the error this avoids. The OS reclaims them when the process
+        ends, and a command is one process.
+        """
+        loop = asyncio.get_running_loop()
+        if self._loop is loop:
+            return
+        self._loop = loop
+        self._client = httpx.AsyncClient(timeout=self.timeout_s)
+        self._gate = asyncio.Semaphore(self.concurrency)
+
     def _http(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout_s)
+        self._bind()
+        assert self._client is not None
         return self._client
 
+    def _limit(self) -> asyncio.Semaphore:
+        self._bind()
+        assert self._gate is not None
+        return self._gate
+
     async def close(self) -> None:
-        if self._client is not None:
+        """Close the client if this loop owns it; otherwise leave it alone."""
+        if self._client is None:
+            return
+        try:
+            mine = asyncio.get_running_loop() is self._loop
+        except RuntimeError:
+            mine = False
+        if mine:
             await self._client.aclose()
-            self._client = None
+        self._client = None
+        self._gate = None
+        self._loop = None
 
     async def __aenter__(self) -> "OpenRouter":
         return self
@@ -156,7 +193,7 @@ class OpenRouter:
         delay = 1.0
         for attempt in range(self.max_retries + 1):
             try:
-                async with self._gate:
+                async with self._limit():
                     resp = await self._http().post(f"{self.base_url}/chat/completions",
                                                    json=body, headers=headers)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:

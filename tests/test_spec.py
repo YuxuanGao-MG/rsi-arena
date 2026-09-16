@@ -11,7 +11,12 @@ BASE = Path(__file__).resolve().parents[1] / "harnesses" / "horizon-5m.json"
 def test_base_harness_loads_from_the_earlier_runtime_format():
     h = Harness.load(BASE)
     assert h.name == "kalshi-horizon-5m"
-    assert h.config.model == "anthropic/claude-sonnet-4.5"     # read from default_model
+    # The point is that `default_model` is read at all — the earlier runtime
+    # wrote it under that name and this one calls it `model`. Which model it
+    # names is a choice that changes; that it survives the rename is the
+    # contract.
+    written = json.loads(Path(BASE).read_text())["config"]["default_model"]
+    assert h.config.model == written and "default_model" not in h.to_dict()["config"]
     assert h.tools == ["market_quote", "candlesticks", "previous_trades"]
     assert [s.type for s in h.plan.steps] == ["tool", "tool", "tool", "prompt"]
     assert h.plan.required_inputs() == {"game"}

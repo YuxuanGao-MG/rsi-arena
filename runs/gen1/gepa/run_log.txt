@@ -1,0 +1,79 @@
+Iteration 0: Base program full valset score: 0.5165749543322159 over 102 / 102 examples
+Iteration 1: Selected program 0 score: 0.5165749543322159
+Iteration 1: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,
+their win probability rises as the clock runs without an equalizer. Time is their
+ally. The price drifts up, not down. This is not "time decay toward no" — that
+applies to "will X happen" contracts, not "will team Y win" contracts when Y is
+already winning.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely.
+
+**When you predict zero movement, widen your market.** If the game is quiet and you
+expect no change, you still face uncertainty about whether something will happen.
+A 1-2 cent half-width on a zero-delta forecast is overconfident. Use 2-3 cents
+minimum unless the book is locked and the clock is stopped.
+
+**Large sudden moves are possible and you must flag them.** Goals happen. A 0-0 game
+can become 1-0 in the next minute, moving the price 10-30 cents instantly. If the
+game is live and close, your half-width must reflect this. A 3-cent market when a
+goal would move the price 20 cents is not defensible. Either predict the direction
+if you see momentum, or quote a wide market (5-10 cents) to cover the risk.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price
+should drift up 1-2 cents over five minutes, say so.
+Iteration 1: Accepted candidate (subsample score 3.732758620689655 -> 4.275862068965517); running full eval.
+Iteration 1: Valset score for new program: 0.49137576332499683 (coverage 102 / 102)
+Iteration 1: Val aggregate for new program: 0.49137576332499683
+Iteration 1: Individual valset scores for new program: {0: 0.5714285714285715, 1: 0.5, 2: 0.125, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.25, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.0, 13: 0.5172413793103449, 14: 0.0, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.125, 20: 0.75, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.24999999999999933, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5416666666666667, 31: 0.6500000000000001, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.25, 36: 0.6250000000000002, 37: 0.75, 38: 0.5, 39: 0.6250000000000002, 40: 0.0, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.4833333333333333, 47: 0.33333333333333337, 48: 0.8333333333333331, 49: 0.5999999999999999, 50: 0.0, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.35, 58: 0.5, 59: 0.666666666666667, 60: 0.0, 61: 0.0, 62: 0.75, 63: 0.5258620689655173, 64: 0.0, 65: 0.9, 66: 0.8333333333333334, 67: 0.0, 68: 0.5178571428571428, 69: 0.7500000000000004, 70: 0.0, 71: 0.0, 72: 0.5, 73: 0.5, 74: 0.0, 75: 1.0, 76: 0.666666666666667, 77: 0.5, 78: 0.5, 79: 0.24999999999999933, 80: 0.6875000000000002, 81: 0.48461538461538456, 82: 0.5126582278481013, 83: 0.75, 84: 0.75, 85: 0.4482758620689655, 86: 0.6111111111111113, 87: 0.0, 88: 0.25, 89: 0.5, 90: 0.25, 91: 0.8333333333333346, 92: 0.9, 93: 0.75, 94: 0.5, 95: 0.5, 96: 0.0, 97: 0.3749999999999998, 98: 0.4782608695652174, 99: 0.4655172413793103, 100: 0.75, 101: 0.5833333333333335}
+Iteration 1: Objective aggregate scores for new program: {'skill': 0.49137576332499683, 'cost': 0.7294752941176473}
+Iteration 1: New valset pareto front scores: {0: 0.5714285714285715, 1: 0.5, 2: 0.5, 3: 1.0, 4: 0.5, 5: 0.5, 6: 0.5, 7: 0.8333333333333334, 8: 0.75, 9: 0.5, 10: 0.5, 11: 0.5, 12: 0.5, 13: 0.5172413793103449, 14: 0.25, 15: 0.5, 16: 0.5, 17: 0.75, 18: 0.5, 19: 0.5, 20: 0.75, 21: 0.5, 22: 0.5000000000000013, 23: 1.0, 24: 0.5, 25: 0.9999999999999987, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.5416666666666667, 31: 0.6500000000000001, 32: 0.5, 33: 0.5, 34: 0.5, 35: 0.5, 36: 0.6250000000000002, 37: 0.75, 38: 0.5, 39: 0.6250000000000002, 40: 0.0, 41: 0.5, 42: 1.0, 43: 0.24999999999999967, 44: 0.5, 45: 0.5, 46: 0.5, 47: 0.33333333333333337, 48: 0.8333333333333331, 49: 0.7999999999999999, 50: 0.5, 51: 0.5, 52: 0.5, 53: 0.5, 54: 0.5, 55: 1.0, 56: 0.5, 57: 0.5, 58: 0.5, 59: 0.666666666666667, 60: 0.5, 61: 0.5, 62: 0.75, 63: 0.5258620689655173, 64: 0.8333333333333334, 65: 0.9, 66: 0.8333333333333334, 67: 0.5, 68: 0.5178571428571428, 69: 0.7500000000000004, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.5, 74: 0.5, 75: 1.0, 76: 0.666666666666667, 77: 0.5, 78: 0.5, 79: 0.7500000000000007, 80: 0.6875000000000002, 81: 0.5, 82: 0.5126582278481013, 83: 0.8333333333333334, 84: 0.8333333333333334, 85: 0.5, 86: 0.6111111111111113, 87: 0.5, 88: 0.75, 89: 0.5, 90: 0.5, 91: 0.8333333333333346, 92: 0.9, 93: 0.75, 94: 0.5, 95: 0.5, 96: 0.5, 97: 0.5, 98: 0.4782608695652174, 99: 0.5344827586206897, 100: 0.9999999999999993, 101: 0.75}
+Iteration 1: Objective pareto front scores: {'skill': 0.5165749543322159, 'cost': 1.0}
+Iteration 1: Valset pareto front aggregate score: 0.5931183215330722
+Iteration 1: Updated valset pareto front programs: {0: {1}, 1: {0, 1}, 2: {0}, 3: {0, 1}, 4: {0, 1}, 5: {0, 1}, 6: {0, 1}, 7: {0}, 8: {1}, 9: {0, 1}, 10: {0, 1}, 11: {0, 1}, 12: {0}, 13: {1}, 14: {0}, 15: {0, 1}, 16: {0, 1}, 17: {1}, 18: {0, 1}, 19: {0}, 20: {1}, 21: {0, 1}, 22: {1}, 23: {1}, 24: {0, 1}, 25: {1}, 26: {0}, 27: {0, 1}, 28: {0, 1}, 29: {0, 1}, 30: {1}, 31: {1}, 32: {0, 1}, 33: {0, 1}, 34: {0, 1}, 35: {0}, 36: {1}, 37: {0, 1}, 38: {0, 1}, 39: {1}, 40: {0, 1}, 41: {0, 1}, 42: {1}, 43: {0, 1}, 44: {0, 1}, 45: {0, 1}, 46: {0}, 47: {0, 1}, 48: {1}, 49: {0}, 50: {0}, 51: {0, 1}, 52: {0, 1}, 53: {0, 1}, 54: {0, 1}, 55: {1}, 56: {0, 1}, 57: {0}, 58: {0, 1}, 59: {1}, 60: {0}, 61: {0}, 62: {1}, 63: {1}, 64: {0}, 65: {1}, 66: {1}, 67: {0}, 68: {1}, 69: {1}, 70: {0}, 71: {0}, 72: {0, 1}, 73: {0, 1}, 74: {0}, 75: {1}, 76: {0, 1}, 77: {0, 1}, 78: {0, 1}, 79: {0}, 80: {1}, 81: {0}, 82: {1}, 83: {0}, 84: {0}, 85: {0}, 86: {1}, 87: {0}, 88: {0}, 89: {0, 1}, 90: {0}, 91: {1}, 92: {1}, 93: {1}, 94: {0, 1}, 95: {0, 1}, 96: {0}, 97: {0}, 98: {1}, 99: {0}, 100: {0}, 101: {0}}
+Iteration 1: Updated objective pareto front programs: {'skill': {0}, 'cost': {0}}
+Iteration 1: Best valset aggregate score so far: 0.5165749543322159
+Iteration 1: Best program as per aggregate score on valset: 0
+Iteration 1: Best score on valset: 0.5165749543322159
+Iteration 1: Linear pareto front program index: 0
+Iteration 1: New program candidate index: 1
