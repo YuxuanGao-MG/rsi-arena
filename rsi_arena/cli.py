@@ -29,6 +29,14 @@ def log(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _has_tqdm() -> bool:
+    try:
+        import tqdm  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def _settings_args(ap: argparse.ArgumentParser) -> None:
     d = Settings()
     ap.add_argument("--topic", default=d.topic, choices=sorted(TOPICS))
@@ -343,7 +351,13 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         reflection_lm=SyncLLM(llm, s.reflection_model),
         reflection_prompt_template=reflection_templates(task, incumbent),
         reflection_minibatch_size=s.minibatch, max_metric_calls=s.max_metric_calls,
-        run_dir=str(run_dir / "gepa"), seed=s.seed, display_progress_bar=True, raise_on_exception=False)
+        run_dir=str(run_dir / "gepa"), seed=s.seed, raise_on_exception=False,
+        # Only when someone is watching. GEPA raises ImportError if tqdm is
+        # missing and the bar is asked for, and tqdm is not a declared
+        # dependency — so the first scheduled generation paid for its whole
+        # baseline, nineteen minutes of it, and then died on the opening line
+        # of the search for want of a progress bar nobody was looking at.
+        display_progress_bar=sys.stderr.isatty() and _has_tqdm())
     candidate = incumbent.from_components(result.best_candidate)
     candidate.name = f"{incumbent.name.split('+')[0]}+{run_dir.name}"
     candidate.save(run_dir / BEST)

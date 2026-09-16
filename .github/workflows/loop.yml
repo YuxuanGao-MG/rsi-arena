@@ -113,10 +113,19 @@ jobs:
             exit 1
           fi
 
+      # `inputs` is empty on a schedule, so every one of these needs the same
+      # default the optimize step uses. It did not have them: a scheduled run
+      # called `--holdout ''`, argparse rejected it, and the question set was
+      # never rebuilt. Nobody noticed because the command is piped into tee, and
+      # a pipeline's exit code is the last command's — so a step that failed
+      # reported success and the job went green. pipefail is on for that reason.
       - name: Build the question set
         run: |
-          rsi-arena windows --benchmark "${{ inputs.benchmark }}" \
-            --holdout "${{ inputs.holdout }}" | tee windows.txt
+          set -o pipefail
+          rsi-arena windows \
+            --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
+            --holdout "${{ inputs.holdout || '100' }}" \
+            --audit "${{ inputs.audit || '60' }}" | tee windows.txt
           { echo "### Question set"; echo '```'; cat windows.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bench
@@ -172,6 +181,7 @@ jobs:
                 --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")
           [ "${{ inputs.trace || 'true' }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
+          set -o pipefail
           rsi-arena optimize "${args[@]}" | tee optimize.txt
           { echo "### Generation ${run_dir}"; echo '```'; cat optimize.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
