@@ -11,9 +11,14 @@ Identifying the fixture is the part that goes wrong. Kalshi dates an event by
 the day it listed the contract and the fixture feed by the day it kicked off,
 and those differ often enough that a one-day lookup lost 168 settled fixtures
 out of 654. Anything that cannot be identified is reported with the reason and
-the candidates it was weighed against, never dropped quietly.
+the candidates it was weighed against, never dropped quietly, and an invocation
+that loses more than ``--max-unidentified`` of its open events exits non-zero:
+the shape of this failure is a data gap that looks like a quiet evening.
 
-    python scripts/collect_live.py --league EPL,LALIGA --minutes 120
+Every invocation carries a spend ceiling, because it runs on a cron beside a
+loop that costs thirty-five dollars a generation and it must not outgrow it.
+
+    python scripts/collect_live.py --league EPL,LALIGA --minutes 120 --max-usd 2
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -37,8 +43,8 @@ from rsi_arena.kalshi._linking import (harvest_team_codes,        # noqa: E402
                                        link_event, names_from_markets)
 from rsi_arena.harness.runner import Runner                       # noqa: E402
 from rsi_arena.kalshi.replay import (HORIZON_MINUTES,             # noqa: E402
-                                     fresh_quote, match_timeline,
-                                     realised_mid, replay_tools)
+                                     fresh_quote, live_tools,
+                                     match_timeline, realised_mid)
 from rsi_arena.topics.kalshi_horizon import score_output          # noqa: E402
 
 #: Same spread the discovery script uses, for the same measured reason.
@@ -125,7 +131,10 @@ async def one(harness: Harness, llm: OpenRouter, league: str, game: str,
         return {"ticker": ticker, "skipped": "no fresh two-sided quote"}
     line = match_timeline(league, game)
     state = line.state_at(at) if line else {}
-    box = replay_tools(at, hist, line=line)
+    # live_tools, not replay_tools: the disk cache behind the frozen tools has
+    # no TTL because settled history cannot change, which is not true of a book
+    # that is still trading.
+    box = live_tools(at, hist, line=line)
 
     run = await Runner(llm, box).run(harness, question=ticker,
                                      game=json.dumps(state)[:1200])
@@ -169,6 +178,16 @@ def write_resolved(pending: list[dict], hist: History, out: Path) -> list[dict]:
     return still
 
 
+#: Where a GitHub Actions job writes what a person will read. Empty elsewhere,
+#: and everything here still goes to stdout either way.
+def report(lines: list[str]) -> None:
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    with open(path, "a") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--league", default="EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE")
@@ -176,12 +195,22 @@ async def main() -> int:
     ap.add_argument("--minutes", type=int, default=120, help="how long to keep collecting")
     ap.add_argument("--poll", type=int, default=300, help="seconds between sweeps")
     ap.add_argument("--max-contracts", type=int, default=6, help="markets per sweep")
+    ap.add_argument("--max-usd", type=float, default=3.0,
+                    help="ceiling on this invocation's model spend; 0 removes it")
+    ap.add_argument("--max-unidentified", type=float, default=0.10,
+                    help="fail if more than this fraction of open events found no fixture")
     ap.add_argument("--out", default="runs/live/forecasts.jsonl")
     args = ap.parse_args()
 
     client, hist = KalshiClient(), History()
     harness = Harness.load(args.harness)
-    llm = OpenRouter()
+    # A ceiling per invocation, because this runs on a cron and nothing else
+    # stops it. The evolution loop is thirty-five dollars a generation twice a
+    # day and is the thing worth spending on; live collection is evidence
+    # gathered alongside it and must not quietly outgrow it. Past the line the
+    # client refuses to call out, the run is scored as silence, and the sweep
+    # ends rather than filling the file with provider errors.
+    llm = OpenRouter(budget_usd=args.max_usd or None)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -189,6 +218,7 @@ async def main() -> int:
     catalogue: dict[str, tuple[set[str], dict[str, str]]] = {}
     deadline = time.time() + args.minutes * 60
     unidentified: dict[str, str] = {}
+    seen_events: set[str] = set()
     pending: list[dict] = []
     made = 0
 
@@ -210,6 +240,7 @@ async def main() -> int:
                     ticker = event.get("event_ticker", "")
                     if not ticker:
                         continue
+                    seen_events.add(ticker)
                     game, why = identify(client, league, ticker, names, codes)
                     if game is None:
                         if ticker not in unidentified:
@@ -227,6 +258,8 @@ async def main() -> int:
             if not targets:
                 print(f"  nothing live across {', '.join(leagues)}; waiting")
             for league, game, ticker in targets[:args.max_contracts]:
+                if llm.over_budget:
+                    break
                 row = await one(harness, llm, league, game, ticker, hist)
                 if row.get("skipped"):
                     continue
@@ -237,6 +270,9 @@ async def main() -> int:
                       if said is not None else f"  {ticker}: no forecast")
 
             pending = write_resolved(pending, hist, out)
+            if llm.over_budget:
+                print(f"  ${llm.spent_usd:.2f} spent of ${args.max_usd:.2f}; stopping early")
+                break
             await asyncio.sleep(args.poll)
 
         # The last sweep's forecasts have not met their horizon yet. Wait it out
@@ -247,11 +283,33 @@ async def main() -> int:
     finally:
         await llm.close()
 
-    print(f"\n{made} forecasts written to {out}")
-    if unidentified:
-        print(f"{len(unidentified)} events could not be identified:")
-        for ticker, why in unidentified.items():
-            print(f"  {ticker}: {why}")
+    linked = len(seen_events) - len(unidentified)
+    missed = len(unidentified) / len(seen_events) if seen_events else 0.0
+    print(f"\n{made} forecasts written to {out}, ${llm.spent_usd:.2f} spent")
+    print(f"{linked}/{len(seen_events)} open events identified")
+
+    lines = ["### Live collection",
+             f"- {made} forecasts across {', '.join(leagues)}",
+             f"- ${llm.spent_usd:.2f} spent" + (f" of ${args.max_usd:.2f}" if args.max_usd else ""),
+             f"- identified {linked}/{len(seen_events)} open events ({missed:.0%} missed)"]
+    for ticker, why in unidentified.items():
+        # On stdout, where Actions reads its annotations: an event nobody could
+        # attach to a match is a market the harness would forecast blind, and a
+        # day where linking degrades has to be visible as something other than a
+        # thinner file than yesterday's.
+        print(f"::warning title=unidentified event::{ticker}: {why}")
+        lines.append(f"  - `{ticker}` — {why}")
+    report(lines)
+
+    if seen_events and missed > args.max_unidentified:
+        # Measured at 112 of 112 across eight leagues, so this is a regression
+        # alarm and not an expectation. The failure it exists to catch is the
+        # quiet one: a ticker format changes, a third of the events stop
+        # linking, and the collection keeps running and looks merely slow.
+        print(f"::error title=identification degraded::{len(unidentified)} of "
+              f"{len(seen_events)} open events found no fixture ({missed:.0%}, "
+              f"ceiling {args.max_unidentified:.0%})")
+        return 1
     return 0
 
 

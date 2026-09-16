@@ -22,6 +22,17 @@ MANIFEST = "manifest.json"
 BEST = "best.json"
 
 
+def fingerprint_components(components: dict, model: str | None) -> str:
+    """The same identity, for a bare component dict.
+
+    GEPA's archive holds components, not ``Harness`` objects, and building a
+    harness around each one only to hash it would make the archive depend on a
+    schema it has no other reason to know.
+    """
+    canon = json.dumps({**components, "model": model}, sort_keys=True, default=str).encode()
+    return hashlib.sha256(canon).hexdigest()[:12]
+
+
 def fingerprint(harness: Harness) -> str:
     """Identity of what the loop can change, and nothing else.
 
@@ -36,9 +47,7 @@ def fingerprint(harness: Harness) -> str:
     different harness; the description is out because prose about a harness is
     not the harness.
     """
-    canon = json.dumps({**harness.to_components(), "model": harness.config.model},
-                       sort_keys=True, default=str).encode()
-    return hashlib.sha256(canon).hexdigest()[:12]
+    return fingerprint_components(harness.to_components(), harness.config.model)
 
 
 @dataclass
@@ -56,6 +65,10 @@ class Generation:
     candidate: dict[str, Any] = field(default_factory=dict)
     decision: dict[str, Any] = field(default_factory=dict)
     search: dict[str, Any] = field(default_factory=dict)       # what GEPA did
+    # The confirmation pass, present only when the gate said yes. Matches the
+    # search and the gate have never seen, scored once, to catch the winner's
+    # curse before it becomes the incumbent.
+    audit: dict[str, Any] = field(default_factory=dict)
     llm: dict[str, Any] = field(default_factory=dict)          # calls, cache hits, spend
 
     @property

@@ -13,6 +13,7 @@ above zero.
 from __future__ import annotations
 
 import random
+import statistics
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -23,6 +24,10 @@ from .task import Outcome, Rollout, Task
 #: cluster bootstrap can only draw {A,A}, {A,B} and {B,B}, and the interval it
 #: reports collapses toward the observed difference — narrow, and meaningless.
 MIN_GROUPS = 8
+
+#: One-sided 2.5% at 80% power, in standard errors. Used only to report what
+#: size of effect a test could have resolved, never to decide anything.
+DETECTION_Z = 1.96 + 0.84
 
 
 def paired_bootstrap(task: Task, candidate: list[Rollout], incumbent: list[Rollout], *,
@@ -68,8 +73,22 @@ def paired_bootstrap(task: Task, candidate: list[Rollout], incumbent: list[Rollo
         draws.append(diff(drawn))
     draws.sort()
     lo, hi = draws[int((1 - level) / 2 * n)], draws[min(n - 1, int((1 + level) / 2 * n))]
+    # What this test could have seen, as well as what it did see.
+    #
+    # An interval that straddles zero says "not proven", and "not proven" means
+    # two very different things depending on whether the test could resolve the
+    # effect at all. On a thirty-five match held-out set the smallest gap this
+    # can resolve is about 0.027 pooled skill, and no rewrite anyone has found
+    # has moved it by more than 0.01 — so every rejection so far was a statement
+    # about the sample size, not about the candidate. Recording it makes the
+    # difference visible in the manifest instead of inferable by someone who
+    # already suspected it.
+    se = statistics.pstdev(draws) or 0.0
+    detectable = DETECTION_Z * se
     return {"paired": len(pairs), "groups": len(keys), "diff": round(observed, 4),
-            "low": round(lo, 4), "high": round(hi, 4), "usable": True}
+            "low": round(lo, 4), "high": round(hi, 4), "usable": True,
+            "se": round(se, 5), "detectable": round(detectable, 4),
+            "underpowered": abs(observed) < detectable}
 
 
 @dataclass
@@ -129,6 +148,12 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         ok = False
         reasons.append(f"held-out gain {hold['diff']:+.3f} is not distinguishable from noise "
                        f"(95% interval {hold['low']:+.3f} to {hold['high']:+.3f})")
+        if hold.get("underpowered"):
+            # Not a rejection of the candidate. This test, on this many matches,
+            # could not have resolved a gain of this size from any candidate.
+            reasons.append(f"and could not have: on {hold['groups']} fixtures this test "
+                           f"resolves {hold['detectable']:+.3f} at best, so a gain of "
+                           f"{abs(hold['diff']):.3f} was never visible to it")
     else:
         reasons.append(f"held-out gain {hold['diff']:+.3f} ({hold['low']:+.3f} to {hold['high']:+.3f})")
     if train["paired"] >= 2 and train["diff"] < 0:

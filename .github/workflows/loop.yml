@@ -47,13 +47,16 @@ on:
         default: benchmarks/soccer-2026.json
       holdout:
         description: "fixtures kept from the optimizer"
-        default: "35"
+        default: "100"
+      audit:
+        description: "fixtures shown to nothing until a promotion needs confirming"
+        default: "60"
       per_fixture:
         description: "windows kept per match; 0 keeps all. Power comes from matches, not windows within one"
         default: "8"
       max_generation_usd:
         description: "backstop on the whole generation; 0 removes it"
-        default: "45"
+        default: "60"
       trace:
         description: "keep every step each harness took, so the reader can show it"
         type: boolean
@@ -138,17 +141,19 @@ jobs:
         run: |
           python scripts/preflight.py \
             --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
-            --holdout "${{ inputs.holdout || '35' }}" \
+            --holdout "${{ inputs.holdout || '100' }}" \
+            --audit "${{ inputs.audit || '60' }}" \
             --per-fixture "${{ inputs.per_fixture || '8' }}" \
-            --max-metric-calls "${{ inputs.max_metric_calls || '1000' }}"
+            --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
 
       - name: Where this generation goes
         id: chain
         if: github.event_name == 'schedule' || inputs.chain
         run: |
           eval "$(rsi-arena next --runs-dir runs --seed harnesses/horizon-5m.json)"
-          echo "harness=$harness"   >> "$GITHUB_OUTPUT"
-          echo "run_dir=$run_dir"   >> "$GITHUB_OUTPUT"
+          echo "harness=$harness"          >> "$GITHUB_OUTPUT"
+          echo "run_dir=$run_dir"          >> "$GITHUB_OUTPUT"
+          echo "generations=$generations"  >> "$GITHUB_OUTPUT"
           echo "continuing from ${harness} into ${run_dir} (generation $((generations + 1)))"
 
       - name: Optimize
@@ -158,10 +163,12 @@ jobs:
           run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
           args=(--harness "$harness" --run-dir "$run_dir"
                 --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}"
-                --holdout "${{ inputs.holdout || '35' }}"
+                --holdout "${{ inputs.holdout || '100' }}"
+                --audit "${{ inputs.audit || '60' }}"
+                --generation "${{ steps.chain.outputs.generations || '0' }}"
                 --per-fixture "${{ inputs.per_fixture || '8' }}"
-                --max-metric-calls "${{ inputs.max_metric_calls || '1000' }}"
-                --max-generation-usd "${{ inputs.max_generation_usd || '45' }}"
+                --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
+                --max-generation-usd "${{ inputs.max_generation_usd || '60' }}"
                 --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")
           [ "${{ inputs.trace || 'true' }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")

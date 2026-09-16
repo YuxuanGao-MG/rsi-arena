@@ -367,3 +367,77 @@ def test_the_rewriter_is_told_every_tool_it_may_reach_for(t0, history):
     for name in tk.tools():
         assert name in prompt, f"{name} is in the box and not in the prompt"
     assert len(tk.tools()) > len(base.tools), "the box is wider than what the seed uses"
+
+
+# -- the three-way split ------------------------------------------------------
+
+def test_the_audit_set_never_moves_and_the_holdout_does():
+    """Rotation bounds erosion; the frozen slice is the thing that can still be trusted."""
+    from rsi_arena.loop import three_way_split
+
+    class I:
+        def __init__(self, g):
+            self.group = g
+
+    inst = [I(f"m{i}") for i in range(200)]
+    audits, holdouts = [], []
+    for epoch in range(3):
+        train, hold, audit = three_way_split(inst, audit=40, holdout=60, seed=0, epoch=epoch)
+        assert len(train) + len(hold) + len(audit) == 200
+        audits.append({x.group for x in audit})
+        holdouts.append({x.group for x in hold})
+        # Nothing the gate or the search touches may be in the audit set.
+        assert not ({x.group for x in train} & audits[-1])
+        assert not (holdouts[-1] & audits[-1])
+    assert audits[0] == audits[1] == audits[2], "the audit set is frozen"
+    assert holdouts[0] != holdouts[1], "the evolutionary held-out set rotates"
+
+
+def test_a_split_with_no_audit_set_is_the_old_two_way_one():
+    from rsi_arena.loop import three_way_split
+
+    class I:
+        def __init__(self, g):
+            self.group = g
+
+    inst = [I(f"m{i}") for i in range(50)]
+    train, hold, audit = three_way_split(inst, audit=0, holdout=10, seed=0, epoch=0)
+    assert audit == [] and len(hold) == 10 and len(train) == 40
+
+
+def test_the_probe_is_not_one_league():
+    """sorted(groups)[:20] on Kalshi tickers is alphabetical, and alphabetical is by league."""
+    from rsi_arena.loop import probe_sample
+    groups = ({f"KXMLSGAME-{i}" for i in range(120)}
+              | {f"KXBUNDESLIGAGAME-{i}" for i in range(24)}
+              | {f"KXEPLGAME-{i}" for i in range(40)})
+    picked = probe_sample(groups, 20, seed=0)
+    leagues = {g.split("-")[0] for g in picked}
+    assert len(picked) == 20
+    assert len(leagues) == 3, f"the probe drew from {leagues}"
+
+
+def test_each_component_reflects_on_evidence_it_can_act_on(t0, history):
+    """Byte-identical records for all three is why `tools` never once changed.
+
+    Across fourteen candidates in two thousand-call searches the tool
+    allowlist's hash was constant. A prompt asked to rewrite a tool list while
+    reading prose and a forecast has nothing tool-shaped to reason about.
+    """
+    tk = task(history, t0)
+    adapter = TaskAdapter(tk, Harness.load(BASE), FakeLLM(oracle))
+    batch = adapter.evaluate(tk.instances()[:2], adapter.base.to_components(), capture_traces=True)
+    data = adapter.make_reflective_dataset(adapter.base.to_components(), batch,
+                                           ["tools", "plan", "context"])
+
+    tools_in = data["tools"][0]["Inputs"]
+    plan_in = data["plan"][0]["Inputs"]
+    context_in = data["context"][0]["Inputs"]
+    assert tools_in != plan_in != context_in
+
+    # The tools prompt must be able to see what it was never given.
+    assert "tools available but never called" in tools_in
+    untried = tools_in["tools available but never called"]
+    assert untried != "none" and "market_shock" in untried, untried
+    assert tools_in["tools called, in order"][0] == "market_quote"
+    assert "the call sequence" in plan_in and "the call sequence" not in context_in

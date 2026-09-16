@@ -89,6 +89,48 @@ def split_by_group(instances: list[Instance], holdout: int, seed: int = 0
     return [i for i in instances if i.group not in held], [i for i in instances if i.group in held]
 
 
+def three_way_split(instances: list[Instance], audit: int, holdout: int, seed: int = 0,
+                    epoch: int = 0) -> tuple[list[Instance], list[Instance], list[Instance]]:
+    """Train, the held-out set the gate reads, and a frozen audit set.
+
+    Two problems this answers, both measured rather than assumed.
+
+    The gate reads a 95% cluster-bootstrap interval, and ``scripts/power.py``
+    puts the smallest gap a thirty-five match held-out set can resolve at about
+    0.027 pooled skill. The best rewrite anyone has found moved it by under 0.01.
+    A test that cannot see its own search's output does not reject candidates —
+    it rejects everything, and three generations of "no improvement" were never
+    evidence about the rewrites. More matches is the only fix; loosening a gate
+    that cannot measure only makes it wrong faster.
+
+    The second problem is that the same held-out matches were being queried
+    twice a day forever at a one-sided 2.5% threshold, which is textbook holdout
+    erosion. So the evolutionary held-out set rotates on ``epoch``, bounding how
+    many times any particular set of matches is asked; and a slice is cut away
+    first, on the fixed seed, and never shown to search or gate at all. That
+    audit set is scored only to confirm a promotion, which is why it can afford
+    to be both large and honest: nothing has been promoted yet, so it has cost
+    nothing so far.
+
+    Rotation is not free — it invalidates the incumbent's cached held-out
+    rollouts, which is a full extra evaluation — so ``epoch`` is expected to
+    advance every few generations rather than every one.
+    """
+    groups = sorted({i.group for i in instances})
+    random.Random(seed).shuffle(groups)
+    audit = max(0, min(audit, max(0, len(groups) - 2)))
+    held_audit = set(groups[:audit])
+
+    rest = groups[audit:]
+    random.Random(seed + epoch * 7919).shuffle(rest)     # a prime, so epochs do not alias
+    holdout = max(0, min(holdout, len(rest) - 1))
+    held_out = set(rest[:holdout])
+
+    return ([i for i in instances if i.group not in held_audit and i.group not in held_out],
+            [i for i in instances if i.group in held_out],
+            [i for i in instances if i.group in held_audit])
+
+
 def probe_sample(groups: set[str], n: int, seed: int = 0) -> set[str]:
     """``n`` groups drawn to stand for the rest, stratified by their prefix.
 

@@ -18,10 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from .harness import Harness, OpenRouter, SyncLLM
-from .loop import (Generation, Rollout, Settings, TaskAdapter, accept, evaluate, lineage,
-                   probe_sample, reflection_templates, render_lineage, split_by_group,
-                   summarise)
-from .loop.generation import BEST, fingerprint, resolve_harness
+from .loop import (ARCHIVE, Archive, Entry, Generation, Rollout, Settings, TaskAdapter, accept,
+                   evaluate, from_gepa_state, lineage, probe_sample, reflection_templates,
+                   render_lineage, split_by_group, summarise, three_way_split)
+from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
 from .topics import TOPICS, load_topic
 
 
@@ -36,6 +36,12 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--benchmark", default=d.benchmark)
     ap.add_argument("--windows-dir", default=d.windows_dir)
     ap.add_argument("--holdout", type=int, default=d.holdout, help="fixtures the optimizer never sees")
+    ap.add_argument("--audit", type=int, default=d.audit,
+                    help="fixtures shown to nothing until a promotion needs confirming")
+    ap.add_argument("--generation", type=int, default=d.generation,
+                    help="which turn of the loop this is; rotates the held-out set")
+    ap.add_argument("--holdout-rotate-every", type=int, default=d.holdout_rotate_every,
+                    help="generations before the held-out matches are redrawn")
     ap.add_argument("--seed", type=int, default=d.seed)
     ap.add_argument("--every", type=int, default=d.every, help="minutes between windows")
     ap.add_argument("--per-fixture", type=int, default=d.per_fixture,
@@ -259,11 +265,16 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     gen = Generation(run_dir=str(run_dir), topic=task.name, parent=parent, incumbent=source,
                      incumbent_fingerprint=fingerprint(incumbent), settings=s.to_dict())
 
-    train, hold = split_by_group(task.instances(), s.holdout, s.seed)
-    gen.split = {"train_groups": sorted({i.group for i in train}), "holdout_groups": sorted({i.group for i in hold}),
-                 "train": len(train), "holdout": len(hold)}
+    epoch = s.generation // max(1, s.holdout_rotate_every)
+    train, hold, audit = three_way_split(task.instances(), s.audit, s.holdout, s.seed, epoch)
+    gen.split = {"train_groups": sorted({i.group for i in train}),
+                 "holdout_groups": sorted({i.group for i in hold}),
+                 "audit_groups": sorted({i.group for i in audit}),
+                 "train": len(train), "holdout": len(hold), "audit": len(audit),
+                 "epoch": epoch, "generation": s.generation}
     log(f"train {len(train)} instances in {len(gen.split['train_groups'])} groups; "
-        f"held out {len(hold)} in {len(gen.split['holdout_groups'])}")
+        f"held out {len(hold)} in {len(gen.split['holdout_groups'])}; "
+        f"audit {len(audit)} in {len(gen.split['audit_groups'])} (epoch {epoch})")
     if not train:
         log("nothing to optimize on")
         return 1
@@ -296,9 +307,39 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     gen.save()
     log(f"  train {gen.baseline['train']['statistic']:+.3f}   held-out {gen.baseline['holdout']['statistic']:+.3f}")
 
+    # Where the search starts, which is not necessarily the incumbent.
+    #
+    # The incumbent is what the gate compares against — that is a claim about
+    # held-out evidence and only the gate may change it. Where to *look* is a
+    # different question with a different answer: GEPA's ablation puts
+    # frontier-proportional selection at +12.44% against +6.05% for always taking
+    # the best mean scorer, and the Darwin Gödel Machine's failure mode for
+    # keeping only the latest agent is that the stepping stone back to solid
+    # ground has been deleted. So the parent is drawn from everything ever found,
+    # weighted by how much of the instance space it uniquely owns and discounted
+    # by how often it has already been mined.
+    archive = Archive.load(Path(args.runs_dir if hasattr(args, "runs_dir") else "runs") / ARCHIVE)
+    seed_entry = None
+    if len(archive) > 1:
+        picked = archive.sample_parents(1, seed=s.seed + len(archive))
+        if picked and picked[0].id != gen.incumbent_fingerprint:
+            seed_entry = picked[0]
+    seed_components = seed_entry.components if seed_entry else incumbent.to_components()
+    gen.search = {"seed": seed_entry.id if seed_entry else gen.incumbent_fingerprint,
+                  "seed_is_incumbent": seed_entry is None,
+                  "archive": archive.summary()}
+    if seed_entry:
+        log(f"  searching from archive candidate {seed_entry.id} "
+            f"(found in {seed_entry.generation}), not the incumbent")
+
+    # The valset in the order GEPA sees it, so its per-instance score matrix can
+    # be read back afterwards. Positional against `prog_candidate_val_subscores`
+    # and unrecoverable from anything else once the run is over.
+    (run_dir / "valset.json").write_text(json.dumps([i.id for i in train]))
+
     adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency)
     result = gepa.optimize(
-        seed_candidate=incumbent.to_components(), trainset=train, valset=train, adapter=adapter,
+        seed_candidate=seed_components, trainset=train, valset=train, adapter=adapter,
         reflection_lm=SyncLLM(llm, s.reflection_model),
         reflection_prompt_template=reflection_templates(task, incumbent),
         reflection_minibatch_size=s.minibatch, max_metric_calls=s.max_metric_calls,
@@ -307,9 +348,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     candidate.name = f"{incumbent.name.split('+')[0]}+{run_dir.name}"
     candidate.save(run_dir / BEST)
     gen.candidate_fingerprint = fingerprint(candidate)
-    gen.search = {"candidates": len(result.candidates), "metric_calls": result.total_metric_calls,
-                  "best_idx": result.best_idx,
-                  "best_train_value": round(result.val_aggregate_scores[result.best_idx], 4)}
+    gen.search.update({"candidates": len(result.candidates), "metric_calls": result.total_metric_calls,
+                       "best_idx": result.best_idx,
+                       "best_train_value": round(result.val_aggregate_scores[result.best_idx], 4)})
     log(f"search: {gen.search['candidates']} candidates, best mean value {gen.search['best_train_value']:.3f}")
 
     # Cascade: a cheap look before the expensive one.
@@ -360,6 +401,55 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                       max_cost_ratio=s.max_cost_ratio, seed=s.seed,
                       unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint,
                       stopped_early=stopped_early)
+    # Keep the losers. Six of the seven candidates a search proposes have been
+    # deleted at this line every generation so far, along with the per-instance
+    # matrix that says what each of them was uniquely good at — which is the one
+    # thing the next generation most wants to know.
+    found = from_gepa_state(run_dir, run_dir.name, [i.id for i in train],
+                            lambda c: fingerprint_components(c, candidate.config.model),
+                            promoted_id=gen.candidate_fingerprint if decision.accepted else None)
+    for entry in found:
+        archive.add(entry)
+    if not archive.get(gen.incumbent_fingerprint):
+        # The incumbent belongs in the archive even though no search proposed it:
+        # a first generation would otherwise start from an empty frontier.
+        archive.add(Entry(id=gen.incumbent_fingerprint, components=incumbent.to_components(),
+                          generation=str(parent or "seed"), promoted=True,
+                          note="the harness this generation started from"))
+    archive.save(Path("runs") / ARCHIVE)
+    gen.search["archive_after"] = archive.summary()
+    log(f"archive: {len(archive)} candidates, {len(archive.frontier())} on the frontier, "
+        f"{gen.search['archive_after']['instances']} instances remembered")
+
+    # The confirmation pass.
+    #
+    # The held-out set the gate reads has been rotated but is still chosen from
+    # the pool the search draws its train set from, and it is read twice a day.
+    # The audit set is cut away before anything else on the fixed seed and shown
+    # to nothing until this line. A promotion that survives it is a promotion;
+    # one that does not is the winner's curse caught in the act. It costs
+    # nothing until something is accepted, which so far is never.
+    if decision.accepted and audit:
+        log(f"confirming on {len(audit)} audit instances the search has never seen")
+        base_audit = _bench(task, incumbent, audit, llm, s)
+        cand_audit = _bench(task, candidate, audit, llm, s)
+        confirm = accept(task, candidate_train=cand_train, incumbent_train=base_train,
+                         candidate_holdout=cand_audit, incumbent_holdout=base_audit,
+                         max_cost_ratio=s.max_cost_ratio, seed=s.seed)
+        gen.audit = {"baseline": summarise(task, base_audit),
+                     "candidate": summarise(task, cand_audit),
+                     "decision": confirm.to_dict()}
+        _dump_rollouts(run_dir / "rollouts" / "baseline.audit.json", base_audit, trace=args.trace)
+        _dump_rollouts(run_dir / "rollouts" / "candidate.audit.json", cand_audit, trace=args.trace)
+        if not confirm.accepted:
+            decision.accepted = False
+            decision.reasons = ([f"held-out said yes, the audit set said no: "
+                                 f"{'; '.join(confirm.reasons)}"] + list(decision.reasons))
+            log("  the audit set did not confirm it; the promotion is withdrawn")
+        else:
+            log(f"  confirmed: {gen.audit['candidate']['statistic']:+.3f} against "
+                f"{gen.audit['baseline']['statistic']:+.3f}")
+
     gen.decision = decision.to_dict()
     gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits, "spent_usd": round(llm.spent_usd, 4),
                "budget_usd": s.max_generation_usd or None, "exhausted": llm.over_budget}

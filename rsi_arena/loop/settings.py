@@ -13,6 +13,16 @@ class Settings:
     benchmark: str = "benchmarks/epl-2026-09.json"
     windows_dir: str = "benchmarks/windows"         # the question set, built once and versioned
     holdout: int = 2                               # instance groups (fixtures) the optimizer never sees
+    # Matches cut away before anything else and never shown to the search or the
+    # gate. Scored only to confirm a promotion. Free until something is promoted,
+    # which is why it can be generous.
+    audit: int = 0
+    # Which turn of the loop this is, and how often the held-out matches rotate.
+    # Rotation bounds how many times one set of matches can be queried at a
+    # one-sided 2.5% threshold; rotating every generation would be stricter and
+    # would also pay for the incumbent's held-out evaluation again every time.
+    generation: int = 0
+    holdout_rotate_every: int = 4
     seed: int = 0
     every: int = 5                                 # minutes between windows
     per_fixture: int = 0                           # cap windows kept per match; 0 keeps all
@@ -34,16 +44,20 @@ class Settings:
     # The search is the largest recurring line now that the probe replaced the
     # full train evaluation, so it is the number to revisit if a generation ever
     # gets accepted and the loop is worth running deeper.
-    max_metric_calls: int = 500                    # instance evaluations GEPA may spend
+    max_metric_calls: int = 600                    # instance evaluations GEPA may spend
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
     # What a whole generation may spend. The per-window ledger caps one run at
     # twenty cents; until today nothing capped the thousand runs around it, so
     # the real ceiling was `max_metric_calls` times whatever a window happened
     # to cost — and a candidate that grows the context roughly doubles that.
-    # Set a little above the ~$35 a healthy generation costs, so it is a
-    # backstop against a runaway rather than a budget the search plans around.
-    max_generation_usd: float = 45.0
+    # Sized against what the split actually costs. At a hundred held-out matches
+    # and eight windows each, one side of the held-out evaluation is eight
+    # hundred windows at roughly two cents; with the probe and a six-hundred-call
+    # search that is about fifty dollars the first time. Later generations are
+    # cheaper because the incumbent's held-out rollouts are still in the cache
+    # until the held-out set rotates. Sixty is a backstop, not a plan.
+    max_generation_usd: float = 60.0
     # Train matches the candidate is scored on. Doubles as the regression
     # check, so the full train set is never re-scored: the gate asks of train
     # only "did this get worse", which twenty matches answer as well as a

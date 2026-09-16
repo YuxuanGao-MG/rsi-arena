@@ -1,0 +1,155 @@
+"""The archive keeps what the search found, including what it found by losing.
+
+Offline. The point of every test here is that a candidate which loses on the
+mean is not the same thing as a candidate which is no use, and the difference
+is per-instance.
+"""
+
+from __future__ import annotations
+
+import pickle
+
+import pytest
+
+from rsi_arena.loop import Archive, Entry, from_gepa_state
+from rsi_arena.loop.generation import fingerprint_components
+
+
+def entry(name: str, scores: dict[str, float], **kw) -> Entry:
+    return Entry(id=name, components={"context": name}, generation="g1",
+                 scores=scores, **kw)
+
+
+def spread(value: float, n: int = 10) -> dict[str, float]:
+    return {f"i{i}": value for i in range(n)}
+
+
+def test_a_specialist_survives_a_better_generalist():
+    """The whole reason for the archive.
+
+    ``narrow`` is worse everywhere but one instance, where it is the only thing
+    that has ever worked. Greedy selection deletes it. That deletion is what the
+    Darwin Gödel Machine's ablation is about, and what GEPA's +6.05% against
+    +12.44% measures.
+    """
+    a = Archive([entry("broad", spread(0.6)),
+                 entry("narrow", {**spread(0.4), "i3": 0.99})])
+    ids = {e.id for e in a.frontier()}
+    assert ids == {"broad", "narrow"}
+    assert a.wins()["narrow"] == ["i3"]
+    assert len(a.wins()["broad"]) == 9
+
+
+def test_a_candidate_worse_everywhere_is_dropped():
+    a = Archive([entry("good", spread(0.6)), entry("bad", spread(0.5))])
+    assert [e.id for e in a.frontier()] == ["good"]
+
+
+def test_a_candidate_that_wins_nothing_is_not_on_the_frontier():
+    """The frontier is candidates that own something, not every candidate."""
+    a = Archive([entry("full", spread(0.6, 20)), entry("nowhere", spread(0.5, 20))])
+    assert [e.id for e in a.frontier()] == ["full"]
+
+
+def test_domination_needs_enough_shared_instances():
+    """Being asked fewer questions is not the same as answering them better.
+
+    ``barely_seen`` wins both instances it was shown. ``full`` is better on the
+    other eighteen, which it alone has seen. Three shared instances is not
+    enough to call that domination, so both stay.
+    """
+    a = Archive([entry("full", {**spread(0.6, 20), "i0": 0.4, "i1": 0.4}),
+                 entry("barely_seen", {"i0": 0.5, "i1": 0.5})])
+    assert {e.id for e in a.frontier()} == {"full", "barely_seen"}
+
+
+def test_parents_are_sampled_in_proportion_to_what_they_own():
+    a = Archive([entry("wide", spread(0.9, 20)),
+                 entry("narrow", {**spread(0.1, 20), "i0": 0.95})])
+    picks = []
+    for s in range(60):
+        picks.append(a.sample_parents(1, seed=s)[0].id)
+        # Reset between draws: this measures the weighting at a fixed state, not
+        # the decay, which the next test measures on its own.
+        for e in a.entries:
+            e.children = 0
+    assert picks.count("wide") > picks.count("narrow")
+    assert picks.count("narrow") > 0, "a specialist must still be reachable"
+
+
+def test_a_mined_parent_steps_aside():
+    """1/(1+children). Without it one ancestor is sampled until the heat death."""
+    a = Archive([entry("wide", spread(0.9, 40)), entry("narrow", {**spread(0.1, 40), "i0": 0.95})])
+    first = a.sample_parents(1, seed=0)[0]
+    assert first.children == 1
+    wide = a.get("wide")
+    picks = []
+    for s in range(20):
+        wide.children, a.get("narrow").children = 200, 0
+        picks.append(a.sample_parents(1, seed=s)[0].id)
+    assert picks.count("narrow") > picks.count("wide"), \
+        "a parent mined two hundred times should be yielding to one mined never"
+
+
+def test_sampling_several_parents_returns_several_distinct_ones():
+    a = Archive([entry(f"c{i}", {**spread(0.5, 12), f"i{i}": 0.9}) for i in range(5)])
+    picked = a.sample_parents(3, seed=7)
+    assert len({e.id for e in picked}) == 3
+
+
+def test_the_same_candidate_found_twice_is_one_entry_with_both_readings():
+    a = Archive()
+    a.add(entry("x", {"i0": 0.5}))
+    a.add(Entry(id="x", components={"context": "x"}, generation="g2",
+                scores={"i1": 0.7}, promoted=True))
+    assert len(a) == 1
+    only = a.entries[0]
+    assert only.scores == {"i0": 0.5, "i1": 0.7} and only.promoted
+
+
+def test_round_trips_through_disk(tmp_path):
+    a = Archive([entry("a", spread(0.6)), entry("b", spread(0.4))])
+    a.sample_parents(1, seed=0)
+    path = tmp_path / "archive.json"
+    a.save(path)
+    back = Archive.load(path)
+    assert len(back) == 2
+    assert {e.id for e in back.frontier()} == {e.id for e in a.frontier()}
+    assert sum(e.children for e in back.entries) == 1
+
+
+def test_an_unreadable_archive_is_empty_rather_than_fatal(tmp_path):
+    """It is memory, not evidence. Losing it costs efficiency; refusing to run costs the generation."""
+    path = tmp_path / "archive.json"
+    path.write_text("{not json")
+    assert len(Archive.load(path)) == 0
+
+
+def test_reads_a_gepa_state_whose_rows_are_dicts(tmp_path):
+    """The rows are dicts keyed by valset position, not lists.
+
+    Read as lists they enumerate their own keys, and every candidate comes out
+    with the identical row 0..N-1 — thirteen candidates, one distinct score row,
+    a mean of 50.5 on a scale that tops out at 1. That is exactly what the first
+    version of this reader produced.
+    """
+    run = tmp_path / "run"
+    (run / "gepa").mkdir(parents=True)
+    state = {"program_candidates": [{"context": "a"}, {"context": "b"}],
+             "prog_candidate_val_subscores": [{0: 0.5, 1: 0.25}, {0: 0.75, 1: 0.5}],
+             "parent_program_for_candidate": [None, 0],
+             "num_metric_calls_by_discovery": [0, 40]}
+    (run / "gepa" / "gepa_state.bin").write_bytes(pickle.dumps(state))
+
+    found = from_gepa_state(run, "gen9", ["i0", "i1"],
+                            lambda c: fingerprint_components(c, "m"))
+    assert len(found) == 2
+    assert found[0].scores == {"i0": 0.5, "i1": 0.25}
+    assert found[1].scores == {"i0": 0.75, "i1": 0.5}
+    assert found[1].parent == found[0].id
+    assert found[1].discovered_after_calls == 40
+    assert all(0.0 <= v <= 1.0 for e in found for v in e.scores.values())
+
+
+def test_a_missing_gepa_state_is_not_an_error(tmp_path):
+    assert from_gepa_state(tmp_path, "g", ["i0"], lambda c: "x") == []

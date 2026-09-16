@@ -1,0 +1,154 @@
+# Forecasts on markets that are still trading, collected while the matches are on.
+#
+# The loop scores the harness against settled matches: every answer is graded
+# against a price already on disk. This is the other half — the same harness,
+# the same frozen toolbox, pointed at a book nobody has read the end of — and it
+# only exists during the hours somebody is playing football. Rows go to Postgres
+# and nothing is committed back: runs/live/ is gitignored on purpose, because a
+# workflow that pushes to main every hour makes the lineage unreadable.
+#
+# Needs two repository secrets: OPENROUTER_API_KEY and SUPABASE_DB_URL.
+name: live
+on:
+  # Kickoff times, in UTC, and the schedule that follows them:
+  #
+  #   European weekday evenings   17:00–22:00 (a 22:00 kickoff ends about 23:50)
+  #   European weekend afternoons 11:00 onwards, through the evening slots
+  #   MLS and Liga MX             23:00–05:00, the night after each of those
+  #
+  # So: every day 00:05–04:05 for the Americas, which is the same block whether
+  # the matches that feed it were Tuesday's or Saturday's; weekdays 17:05–23:05
+  # for Europe; weekends from 11:05 instead, because Saturday's first kickoff is
+  # six hours before Tuesday's. Each invocation collects for fifty minutes, so
+  # an hourly cron covers the hour with a ten-minute seam for the publish and
+  # the queue, and 05:00–11:00 — night in the Americas, morning in Europe, no
+  # league in this list playing — is left alone rather than paid for.
+  #
+  # Ninety-six invocations a week. Almost all of them cost nothing: with no open
+  # market the collector reports "nothing live" and never calls a model. The
+  # ceiling below is what binds on the evenings that do have matches.
+  schedule:
+    - cron: "5 0-4 * * *"        # Americas night, every day
+    - cron: "5 17-23 * * 1-5"    # European weekday evenings
+    - cron: "5 11-23 * * 0,6"    # weekends, from the lunchtime kickoffs
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "leagues to sweep"
+        default: EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE
+      minutes:
+        description: "how long to collect; must leave room under the job timeout"
+        default: "50"
+      max_usd:
+        description: "model spend this invocation may not pass"
+        default: "2"
+      max_contracts:
+        description: "markets forecast per sweep"
+        default: "6"
+      max_unidentified:
+        description: "fail the job past this fraction of unlinkable open events"
+        default: "0.10"
+      harness:
+        description: "the harness that forecasts"
+        default: harnesses/horizon-5m.json
+
+# Read-only on purpose. Live rows belong in Postgres, and the one thing this
+# workflow must never do is write to the branch the loop chains its generations
+# off.
+permissions:
+  contents: read
+
+# Invocations are an hour apart and each runs for fifty minutes, so a queued
+# runner is enough to make two of them overlap — two collectors appending to one
+# forecasts.jsonl and both spending against their own ceiling. Queue instead.
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # Fifty minutes of collection, then up to six more waiting out the horizon
+    # of the last sweep's forecasts — a forecast is only worth keeping once the
+    # price it predicted has printed — then the publish. Seventy leaves room for
+    # a slow checkout without leaving room for a hang.
+    timeout-minutes: 70
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # At job level, not on the publish step: a step's own `env:` block is not
+      # in scope when that step's `if:` is evaluated, which is how the loop's
+      # reader went unfed for a week.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+
+      # The model cache only, and it earns its place on a re-run of a failed
+      # invocation. The tool cache under .cache/tools is deliberately not used
+      # here: it has no TTL because settled history cannot change, and these
+      # markets are still trading, so collect_live.py builds its box through
+      # `live_tools` instead.
+      - name: Restore the model cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: live-cache-${{ github.run_id }}
+          restore-keys: live-cache-
+
+      - name: Check the key
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      # Fails the job when more than a tenth of the open events could not be
+      # attached to a fixture. Identification is 112 of 112 today, so this is a
+      # regression alarm: the failure worth catching is the quiet one, where a
+      # ticker format shifts and the collection keeps running against a third
+      # fewer matches while looking merely uneventful. The script writes the
+      # spend, the counts and a ::warning:: per unlinked event into the step
+      # summary itself.
+      - name: Collect
+        # Named explicitly because that is what turns on `pipefail`: the default
+        # shell is `bash -e`, under which `python ... | tee` reports tee's exit
+        # code and the identification alarm below would never fail anything.
+        shell: bash
+        run: |
+          python scripts/collect_live.py \
+            --league "${{ inputs.league || 'EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE' }}" \
+            --harness "${{ inputs.harness || 'harnesses/horizon-5m.json' }}" \
+            --minutes "${{ inputs.minutes || '50' }}" \
+            --max-contracts "${{ inputs.max_contracts || '6' }}" \
+            --max-usd "${{ inputs.max_usd || '2' }}" \
+            --max-unidentified "${{ inputs.max_unidentified || '0.10' }}" | tee live.txt
+
+      # `always()`, because the two ways the collect step fails — identification
+      # degrading past the threshold, or the job being cancelled — both leave
+      # real forecasts on disk that nothing else will ever publish. A missing
+      # database secret is a warning rather than a failure for the same reason
+      # it is in the loop: the work already happened.
+      - name: Publish to the reader
+        if: always() && env.SUPABASE_DB_URL != ''
+        shell: bash
+        run: |
+          pip install -q psycopg2-binary
+          python scripts/publish_live.py | tee -a live.txt \
+            || echo "::warning::publishing failed; the forecasts are in the run artifact"
+          { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # The only copy outside Postgres. Kept for the days the publish fails, and
+      # kept short: this runs a dozen times a day.
+      - name: Keep the forecasts as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-${{ github.run_id }}
+          path: runs/live
+          retention-days: 14
+          if-no-files-found: ignore

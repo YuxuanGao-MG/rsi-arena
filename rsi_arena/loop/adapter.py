@@ -22,6 +22,10 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
     def __init__(self, task: Task, base: Harness, llm: LLM, *, concurrency: int = 4) -> None:
         self.task, self.base, self.llm, self.concurrency = task, base, llm, concurrency
         self.evaluations = 0
+        # Resolved once. The tools prompt needs to know what was *not* called as
+        # much as what was, and asking the topic per trajectory would cost the
+        # question set each time.
+        self.available = _available(task, base)
 
     def evaluate(self, batch: list[Instance], candidate: dict[str, str],
                  capture_traces: bool = False) -> EvaluationBatch[dict, dict]:
@@ -47,15 +51,56 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
 
     def make_reflective_dataset(self, candidate: dict[str, str], eval_batch: EvaluationBatch[dict, dict],
                                 components_to_update: list[str]) -> Mapping[str, Sequence[Mapping[str, Any]]]:
-        records = []
-        for traj in eval_batch.trajectories or []:
-            records.append({
-                "Inputs": {**{k: _short(v, 600) for k, v in traj["inputs"].items()},
-                           "tool answers": _short(traj["tools"], 2500)},
-                "Generated Outputs": _short(traj["output"], 1500),
-                "Feedback": f"{traj['feedback']} Score {traj['value']:.2f}.",
-            })
-        return {component: records for component in components_to_update}
+        """What each component is shown of a batch. Not the same thing for each.
+
+        It used to be byte-identical for all three, and across fourteen
+        candidates over two thousand-call searches the ``tools`` component's hash
+        never changed once — the tool list was the one thing the loop is supposed
+        to evolve and the one thing it never touched. A prompt asked to rewrite a
+        tool allowlist while reading nothing but prose and a forecast has nothing
+        tool-shaped to reason about, so it returns what it was given.
+
+        Two independent 2026 harness ablations report that gains localise to
+        tools and memory rather than the system prompt, which makes the component
+        we were not mutating the one most likely to matter.
+
+        So each component gets the evidence it can act on: ``tools`` sees which
+        tools were called, what each cost in latency, which returned errors, and
+        which available tools were never tried; ``plan`` sees the call sequence
+        and the answers; ``context`` sees the prose and the outcome.
+        """
+        by_component: dict[str, list[dict[str, Any]]] = {}
+        for component in components_to_update:
+            records = []
+            for traj in eval_batch.trajectories or []:
+                records.append({
+                    "Inputs": self._evidence(component, traj),
+                    "Generated Outputs": _short(traj["output"], 3000),
+                    "Feedback": f"{traj['feedback']} Score {traj['value']:.2f}.",
+                })
+            by_component[component] = records
+        return by_component
+
+    def _evidence(self, component: str, traj: dict[str, Any]) -> dict[str, Any]:
+        inputs = {k: _short(v, 600) for k, v in traj["inputs"].items()}
+        calls = traj.get("tools") or []
+        if component == "tools":
+            used = [c.get("tool") for c in calls]
+            failed = [c.get("tool") for c in calls if c.get("error")]
+            empty = [c.get("tool") for c in calls
+                     if not c.get("error") and not str(c.get("answer") or "").strip()]
+            untried = [t for t in self.available if t not in used]
+            return {**inputs,
+                    "tools called, in order": used,
+                    "tools that returned an error": failed or "none",
+                    "tools that answered with nothing": empty or "none",
+                    "tools available but never called": untried or "none",
+                    "what each answered": _short(calls, 4000)}
+        if component == "plan":
+            return {**inputs,
+                    "the call sequence": [c.get("tool") for c in calls],
+                    "tool answers": _short(calls, 4000)}
+        return {**inputs, "tool answers": _short(calls, 2500)}
 
 
 def _available(task: Task, base: Harness) -> list[str]:

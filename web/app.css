@@ -213,12 +213,15 @@ h3 { margin:0; font-size:var(--t-md); font-weight:var(--w-semi); letter-spacing:
   padding:var(--s4); color:inherit; transition:background var(--fast);
 }
 .row:hover { background:var(--raise); text-decoration:none; }
+.row .mark.brand-mark { background:var(--brand); }
 .row .mark { width:3px; height:2.6rem; border-radius:2px; background:var(--down); }
 .row[data-ok="1"] .mark { background:var(--up); }
-.row .name { font-weight:var(--w-semi); font-size:var(--t-md); letter-spacing:-.01em; }
-.row .why { font-size:var(--t-sm); color:var(--faint); margin-top:var(--s1);
+.row .name { display:block; font-weight:var(--w-semi); font-size:var(--t-md); letter-spacing:-.01em; }
+.row .why { display:block; font-size:var(--t-sm); color:var(--faint); margin-top:var(--s1);
             max-width:44rem; line-height:var(--lh-snug); }
-.row .right { text-align:right; white-space:nowrap; }
+.row .right { display:block; text-align:right; white-space:nowrap; }
+.row .right .delta, .row .right .crumb { display:block; }
+.row .mark { display:block; }
 .row .delta { font-family:var(--mono); font-variant-numeric:tabular-nums;
               font-size:var(--t-lg); font-weight:var(--w-semi); }
 @media (max-width:720px) {
@@ -257,9 +260,19 @@ td.n, th.n { text-align:right; white-space:nowrap; font-family:var(--mono);
 td .cell-link { display:block; color:inherit; }
 td .cell-link:hover { text-decoration:none; }
 .why-cell { max-width:26rem; font-size:var(--t-sm); color:var(--soft); }
+.ticker { font-size:var(--t-xs); }
+.bar-cell .crumb { display:block; margin-top:var(--s1); }
 
 /* ---------- charts -------------------------------------------------------- */
 figure.chart { margin:0; }
+.chart-host { position:relative; }
+.chart-tip {
+  position:absolute; transform:translate(-50%,-100%); pointer-events:none; z-index:5;
+  background:var(--ink); color:var(--bg); font-size:var(--t-xs); line-height:1.35;
+  padding:var(--s2) var(--s3); border-radius:var(--r1); max-width:22rem; box-shadow:var(--shadow);
+}
+.chart-host svg [tabindex]:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+svg.track { display:block; width:100%; height:auto; max-width:40rem; margin:0 auto; }
 figure.chart figcaption { font-size:var(--t-xs); color:var(--faint); margin-top:var(--s2);
                           max-width:var(--measure); }
 .chart-host { width:100%; }
@@ -322,6 +335,8 @@ details.span pre { margin:0; padding:var(--s3); border-top:1px solid var(--hair)
         box-shadow:var(--shadow); overflow:hidden; }
 .side .head { background:var(--raise); border-bottom:1px solid var(--hair);
               padding:var(--s3) var(--s4); display:flex; align-items:center; gap:var(--s2); }
+.side .head .name { display:block; font-weight:var(--w-semi); font-size:var(--t-sm); }
+.side .head .crumb { display:block; }
 .side .tag { width:1.6rem; height:1.6rem; border-radius:6px; display:grid; place-items:center;
              font-weight:var(--w-bold); font-size:var(--t-sm); background:var(--brand-soft);
              color:var(--brand-ink); flex:none; }
@@ -369,3 +384,17 @@ details.span pre { margin:0; padding:var(--s3); border-top:1px solid var(--hair)
 .stack { display:grid; gap:var(--s3); }
 .inline { display:flex; gap:var(--s3); align-items:center; flex-wrap:wrap; }
 .tnum { font-variant-numeric:tabular-nums; }
+
+/* The table twin every chart carries, folded away until someone wants it. */
+details.table-view { margin-top:var(--s4); border-top:1px solid var(--hair); padding-top:var(--s3); }
+details.table-view > summary { font-size:var(--t-xs); color:var(--faint); cursor:pointer;
+                               list-style:none; display:inline-flex; gap:var(--s2); align-items:center; }
+details.table-view > summary::before { content:"\25B8"; transition:transform var(--fast); }
+details.table-view[open] > summary::before { transform:rotate(90deg); }
+details.table-view > summary::-webkit-details-marker { display:none; }
+details.table-view table { margin-top:var(--s3); }
+
+ul.tree { list-style:none; margin:0; padding:0; }
+ul.tree ul.tree { margin:0 0 0 var(--s4); padding-left:var(--s4); border-left:1px solid var(--line); }
+.card-row { background:var(--panel); border:1px solid var(--line); border-radius:var(--r2);
+            box-shadow:var(--shadow); margin-bottom:var(--s2); }
