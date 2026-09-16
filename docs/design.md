@@ -34,6 +34,15 @@ evidence. It resamples by match now.
 two groups draws only {A,A}, {A,B}, {B,B}. Below eight groups the gate reports
 the interval as unusable and refuses to promote at all.
 
+**Silence has to score zero, and twice it did not.** Flooring the benchmark put
+the floor in the numerator too, so a harness that said nothing scored +0.046 —
+caught when two models that echoed the mid on every window posted the best
+number in a model comparison. Then, with that fixed, clipping let the mean rise
+while the pooled sum fell. The answer was to stop averaging skill, which divides
+by a per-window benchmark, and average the numerator the pooled statistic sums
+instead: over a fixed set of windows its denominator is constant, so the two are
+monotone by construction rather than by hope.
+
 **The noise band is about ±1 point.** Three runs of the same harness over the
 same windows scored -1.18%, +1.18%, +1.18%. That is the same order as the effect
 the loop exists to detect, and it belongs beside every gain ever reported.
@@ -47,6 +56,35 @@ doubled it.
 `scripts/discover_fixtures.py` from settled Kalshi events that link to a fixture
 with a usable timeline. Up from five matches and 170 windows, because the
 question set — not the optimizer — was what the gate's power turned on.
+
+### The model is a bigger lever than the harness, so far
+
+Measured on the same sixty-eight held-out windows, under the corrected metric:
+
+| model | skill | $/window | echoed the mid |
+| --- | --- | --- | --- |
+| **Opus 5** | **+0.106** | 0.0353 | 11/68 |
+| gpt-5-mini | -0.008 | 0.0025 | 7/68 |
+| Sonnet 4.5 | -0.011 | 0.0130 | 37/68 |
+| Astra 6 | -0.026 | 0.0543 | 11/68 |
+| Haiku 4.5 | -0.100 | 0.0046 | 37/68 |
+
+Every model but one is at or below silence. Opus 5 clears it by ten points with
+no failed runs, an MAE of 0.0388 against no-change's 0.0437, and +0.174 on the
+forty-eight windows that actually moved — it is more willing to speak and right
+when it does.
+
+Two readings of that, and both matter. Swapping the model moved skill by twelve
+points while the best rewrite so far moved it by less than one, which is a
+warning about the premise: the variance may not be in the harness. But every
+generation until now optimised a harness whose baseline could not beat saying
+nothing, and there is not much for a rewrite to find on a negative baseline.
+Opus 5 is the first starting point with something to improve on.
+
+The harness and the reflection both run on Opus 5 now. The reflection model is
+under three per cent of a generation's bill — tens of calls against thousands —
+and rewriting a harness from its own failures is the part that most rewards
+reasoning.
 
 ### Still open
 
