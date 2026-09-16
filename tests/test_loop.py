@@ -41,7 +41,12 @@ async def test_evaluate_scores_and_summarises(t0, history):
     tk = task(history, t0)
     rollouts = await evaluate(tk, Harness.load(BASE), tk.instances(), FakeLLM(oracle))
     assert all(r.run.ok for r in rollouts)
-    assert [round(r.outcome.value, 6) for r in rollouts] == [1.0] * 6
+    # An oracle removes every cent the benchmark missed by, so skill is exactly
+    # one. Its *value* is smaller, because value is the edge in cents against a
+    # ten-cent full point — a perfect call on a quiet market is still a small
+    # edge, and the two numbers answer different questions on purpose.
+    assert all(0.5 < r.outcome.value <= 1.0 for r in rollouts), \
+        [r.outcome.value for r in rollouts]
     summary = summarise(tk, rollouts)
     assert summary["instances"] == 6 and summary["statistic"] == 1.0 and summary["unscored"] == 0
     assert "five minutes later" in rollouts[0].outcome.feedback and rollouts[0].outcome.details["scored"]
@@ -60,13 +65,21 @@ def test_adapter_speaks_gepa(t0, history):
     tk = task(history, t0)
     adapter = TaskAdapter(tk, Harness.load(BASE), FakeLLM(oracle))
     batch = adapter.evaluate(tk.instances()[:3], adapter.base.to_components(), capture_traces=True)
-    assert [round(v, 6) for v in batch.scores] == [1.0, 1.0, 1.0]
+    # An oracle removes all of the benchmark's error, which on these windows is
+    # well under the ten cents a full point is worth — a perfect forecast on a
+    # quiet market is still a small edge, and the value says so.
+    assert all(0.5 < v <= 1.0 for v in batch.scores), batch.scores
     assert set(batch.objective_scores[0]) == {"skill", "cost"}
     assert batch.trajectories[0]["tools"][0]["tool"] == "market_quote"
     data = adapter.make_reflective_dataset(adapter.base.to_components(), batch, ["plan", "context"])
     assert set(data) == {"plan", "context"} and len(data["plan"]) == 3
     rec = data["plan"][0]
-    assert "tool answers" in rec["Inputs"] and "Score 1.00" in rec["Feedback"]
+    # The feedback carries both numbers and they are not the same number: skill
+    # is the fraction of the benchmark's error removed, score is the edge in
+    # cents. A rewriter reading this needs to see that a perfect call on a
+    # five-cent move is not a full point of edge.
+    assert "tool answers" in rec["Inputs"]
+    assert "skill +1.00" in rec["Feedback"] and "Score 0.75" in rec["Feedback"]
     assert json.loads(rec["Generated Outputs"])["delta_cents"] == 5
     bad = adapter.evaluate(tk.instances()[:2], {**adapter.base.to_components(), "plan": "nope"}, True)
     assert bad.scores == [0.0, 0.0] and "not valid JSON" in bad.trajectories[0]["feedback"]

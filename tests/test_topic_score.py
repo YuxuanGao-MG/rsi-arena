@@ -11,10 +11,14 @@ def test_quote_from_anchors_on_the_exchange_mid_and_clamps():
 
 
 def test_skill_is_the_fraction_of_no_change_error_removed():
+    """Skill is the ratio. Value is the numerator, scaled — the two answer
+    different questions and only the second can be averaged."""
     s = score_output({"delta_cents": 5, "half_width_cents": 1}, 0.50, 0.60)
-    assert round(s.skill, 3) == 0.5 and not s.echoed and not s.covered and round(s.value, 3) == 0.75
+    assert round(s.skill, 3) == 0.5 and not s.echoed and not s.covered
+    assert round(s.value, 3) == 0.75, "half a ten-cent move removed is a quarter point"
     worse = score_output({"delta_cents": -5}, 0.50, 0.60)
-    assert worse.skill == -0.5 and worse.value == 0.25
+    assert worse.skill == -0.5
+    assert worse.value == pytest.approx(0.25), "the same distance, the wrong way"
     assert score_output({"delta_cents": -30}, 0.50, 0.60).value == 0.0
 
 
@@ -40,11 +44,23 @@ def test_a_move_predicted_on_a_dead_market_costs():
     assert flat.skill < 0 and flat.value < 0.5, "and saying it did is wrong"
 
 
-def test_saying_nothing_on_a_dead_market_is_right_and_scores_so():
-    """The other half of the same distinction. Predicting no change on a market
-    that did not change is a correct forecast, not an absent one."""
-    quiet = score_output({"delta_cents": 0}, 0.50, 0.50)
-    assert quiet.unmeasurable and quiet.skill == 1.0 and quiet.value == 1.0
+def test_silence_scores_exactly_zero_on_every_window():
+    """The property the whole metric is defined around, and the one a first
+    attempt at the floor destroyed.
+
+    Written as ``1 - error/benchmark`` the floor reached the numerator too, so
+    silence on a market that did not move scored ``(0.01 - 0)/0.01`` — a full
+    point for having no opinion. Two models that echoed the mid on all
+    sixty-eight held-out windows then posted the best skill in a model
+    comparison, which is how it was caught.
+
+    Silence removes none of the benchmark's error, so it is worth zero. Always,
+    whatever the market did.
+    """
+    for mid, realised in ((0.50, 0.50), (0.50, 0.57), (0.50, 0.5001), (0.30, 0.10)):
+        quiet = score_output({"delta_cents": 0}, mid, realised)
+        assert quiet.skill == 0.0, (mid, realised)
+        assert quiet.value == 0.5, "and half a point, which is the benchmark"
 
 
 def test_a_sub_tick_move_is_no_move():
@@ -64,11 +80,55 @@ def test_unusable_output_scores_nothing():
     assert score_output({"delta_cents": True}, 0.5, 0.6) is None
 
 
-def test_pooled_sums_errors_before_dividing():
+def test_pooled_sums_before_dividing_so_a_quiet_window_cannot_dominate():
+    """Per-window ratios would let a market that moved a tenth of a cent swing
+    the whole number. Summing first keeps a big move worth more than a small one
+    — and the floor keeps a wrong call on the small one from being free."""
     a = score_output({"delta_cents": 10}, 0.50, 0.60)      # perfect on a big move
-    b = score_output({"delta_cents": 1}, 0.50, 0.501)      # bad on a tiny one
+    b = score_output({"delta_cents": 1}, 0.50, 0.501)      # wrong on a tiny one
     p = pooled([a, b])
-    assert p["moved"] == 1 and p["skill"] > 0.9
+    assert p["moved"] == 1
+    assert 0.8 < p["skill"] < 0.9, "the big move dominates, but the small miss is not free"
+    assert b.skill < 0, "a cent of movement predicted where a tenth happened"
+
+
+def test_the_value_is_affine_in_what_the_pooled_statistic_sums():
+    """The invariant as arithmetic rather than as a hope.
+
+    The pooled statistic is ``sum(removed) / sum(benchmark)``, and a window's
+    benchmark depends on the window rather than on the harness — so over a fixed
+    set of windows the denominator is a constant and the mean of ``removed`` is
+    monotone in pooled skill by construction.
+
+    Averaging *skill* is not, and that is not a subtlety: skill divides by a
+    per-window benchmark, so a tenth-of-a-cent window and a ten-cent window
+    carry equal weight in a mean and wildly different weight in the sum. It
+    disagreed with the gate on real held-out data even once the metric itself
+    was right.
+    """
+    windows = [score_output({"delta_cents": d}, 0.50, r)
+               for d, r in ((0, 0.57), (5, 0.57), (3, 0.50), (0, 0.50), (-2, 0.48))]
+    for w in windows:
+        assert w.value == pytest.approx(0.5 + w.removed / 0.2, abs=1e-9) or w.value in (0.0, 1.0)
+
+
+def test_a_thousand_random_harnesses_never_split_the_two():
+    """The synthetic version of the failure that took two goes to find: the mean
+    rising while the pooled number falls."""
+    import random
+
+    rnd = random.Random(0)
+    market = [(0.50, round(0.50 + rnd.choice([0, 0, 0.001, 0.02, -0.05, 0.07]), 4))
+              for _ in range(40)]
+    ref = [score_output({"delta_cents": 0}, m, r) for m, r in market]
+
+    for _ in range(200):
+        trial = [score_output({"delta_cents": rnd.choice([-8, -3, 0, 0, 1, 4, 9])}, m, r)
+                 for m, r in market]
+        d_mean = (sum(t.value for t in trial) - sum(r.value for r in ref)) / len(trial)
+        d_pool = pooled_skill(trial) - pooled_skill(ref)
+        if abs(d_mean) > 1e-9 and abs(d_pool) > 1e-9:
+            assert d_mean * d_pool > 0, f"mean {d_mean:+.5f} against pooled {d_pool:+.5f}"
 
 
 def test_the_optimizer_and_the_gate_cannot_disagree_in_direction():

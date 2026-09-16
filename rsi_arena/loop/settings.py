@@ -17,7 +17,12 @@ class Settings:
     every: int = 5                                 # minutes between windows
     per_fixture: int = 0                           # cap windows kept per match; 0 keeps all
     model: str | None = None                       # override the harness model
-    reflection_model: str = "anthropic/claude-sonnet-4.5"
+    # The model that reads traces and rewrites harnesses. Deliberately the
+    # strongest available and deliberately not the one under test: it runs tens
+    # of times a generation against the task model's thousands, so it is under
+    # three per cent of the bill, and rewriting a harness from its own failures
+    # is the part of the loop that most rewards reasoning.
+    reflection_model: str = "anthropic/claude-opus-5"
     cache_dir: str = ".cache"
     llm_cache: bool = True
     concurrency: int = 4
