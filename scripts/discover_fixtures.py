@@ -33,14 +33,28 @@ from rsi_arena.kalshi._taxonomy import COMPETITIONS                # noqa: E402
 from rsi_arena.kalshi.replay import match_timeline                 # noqa: E402
 
 
+#: How far either side of the ticker's date to look for the fixture.
+#:
+#: Not a safety margin — a measured one. Kalshi dates an event by the day it
+#: listed the contract, the feed by the day it kicked off, and those are the same
+#: day less often than you would think: Sevilla against Valencia trades as
+#: 26SEP13 and was played on the 11th. One day either side left 168 settled
+#: fixtures unmatched out of 654. Three catches them.
+DATE_SPREAD = 3
+
+
 def _days_around(date: str) -> list[str]:
+    """The ticker's date first, then outwards, so the likeliest is tried first."""
     from datetime import date as _date, timedelta
 
     try:
         d = _date.fromisoformat(date)
     except ValueError:
         return [date]
-    return [(d + timedelta(days=n)).isoformat() for n in (0, -1, 1)]
+    offsets = [0]
+    for n in range(1, DATE_SPREAD + 1):
+        offsets += [-n, n]
+    return [(d + timedelta(days=n)).isoformat() for n in offsets]
 
 
 def series_for(league: str) -> str:

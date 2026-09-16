@@ -104,9 +104,20 @@ class Run:
         return self.trace.cost_usd
 
     def summary(self) -> dict[str, Any]:
+        """The run without its trace — including the answer it produced.
+
+        The forecast used to go with the trace, so a rollout scored without
+        ``--trace`` kept the number it was graded on and lost what the harness
+        actually said: the change it predicted, how wide it quoted, and why.
+        Reading a run back then showed a row of dashes.
+
+        The two are not the same size. A trace is tens of kilobytes of
+        candlesticks; an answer is a few hundred bytes and is the point.
+        """
         return {"harness": self.harness, "run_id": self.run_id, "ok": self.ok,
                 "error": self.error, "error_kind": self.error_kind,
-                "cost_usd": round(self.cost_usd, 6), "calls": self.trace.calls}
+                "cost_usd": round(self.cost_usd, 6), "calls": self.trace.calls,
+                "output": self.output}
 
     def tools_seen(self) -> list[dict[str, Any]]:
         """Every tool call and what came back, in order. What a rewriter needs to read."""

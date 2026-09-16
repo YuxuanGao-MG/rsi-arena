@@ -3,260 +3,555 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>rsi-arena · runs</title>
+<title>rsi-arena</title>
 <style>
   :root {
-    --paper:#f5f6f4; --card:#fff; --ink:#15191c; --soft:#4a5359; --faint:#7d878d;
-    --rule:#dde1dd; --soft-rule:#ebeeeb; --signal:#14706a; --dim:#dbeae7;
-    --up:#32734a; --down:#8f4038; --zebra:#fafbf9;
+    --bg:#f6f7f5; --panel:#fff; --raise:#fbfcfa;
+    --ink:#14181b; --soft:#4e575d; --faint:#828c92; --ghost:#a8b1b6;
+    --line:#e2e6e2; --hair:#eef1ee;
+    --brand:#0f6f68; --brand-soft:#dcecea; --brand-ink:#0b524d;
+    --up:#2f7148; --up-soft:#e2efe6; --down:#94413a; --down-soft:#f7e6e3;
+    --warn:#8a6011; --warn-soft:#f6ecd8;
+    --shadow:0 1px 2px rgba(20,24,27,.05), 0 8px 24px -12px rgba(20,24,27,.12);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --paper:#0f1316; --card:#161b1f; --ink:#e6eae8; --soft:#9aa6ab; --faint:#6b767c;
-      --rule:#262d32; --soft-rule:#1d2429; --signal:#4fbdb2; --dim:#16302f;
-      --up:#66b57f; --down:#d4796f; --zebra:#12171a;
+      --bg:#0d1114; --panel:#141a1e; --raise:#182026;
+      --ink:#e8edeb; --soft:#9ba7ad; --faint:#6e797f; --ghost:#4d565c;
+      --line:#242c32; --hair:#1b2227;
+      --brand:#4cbcb1; --brand-soft:#123331; --brand-ink:#7fd4cb;
+      --up:#63b57e; --up-soft:#14301f; --down:#d4796f; --down-soft:#331b18;
+      --warn:#d3a04c; --warn-soft:#2e2411;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
     }
   }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
   body {
-    margin:0; background:var(--paper); color:var(--ink);
-    font:15px/1.55 Charter,"Iowan Old Style",Georgia,serif;
-    -webkit-font-smoothing:antialiased;
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   }
-  .sans { font-family: ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
-  .mono, td.n, .k { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric: tabular-nums; }
+  .mono, .num { font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+                font-variant-numeric:tabular-nums; }
+  a { color:var(--brand); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  button { font:inherit; cursor:pointer; }
 
+  /* ---------- chrome ---------- */
   header {
-    padding:1.6rem 1.4rem 1.2rem; border-bottom:1px solid var(--rule);
-    display:flex; flex-wrap:wrap; align-items:baseline; gap:.6rem 1.2rem;
+    position:sticky; top:0; z-index:20; backdrop-filter:blur(12px);
+    background:color-mix(in srgb, var(--bg) 86%, transparent);
+    border-bottom:1px solid var(--line);
   }
-  h1 {
-    font-family: ui-sans-serif,-apple-system,sans-serif; font-size:1.15rem;
-    font-weight:680; letter-spacing:-.015em; margin:0;
+  .bar { max-width:88rem; margin:0 auto; padding:.85rem 1.3rem;
+         display:flex; align-items:center; gap:1.5rem; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:.55rem; font-weight:680;
+           letter-spacing:-.02em; font-size:1.02rem; cursor:pointer; }
+  .brand .dot { width:9px; height:9px; border-radius:50%; background:var(--brand);
+                box-shadow:0 0 0 3px var(--brand-soft); }
+  nav { display:flex; gap:.2rem; }
+  nav a {
+    padding:.4rem .75rem; border-radius:6px; font-size:.86rem; font-weight:560;
+    color:var(--soft); cursor:pointer;
   }
-  .crumb { font-size:.8rem; color:var(--faint); font-family: ui-monospace,Menlo,monospace; }
-  .crumb a { color:var(--signal); cursor:pointer; text-decoration:none; }
-  .crumb a:hover { text-decoration:underline; }
-  main { padding:1.4rem; max-width:82rem; margin:0 auto; }
+  nav a:hover { background:var(--hair); text-decoration:none; color:var(--ink); }
+  nav a.on { background:var(--brand-soft); color:var(--brand-ink); }
+  .spacer { margin-left:auto; }
+  .crumb { font-size:.8rem; color:var(--faint); }
+  .crumb a { cursor:pointer; }
 
-  .scroll { overflow-x:auto; border:1px solid var(--rule); border-radius:3px; background:var(--card); }
-  table { border-collapse:collapse; width:100%; font-size:.85rem; }
-  th {
-    position:sticky; top:0; background:var(--card); text-align:left;
-    font:650 .62rem/1.4 ui-sans-serif,-apple-system,sans-serif; letter-spacing:.09em;
-    text-transform:uppercase; color:var(--faint);
-    padding:.7rem .8rem; border-bottom:1.5px solid var(--rule); white-space:nowrap;
+  main { max-width:88rem; margin:0 auto; padding:1.8rem 1.3rem 6rem; }
+  .fade { animation:fade .28s ease both; }
+  @keyframes fade { from { opacity:0; transform:translateY(5px); } }
+
+  h2 { font-size:1.22rem; font-weight:660; letter-spacing:-.018em; margin:0 0 .25rem; }
+  .sub { color:var(--faint); font-size:.9rem; margin:0 0 1.2rem; max-width:52rem; }
+  .eyebrow { font-size:.66rem; font-weight:680; letter-spacing:.13em; text-transform:uppercase;
+             color:var(--faint); margin:0 0 .5rem; }
+
+  /* ---------- cards & stats ---------- */
+  .cards { display:grid; gap:.85rem; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));
+           margin-bottom:1.6rem; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+          padding:.95rem 1.05rem; box-shadow:var(--shadow); }
+  .stat b { display:block; font-family:ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums;
+            font-size:1.6rem; font-weight:600; letter-spacing:-.03em; line-height:1.1; }
+  .stat span { display:block; font-size:.7rem; letter-spacing:.07em; text-transform:uppercase;
+               color:var(--faint); margin-top:.3rem; font-weight:600; }
+  .stat small { display:block; font-size:.74rem; color:var(--ghost); margin-top:.3rem; }
+
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+           box-shadow:var(--shadow); overflow:hidden; margin-bottom:1.1rem; }
+  .panel-h { padding:.85rem 1.1rem; border-bottom:1px solid var(--hair);
+             display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; }
+  .panel-b { padding:1.1rem; }
+  .panel-h h3 { margin:0; font-size:.94rem; font-weight:640; letter-spacing:-.01em; }
+
+  /* ---------- generation rows ---------- */
+  .gen {
+    display:grid; grid-template-columns:auto 1fr auto; gap:1rem; align-items:center;
+    padding:1rem 1.1rem; border-bottom:1px solid var(--hair); cursor:pointer;
+    transition:background .12s;
   }
-  td { padding:.6rem .8rem; border-bottom:1px solid var(--soft-rule); vertical-align:top; }
-  tbody tr:nth-child(even) { background:var(--zebra); }
-  tbody tr.click { cursor:pointer; }
-  tbody tr.click:hover { background:var(--dim); }
-  td.n { text-align:right; white-space:nowrap; }
+  .gen:last-child { border-bottom:none; }
+  .gen:hover { background:var(--raise); }
+  .gen .mark { width:3px; height:2.6rem; border-radius:2px; background:var(--down); }
+  .gen[data-ok="1"] .mark { background:var(--up); }
+  .gen .name { font-weight:640; font-size:.98rem; letter-spacing:-.01em; }
+  .gen .why { font-size:.82rem; color:var(--faint); margin-top:.2rem;
+              max-width:44rem; line-height:1.45; }
+  .gen .right { text-align:right; white-space:nowrap; }
+  .gen .delta { font-family:ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums;
+                font-size:1.05rem; font-weight:600; }
+
+  .pill {
+    display:inline-flex; align-items:center; gap:.3rem; font-size:.66rem; font-weight:680;
+    letter-spacing:.06em; text-transform:uppercase; padding:.22rem .5rem; border-radius:5px;
+    background:var(--hair); color:var(--soft); white-space:nowrap;
+  }
+  .pill.up { background:var(--up-soft); color:var(--up); }
+  .pill.down { background:var(--down-soft); color:var(--down); }
+  .pill.warn { background:var(--warn-soft); color:var(--warn); }
+  .pill.brand { background:var(--brand-soft); color:var(--brand-ink); }
   .up { color:var(--up); } .down { color:var(--down); }
 
-  .chip {
-    display:inline-block; font:650 .6rem/1.4 ui-sans-serif,sans-serif; letter-spacing:.08em;
-    text-transform:uppercase; padding:.18rem .45rem; border-radius:2px;
-    background:var(--soft-rule); color:var(--soft);
-  }
-  .chip.ok { background:var(--dim); color:var(--up); }
-  .chip.no { color:var(--down); }
+  /* ---------- tables ---------- */
+  .scroll { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:.86rem; }
+  th { text-align:left; font-size:.64rem; font-weight:680; letter-spacing:.1em;
+       text-transform:uppercase; color:var(--faint); padding:.7rem .9rem;
+       border-bottom:1px solid var(--line); white-space:nowrap; background:var(--panel); }
+  td { padding:.7rem .9rem; border-bottom:1px solid var(--hair); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  tr.tap { cursor:pointer; transition:background .12s; }
+  tr.tap:hover { background:var(--raise); }
+  td.n { text-align:right; white-space:nowrap; font-family:ui-monospace,Menlo,monospace;
+         font-variant-numeric:tabular-nums; }
 
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(9rem,1fr)); gap:1.2rem;
-          padding:1rem 0 1.4rem; border-bottom:1px solid var(--rule); margin-bottom:1.2rem; }
-  .stat b { display:block; font:600 1.3rem/1.15 ui-monospace,Menlo,monospace;
-            font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
-  .stat span { display:block; font:.64rem/1.4 ui-sans-serif,sans-serif; letter-spacing:.08em;
-               text-transform:uppercase; color:var(--faint); margin-top:.2rem; }
+  /* ---------- skill bar ---------- */
+  .bar-cell { width:7rem; }
+  .sk { position:relative; height:6px; background:var(--hair); border-radius:3px; overflow:hidden; }
+  .sk i { position:absolute; top:0; bottom:0; border-radius:3px; }
+  .sk .mid { position:absolute; top:0; bottom:0; width:1px; left:50%; background:var(--ghost); }
 
-  /* -- the trace -- */
-  .span { border:1px solid var(--rule); border-left:3px solid var(--rule);
-          border-radius:3px; background:var(--card); margin-bottom:.6rem; }
-  .span[data-kind="tool"] { border-left-color:var(--signal); }
-  .span[data-kind="llm"]  { border-left-color:var(--up); }
-  .span[data-kind="step"] { border-left-color:var(--rule); }
-  .span > summary {
-    padding:.55rem .8rem; cursor:pointer; display:flex; gap:.7rem; align-items:baseline;
-    font:.82rem/1.4 ui-sans-serif,-apple-system,sans-serif;
-  }
-  .span > summary::-webkit-details-marker { display:none; }
-  .span .k { font-size:.62rem; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); }
-  .span .nm { font-weight:640; }
-  .span .meta { margin-left:auto; font:.68rem ui-monospace,Menlo,monospace; color:var(--faint); }
-  .span pre {
-    margin:0; padding:.7rem .8rem; border-top:1px solid var(--soft-rule);
-    font:.73rem/1.5 ui-monospace,Menlo,monospace; white-space:pre-wrap;
-    word-break:break-word; color:var(--soft); max-height:26rem; overflow:auto;
-  }
-  .span pre + pre { border-top:1px dashed var(--soft-rule); }
-  .lbl { font:650 .6rem/1.4 ui-sans-serif,sans-serif; letter-spacing:.09em;
-         text-transform:uppercase; color:var(--faint); display:block; margin-bottom:.3rem; }
+  /* ---------- price line ---------- */
+  .track { position:relative; height:46px; margin:.4rem 0 .2rem; }
+  .track .axis { position:absolute; left:0; right:0; top:22px; border-top:1px solid var(--line); }
+  .track .pip { position:absolute; top:14px; width:2px; height:18px; border-radius:1px; }
+  .track .lbl { position:absolute; top:0; font:600 .6rem/1 ui-monospace,Menlo,monospace;
+                color:var(--faint); transform:translateX(-50%); white-space:nowrap; }
+  .track .val { position:absolute; top:33px; font:.62rem/1 ui-monospace,Menlo,monospace;
+                color:var(--ghost); transform:translateX(-50%); }
 
-  .card { background:var(--card); border:1px solid var(--rule); border-radius:3px;
-          padding:1rem 1.1rem; margin-bottom:1.2rem; }
-  .card h3 { font:650 .68rem/1.4 ui-sans-serif,sans-serif; letter-spacing:.09em;
-             text-transform:uppercase; color:var(--faint); margin:0 0 .6rem; }
-  .card p { margin:0 0 .5rem; }
-  .card p:last-child { margin:0; }
-  .msg { color:var(--faint); padding:2rem 0; }
-  .err { color:var(--down); }
-  select { font:inherit; font-size:.82rem; padding:.3rem .5rem; border:1px solid var(--rule);
-           border-radius:3px; background:var(--card); color:var(--ink); }
-  button {
-    font:640 .82rem/1 ui-sans-serif,-apple-system,sans-serif; cursor:pointer;
-    padding:.5rem .9rem; margin-right:.5rem; border:1px solid var(--rule);
-    border-radius:3px; background:var(--card); color:var(--ink);
-  }
-  button:hover { border-color:var(--signal); color:var(--signal); }
-  nav.crumb a { margin-right:.15rem; }
+  /* ---------- forecast ---------- */
+  .fc { display:grid; gap:.9rem; grid-template-columns:repeat(auto-fit,minmax(14rem,1fr)); }
+  .box { background:var(--raise); border:1px solid var(--hair); border-radius:8px; padding:.85rem 1rem; }
+  .box .k { font-size:.63rem; font-weight:680; letter-spacing:.1em; text-transform:uppercase;
+            color:var(--faint); margin-bottom:.35rem; }
+  .box p { margin:0; font-size:.88rem; line-height:1.55; color:var(--soft); }
+  .big { font-family:ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums;
+         font-size:1.3rem; font-weight:600; letter-spacing:-.02em; }
 
-  /* -- lineage -- */
-  .node { display:flex; gap:.5rem; margin-bottom:.55rem; }
-  .node .edge { color:var(--faint); font-family:ui-monospace,Menlo,monospace;
-                font-size:.8rem; padding-top:.7rem; }
-  .node-body { flex:1; background:var(--card); border:1px solid var(--rule);
-               border-left:3px solid var(--faint); border-radius:3px; padding:.7rem .9rem; }
-  .node-body.kept    { border-left-color:var(--up); }
-  .node-body.dropped { border-left-color:var(--down); }
-  .node-head { display:flex; flex-wrap:wrap; gap:.5rem; align-items:baseline;
-               font:.92rem/1.4 ui-sans-serif,-apple-system,sans-serif; }
-  .node-head .meta { margin-left:auto; font:.68rem ui-monospace,Menlo,monospace; color:var(--faint); }
-  .node-stats { font:.8rem/1.5 ui-monospace,Menlo,monospace; color:var(--soft); margin-top:.35rem; }
-  .node-why { font-size:.83rem; color:var(--faint); margin-top:.3rem; }
-  .node-links { margin-top:.45rem; font-size:.78rem; }
-  .node-links a { color:var(--signal); cursor:pointer; margin-right:.5rem; }
+  /* ---------- trace ---------- */
+  details.span { border:1px solid var(--line); border-left:3px solid var(--ghost);
+                 border-radius:8px; background:var(--panel); margin-bottom:.5rem; overflow:hidden; }
+  details.span[data-k="tool"] { border-left-color:var(--brand); }
+  details.span[data-k="llm"] { border-left-color:var(--up); }
+  details.span > summary { padding:.6rem .9rem; display:flex; gap:.65rem; align-items:center;
+                           font-size:.85rem; list-style:none; }
+  details.span > summary::-webkit-details-marker { display:none; }
+  details.span > summary::before { content:"\\25B8"; color:var(--ghost); font-size:.7rem;
+                                   transition:transform .15s; }
+  details.span[open] > summary::before { transform:rotate(90deg); }
+  details.span .nm { font-weight:620; }
+  details.span .meta { margin-left:auto; font:.68rem ui-monospace,Menlo,monospace; color:var(--faint); }
+  details.span pre { margin:0; padding:.75rem .9rem; border-top:1px solid var(--hair);
+                     font:.73rem/1.55 ui-monospace,Menlo,monospace; white-space:pre-wrap;
+                     word-break:break-word; color:var(--soft); max-height:24rem; overflow:auto;
+                     background:var(--raise); }
+
+  /* ---------- compare ---------- */
+  .duel { display:grid; gap:1rem; grid-template-columns:1fr 1fr; margin-bottom:1.1rem; }
+  @media (max-width:880px) { .duel { grid-template-columns:1fr; } }
+  .side { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+          box-shadow:var(--shadow); overflow:hidden; }
+  .side .head { background:var(--raise); border-bottom:1px solid var(--hair);
+                padding:.75rem 1rem; display:flex; align-items:center; gap:.6rem; }
+  .side .tag { width:1.6rem; height:1.6rem; border-radius:6px; display:grid; place-items:center;
+               font-weight:700; font-size:.82rem; background:var(--brand-soft); color:var(--brand-ink); }
+  .call { padding:.8rem 1rem; border-bottom:1px solid var(--hair); }
+  .call:last-child { border-bottom:none; }
+  .call .top { display:flex; align-items:baseline; gap:.6rem; margin-bottom:.3rem; }
+  .call .clock { font:.72rem ui-monospace,Menlo,monospace; color:var(--faint); }
+  .call .move { font:600 .95rem ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums; }
+  .call .width { font:.72rem ui-monospace,Menlo,monospace; color:var(--ghost); }
+  .call .say { font-size:.83rem; line-height:1.5; color:var(--soft); margin:0; }
+  .call .falsi { font-size:.78rem; line-height:1.5; color:var(--faint); margin:.35rem 0 0;
+                 padding-left:.6rem; border-left:2px solid var(--hair); }
+
+  .vote { display:flex; gap:.6rem; flex-wrap:wrap; }
+  .vote button { padding:.65rem 1.3rem; border-radius:8px; border:1px solid var(--line);
+                 background:var(--panel); color:var(--ink); font-weight:620; font-size:.88rem;
+                 transition:all .14s; }
+  .vote button:hover { border-color:var(--brand); color:var(--brand); transform:translateY(-1px);
+                       box-shadow:var(--shadow); }
+
+  .msg { color:var(--faint); padding:3rem 1rem; text-align:center; }
+  .skel { height:1rem; border-radius:4px;
+          background:linear-gradient(90deg,var(--hair),var(--line),var(--hair));
+          background-size:200% 100%; animation:sh 1.2s infinite; }
+  @keyframes sh { to { background-position:-200% 0; } }
+  .grid-2 { display:grid; gap:1.1rem; grid-template-columns:1fr; }
+  @media (min-width:920px) { .grid-2.split { grid-template-columns:1.35fr 1fr; } }
 </style>
 </head>
 <body>
+
 <header>
-  <h1><a onclick="location.hash=''" style="color:inherit;text-decoration:none;cursor:pointer">rsi-arena</a></h1>
-  <nav class="crumb" id="nav">
-    <a onclick="location.hash=''">runs</a> ·
-    <a onclick="location.hash='tree'">lineage</a> ·
-    <a onclick="location.hash='compare'">compare</a>
-  </nav>
-  <div class="crumb" id="crumb"></div>
-  <div style="margin-left:auto" id="controls"></div>
+  <div class="bar">
+    <div class="brand" onclick="go('')"><span class="dot"></span> rsi-arena</div>
+    <nav id="nav"></nav>
+    <div class="spacer"></div>
+    <div class="crumb" id="crumb"></div>
+  </div>
 </header>
-<main id="main"><p class="msg">loading…</p></main>
+
+<main id="main"><div class="msg">loading…</div></main>
 
 <script>
 const URL_ = "__SUPABASE_URL__".replace(/\/$/, "");
 const KEY  = "__SUPABASE_ANON_KEY__";
 const main = document.getElementById("main");
 const crumb = document.getElementById("crumb");
-const controls = document.getElementById("controls");
 
-// The tables live in an `rsi` schema, reached through views in `public`. The
-// project is shared with another arena, and exposing a second schema would have
-// changed that arena's API as well.
-async function q(path) {
-  const r = await fetch(`${URL_}/rest/v1/rsi_${path}`, {
-    headers: { apikey: KEY, Authorization: `Bearer ${KEY}` }
-  });
+// The tables live in an `rsi` schema, reached through views in `public`: the
+// project is shared with another arena, and exposing a second schema through
+// the API would have changed that arena's API too.
+async function q(path, opts) {
+  const r = await fetch(`${URL_}/rest/v1/rsi_${path}`,
+    { headers:{ apikey:KEY, Authorization:`Bearer ${KEY}` }, ...opts });
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-  return r.json();
+  return r.status === 204 ? null : r.json();
 }
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const sign = n => n == null ? "—" : `<span class="${n > 0 ? "up" : n < 0 ? "down" : ""}">${n > 0 ? "+" : ""}${n.toFixed(3)}</span>`;
-const pct = n => n == null ? "—" : `<span class="${n > 0 ? "up" : n < 0 ? "down" : ""}">${(n * 100).toFixed(1)}%</span>`;
-const fail = e => { main.innerHTML = `<p class="msg err">${esc(e.message)}</p>`; };
+const go  = h => { location.hash = h; };
+const n3  = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(3);
+const sgn = v => v == null ? "—" : `<span class="${v > 0 ? "up" : v < 0 ? "down" : ""}">${n3(v)}</span>`;
+const cents = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(1) + "c";
+const loading = () => { main.innerHTML =
+  `<div class="panel"><div class="panel-b"><div class="skel" style="width:40%"></div>
+   <div class="skel" style="width:70%;margin-top:.7rem"></div>
+   <div class="skel" style="width:55%;margin-top:.7rem"></div></div></div>`; };
+const fail = e => { main.innerHTML = `<div class="msg down">${esc(e.message)}</div>`; };
+
+/** A skill bar centred on zero: right of the line is better than silence. */
+function skillBar(v) {
+  if (v == null) return "";
+  const w = Math.min(50, Math.abs(v) * 50);          // ±1.0 fills the half
+  const pos = v >= 0;
+  return `<div class="sk"><div class="mid"></div>
+    <i style="left:${pos ? 50 : 50 - w}%;width:${w}%;background:var(--${pos ? "up" : "down"})"></i></div>`;
+}
+
+function nav(active) {
+  document.getElementById("nav").innerHTML = [
+    ["", "Generations"], ["tree", "Lineage"], ["compare", "Compare"],
+  ].map(([h, label]) =>
+    `<a class="${active === h ? "on" : ""}" onclick="go('${h}')">${label}</a>`).join("");
+}
 
 function route() {
   const raw = location.hash.slice(1);
   if (raw === "tree") return showTree();
-  if (raw === "compare") return pickMatch();
+  if (raw === "compare") return pickGeneration();
   const h = new URLSearchParams(raw);
   if (h.get("compare")) return showCompare(h.get("compare"), h.get("fixture"));
-  if (h.get("rollout")) return showTrace(h.get("rollout"));
-  if (h.get("run")) return showRun(h.get("run"), h.get("side") || "baseline");
+  if (h.get("rollout")) return showWindow(h.get("rollout"));
+  if (h.get("run")) return showRun(h.get("run"), h.get("side") || "candidate");
   return showRuns();
 }
 
-// -- lineage ---------------------------------------------------------------
+/* ======================= generations ======================= */
 
-async function showTree() {
-  crumb.innerHTML = "lineage"; controls.innerHTML = "";
-  main.innerHTML = `<p class="msg">loading lineage…</p>`;
+async function showRuns() {
+  nav(""); crumb.textContent = ""; loading();
   try {
-    const runs = await q("runs?select=*&order=created.asc");
-    if (!runs.length) return main.innerHTML = `<p class="msg">nothing to draw yet</p>`;
+    const runs = await q("runs?select=*&order=created.desc");
+    if (!runs.length) return main.innerHTML = `<div class="msg">no generations published yet</div>`;
 
-    // A generation's parent is the run it continued from; a run with none
-    // started from the seed harness on disk. Rejected generations still appear,
-    // because a lineage that only shows what survived is a lineage that cannot
-    // be learned from.
-    const kids = new Map();
-    for (const r of runs) {
-      const key = r.parent || "__seed__";
-      if (!kids.has(key)) kids.set(key, []);
-      kids.get(key).push(r);
-    }
-    const seedFp = runs[0]?.incumbent_fp || "";
-    const draw = (id, depth) => (kids.get(id) || []).map(r => {
-      const d = r.decision?.holdout?.diff;
-      const changed = r.candidate_fp && r.candidate_fp !== r.incumbent_fp;
-      return `<div class="node" style="margin-left:${depth * 1.6}rem">
-        <div class="edge">${depth ? "└─" : ""}</div>
-        <div class="node-body ${r.accepted ? "kept" : "dropped"}">
-          <div class="node-head">
-            <b>${esc(r.id)}</b>
-            <span class="chip ${r.accepted ? "ok" : "no"}">${r.accepted ? "kept" : "dropped"}</span>
-            ${changed ? "" : '<span class="chip">unchanged</span>'}
-            <span class="meta">${esc(r.candidate_fp || "")}</span>
-          </div>
-          <div class="node-stats">
-            held out ${sign(r.baseline?.holdout?.statistic)} → ${sign(r.candidate?.holdout?.statistic)}
-            &nbsp;·&nbsp; Δ ${sign(d)}
-            ${r.decision?.holdout?.usable === false ? ' <span class="chip no">no interval</span>' : ""}
-            &nbsp;·&nbsp; ${r.search?.candidates ?? "?"} candidates
-          </div>
-          <div class="node-why">${esc((r.reasons || [])[0] || "")}</div>
-          <div class="node-links">
-            <a onclick="location.hash='run=${encodeURIComponent(r.id)}&side=candidate'">windows</a> ·
-            <a onclick="location.hash='compare=${encodeURIComponent(r.id)}'">compare</a>
+    const kept = runs.filter(r => r.accepted).length;
+    const best = runs.reduce((a, r) =>
+      Math.max(a, r.candidate?.holdout?.statistic ?? -9, r.baseline?.holdout?.statistic ?? -9), -9);
+    const spent = runs.reduce((a, r) => a + (r.llm?.spent_usd || 0), 0);
+    const tried = runs.reduce((a, r) => a + (r.search?.candidates || 0), 0);
+
+    main.innerHTML = `<div class="fade">
+      <div class="cards">
+        <div class="stat"><b>${runs.length}</b><span>generations</span>
+          <small>${kept} promoted</small></div>
+        <div class="stat"><b class="${best > 0 ? "up" : "down"}">${n3(best)}</b>
+          <span>best held-out skill</span><small>zero is silence</small></div>
+        <div class="stat"><b>${tried}</b><span>candidates tried</span>
+          <small>across every search</small></div>
+        <div class="stat"><b>$${spent.toFixed(2)}</b><span>spent on models</span>
+          <small>$${(spent / Math.max(1, runs.length)).toFixed(2)} a generation</small></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Every generation</h3><span class="pill">newest first</span></div>
+        ${runs.map(r => {
+          const b = r.baseline?.holdout?.statistic, c = r.candidate?.holdout?.statistic;
+          const d = r.decision?.holdout?.diff;
+          const unusable = r.decision?.holdout?.usable === false;
+          return `<div class="gen" data-ok="${r.accepted ? 1 : 0}"
+                       onclick="go('run=${encodeURIComponent(r.id)}')">
+            <div class="mark"></div>
+            <div>
+              <div class="name">${esc(r.id)}
+                <span class="pill ${r.accepted ? "up" : "down"}">${r.accepted ? "promoted" : "dropped"}</span>
+                ${unusable ? '<span class="pill warn">no interval</span>' : ""}
+                ${r.candidate_fp === r.incumbent_fp ? '<span class="pill">unchanged</span>' : ""}
+              </div>
+              <div class="why">${esc((r.reasons || [])[0] || "")}</div>
+            </div>
+            <div class="right">
+              <div class="delta">${sgn(d)}</div>
+              <div class="crumb mono">${n3(b)} → ${n3(c)}</div>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+
+      <p class="sub">Skill is measured against no change. Predicting the price stays put is free
+      and nearly always nearly right, so zero is worth exactly as much as silence — and a
+      promotion needs a held-out interval clear of it.</p>
+    </div>`;
+  } catch (e) { fail(e); }
+}
+
+/* ======================= one generation ======================= */
+
+async function showRun(id, side) {
+  nav(""); crumb.innerHTML = `<a onclick="go('')">generations</a> / ${esc(id)}`;
+  loading();
+  try {
+    const [run] = await q(`runs?id=eq.${encodeURIComponent(id)}&select=*`);
+    const rows = await q(`rollouts?run_id=eq.${encodeURIComponent(id)}&side=eq.${side}` +
+      `&select=id,split,fixture,ticker,at,mid_now,realised,predicted,skill,echoed,` +
+      `unmeasurable,cost_usd,output&order=skill.asc&limit=500`);
+    const s = (run && run[side] && run[side].holdout) || {};
+    const quiet = rows.filter(r => r.unmeasurable).length;
+    const worst = rows.slice(0, 12), best = [...rows].reverse().slice(0, 6);
+
+    main.innerHTML = `<div class="fade">
+      <div class="cards">
+        <div class="stat"><b class="${(s.statistic ?? 0) > 0 ? "up" : "down"}">${n3(s.statistic)}</b>
+          <span>held-out skill</span><small>${s.instances ?? rows.length} windows</small></div>
+        <div class="stat"><b>${s.echoed ?? rows.filter(r => r.echoed).length}</b>
+          <span>echoed the mid</span><small>worth exactly zero</small></div>
+        <div class="stat"><b>${quiet}</b><span>unmeasurable</span>
+          <small>the market did not move</small></div>
+        <div class="stat"><b>$${(s.cost_usd ?? 0).toFixed(3)}</b><span>cost</span>
+          <small>$${((s.cost_usd ?? 0) / Math.max(1, rows.length)).toFixed(4)} a window</small></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">
+          <h3>${run && run.accepted ? "Promoted" : "Dropped"}</h3>
+          <span class="pill ${run && run.accepted ? "up" : "down"}">${run && run.accepted ? "kept" : "rejected"}</span>
+          <div class="spacer"></div>
+          <a onclick="go('compare=${encodeURIComponent(id)}')">read both side by side →</a>
+        </div>
+        <div class="panel-b">
+          <p style="margin:0 0 .8rem">${((run && run.reasons) || []).map(esc).join("<br>") || "—"}</p>
+          <div class="vote" style="gap:.4rem">
+            <button onclick="go('run=${encodeURIComponent(id)}&side=baseline')"
+              ${side === "baseline" ? 'style="border-color:var(--brand);color:var(--brand)"' : ""}>incumbent</button>
+            <button onclick="go('run=${encodeURIComponent(id)}&side=candidate')"
+              ${side === "candidate" ? 'style="border-color:var(--brand);color:var(--brand)"' : ""}>candidate</button>
           </div>
         </div>
-      </div>` + draw(r.id, depth + 1);
-    }).join("");
-
-    main.innerHTML = `
-      <div class="card"><h3>the seed</h3>
-        <p class="mono" style="font-size:.8rem">${esc(seedFp)}</p>
-        <p style="font-size:.85rem;color:var(--faint)">Every generation below starts here.
-           A fingerprint covers the components and the model — what the loop can rewrite —
-           so a generation that changed nothing carries the same one.</p></div>
-      ${draw("__seed__", 0)}`;
-  } catch (e) { fail(e); }
-}
-
-// -- compare two portfolios ------------------------------------------------
-
-async function pickMatch() {
-  crumb.innerHTML = "compare"; controls.innerHTML = "";
-  main.innerHTML = `<p class="msg">loading…</p>`;
-  try {
-    const runs = await q("runs?select=id,topic,accepted,candidate_fp,incumbent_fp&order=created.desc");
-    const usable = runs.filter(r => r.candidate_fp && r.candidate_fp !== r.incumbent_fp);
-    main.innerHTML = `
-      <div class="card"><h3>what this asks</h3>
-        <p>Two harnesses, one match, every window they were both scored on — what
-        each said, how wide it quoted, and why. One of them is the incumbent and
-        one is a rewrite, and which is on the left is decided by a coin flip.</p>
-        <p style="color:var(--faint);font-size:.88rem">A single forecast is
-        verifiable five minutes later, so asking which reads better mostly
-        measures which reads better. A whole match shows when a harness stays
-        quiet, whether its width tracks its uncertainty, and whether its reasons
-        change with the situation — which is what a number cannot show you.</p>
       </div>
-      ${usable.length ? `<div class="scroll"><table><thead><tr>
-        <th>generation</th><th>matches</th></tr></thead><tbody>
-        ${usable.map(r => `<tr class="click" onclick="location.hash='compare=${encodeURIComponent(r.id)}'">
-          <td><b>${esc(r.id)}</b></td><td>pick a match →</td></tr>`).join("")}
-      </tbody></table></div>`
-      : `<p class="msg">no generation yet has a rewrite to compare against its incumbent</p>`}`;
+
+      <div class="panel">
+        <div class="panel-h"><h3>Where it lost</h3>
+          <span class="pill">worst first — the only thing a rewrite can aim at</span></div>
+        <div class="scroll">${windowTable(worst)}</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Where it won</h3></div>
+        <div class="scroll">${windowTable(best)}</div>
+      </div>
+    </div>`;
   } catch (e) { fail(e); }
 }
+
+function windowTable(rows) {
+  if (!rows.length) return `<div class="msg">nothing scored</div>`;
+  return `<table><thead><tr>
+      <th>window</th><th class="n">mid</th><th class="n">said</th><th class="n">printed</th>
+      <th class="bar-cell">skill</th><th>why it said so</th>
+    </tr></thead><tbody>${rows.map(r => `
+      <tr class="tap" onclick="go('rollout=${r.id}')">
+        <td><div class="mono" style="font-size:.78rem">${esc(r.ticker)}</div>
+            <div class="crumb mono">${esc((r.at || "").slice(11, 16))}
+              ${r.echoed ? '<span class="pill">echo</span>' : ""}
+              ${r.unmeasurable ? '<span class="pill warn">quiet</span>' : ""}</div></td>
+        <td class="n">${r.mid_now == null ? "—" : r.mid_now.toFixed(3)}</td>
+        <td class="n">${r.predicted == null ? "—" : r.predicted.toFixed(3)}</td>
+        <td class="n">${r.realised == null ? "—" : r.realised.toFixed(3)}</td>
+        <td class="bar-cell">${skillBar(r.skill)}
+            <div class="crumb mono" style="margin-top:.25rem">${n3(r.skill)}</div></td>
+        <td style="max-width:24rem;font-size:.82rem;color:var(--soft)">
+          ${esc(((r.output && r.output.driver) || "").slice(0, 160))
+            || '<span class="crumb">not recorded</span>'}</td>
+      </tr>`).join("")}</tbody></table>`;
+}
+
+/* ======================= one window ======================= */
+
+async function showWindow(rid) {
+  nav(""); loading();
+  try {
+    const [r] = await q(`rollouts?id=eq.${rid}&select=*`);
+    if (!r) return main.innerHTML = `<div class="msg">no such window</div>`;
+    crumb.innerHTML = `<a onclick="go('')">generations</a> / ` +
+      `<a onclick="go('run=${encodeURIComponent(r.run_id)}&side=${r.side}')">${esc(r.run_id)}</a> / window`;
+    const t = await q(`traces?rollout_id=eq.${rid}&select=spans`);
+    const spans = (t[0] && t[0].spans) || [];
+    const o = r.output || {};
+
+    main.innerHTML = `<div class="fade">
+      <div class="grid-2 split">
+        <div class="panel">
+          <div class="panel-h"><h3 class="mono" style="font-size:.85rem">${esc(r.ticker)}</h3>
+            <span class="pill">${esc((r.at || "").replace("T", " ").slice(0, 16))}</span>
+            <span class="pill ${r.split === "holdout" ? "brand" : ""}">${esc(r.split)}</span></div>
+          <div class="panel-b">
+            ${priceTrack(r)}
+            <div class="fc" style="margin-top:1.2rem">
+              <div class="box"><div class="k">it said</div>
+                <div class="big">${cents(o.delta_cents)}</div>
+                <p>quoting ±${o.half_width_cents ?? "?"}c${o.confidence != null
+                  ? `, confidence ${o.confidence}` : ""}${o.reconstructed
+                  ? " · rebuilt from the score, so no reasoning was kept" : ""}</p></div>
+              <div class="box"><div class="k">it was worth</div>
+                <div class="big ${(r.skill ?? 0) > 0 ? "up" : (r.skill ?? 0) < 0 ? "down" : ""}">${n3(r.skill)}</div>
+                <p>against no change${r.unmeasurable
+                  ? " — but the market did not move, so there is no skill to measure" : ""}</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h3>Its reasoning</h3></div>
+          <div class="panel-b">
+            ${o.driver ? `<div class="box" style="margin-bottom:.7rem"><div class="k">driver</div>
+              <p>${esc(o.driver)}</p></div>` : ""}
+            ${o.falsifier ? `<div class="box"><div class="k">what would prove it wrong</div>
+              <p>${esc(o.falsifier)}</p></div>` : ""}
+            ${!o.driver && !o.falsifier ? `<p class="crumb">This generation was scored without
+              <code>--trace</code>, so only the numbers were kept.</p>` : ""}
+            ${r.feedback ? `<div class="box" style="margin-top:.7rem"><div class="k">how it was scored</div>
+              <p>${esc(r.feedback)}</p></div>` : ""}
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>What it did</h3><span class="pill">${spans.length} steps</span></div>
+        <div class="panel-b">
+          ${spans.length ? spans.map(s => `
+            <details class="span" data-k="${esc(s.kind)}"${s.kind === "llm" ? " open" : ""}>
+              <summary>
+                <span class="pill ${s.kind === "llm" ? "up" : s.kind === "tool" ? "brand" : ""}">${esc(s.kind)}</span>
+                <span class="nm">${esc(s.name)}</span>
+                ${s.error ? '<span class="pill down">error</span>' : ""}
+                <span class="meta">${s.duration_s != null ? s.duration_s + "s" : ""}${
+                  s.cost_usd ? " · $" + s.cost_usd.toFixed(5) : ""}${s.cached ? " · cached" : ""}</span>
+              </summary>
+              ${s.input != null ? `<pre>${esc(s.input)}</pre>` : ""}
+              ${s.output != null ? `<pre>${esc(s.output)}</pre>` : ""}
+              ${s.error ? `<pre class="down">${esc(s.error)}</pre>` : ""}
+            </details>`).join("")
+            : `<p class="crumb">No trace was kept for this generation.</p>`}
+        </div>
+      </div>
+    </div>`;
+  } catch (e) { fail(e); }
+}
+
+/** mid, what it said, what printed — on one line, to scale. */
+function priceTrack(r) {
+  const pts = [["mid", r.mid_now, "var(--ghost)"],
+               ["said", r.predicted, "var(--brand)"],
+               ["printed", r.realised, "var(--ink)"]].filter(p => p[1] != null);
+  if (pts.length < 2) return "";
+  const vals = pts.map(p => p[1]);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = Math.max(0.008, (hi - lo) * 0.45);
+  lo -= pad; hi += pad;
+  const at = v => ((v - lo) / (hi - lo)) * 100;
+  return `<div class="track"><div class="axis"></div>
+    ${pts.map(([k, v, c]) => `
+      <div class="pip" style="left:${at(v)}%;background:${c}"></div>
+      <div class="lbl" style="left:${at(v)}%">${k}</div>
+      <div class="val" style="left:${at(v)}%">${v.toFixed(3)}</div>`).join("")}</div>`;
+}
+
+/* ======================= lineage ======================= */
+
+async function showTree() {
+  nav("tree"); crumb.textContent = "lineage"; loading();
+  try {
+    const runs = await q("runs?select=*&order=created.asc");
+    if (!runs.length) return main.innerHTML = `<div class="msg">nothing to draw yet</div>`;
+    const kids = new Map();
+    for (const r of runs) {
+      const k = r.parent || "__seed__";
+      if (!kids.has(k)) kids.set(k, []);
+      kids.get(k).push(r);
+    }
+    const draw = (id, depth) => (kids.get(id) || []).map(r => {
+      const d = r.decision && r.decision.holdout && r.decision.holdout.diff;
+      return `<div style="margin-left:${depth * 1.7}rem">
+        <div class="gen" data-ok="${r.accepted ? 1 : 0}"
+             style="border:1px solid var(--line);border-radius:10px;margin-bottom:.6rem;
+                    background:var(--panel);box-shadow:var(--shadow)"
+             onclick="go('run=${encodeURIComponent(r.id)}')">
+          <div class="mark"></div>
+          <div>
+            <div class="name">${esc(r.id)}
+              <span class="pill ${r.accepted ? "up" : "down"}">${r.accepted ? "kept" : "dropped"}</span>
+              ${r.candidate_fp === r.incumbent_fp ? '<span class="pill">unchanged</span>' : ""}</div>
+            <div class="why mono" style="color:var(--soft)">held out
+              ${n3(r.baseline && r.baseline.holdout && r.baseline.holdout.statistic)} →
+              ${n3(r.candidate && r.candidate.holdout && r.candidate.holdout.statistic)}
+              · ${(r.search && r.search.candidates) ?? "?"} candidates</div>
+            <div class="why">${esc((r.reasons || [])[0] || "")}</div>
+          </div>
+          <div class="right"><div class="delta">${sgn(d)}</div></div>
+        </div>
+      </div>` + draw(r.id, depth + 1)).join("");
+
+    main.innerHTML = `<div class="fade">
+      <h2>Lineage</h2>
+      <p class="sub">Every generation from the seed, kept and dropped alike. A tree showing only
+      what survived is a tree nobody can learn from — and so far nothing has survived, which
+      is itself the result.</p>
+      <div class="panel"><div class="panel-b">
+        <div class="eyebrow">the seed</div>
+        <div class="mono" style="font-size:.85rem">${esc((runs[0] && runs[0].incumbent_fp) || "")}</div>
+        <p class="crumb" style="margin:.4rem 0 0">A fingerprint covers the components and the
+        model — what the loop can rewrite — so a generation that changed nothing carries
+        the same one.</p>
+      </div></div>
+      ${draw("__seed__", 0)}</div>`;
+  } catch (e) { fail(e); }
+}
+
+/* ======================= compare ======================= */
 
 const VOTER = (() => {
   let v = localStorage.getItem("rsi_voter");
@@ -264,71 +559,121 @@ const VOTER = (() => {
   return v;
 })();
 
+async function pickGeneration() {
+  nav("compare"); crumb.textContent = "compare"; loading();
+  try {
+    const runs = await q("runs?select=id,accepted,candidate_fp,incumbent_fp&order=created.desc");
+    main.innerHTML = `<div class="fade">
+      <h2>Which set of judgements would you rather have had?</h2>
+      <p class="sub">Two harnesses, one match, every window they were both scored on. One is the
+      incumbent and one is a rewrite; a coin decides which sits on the left, and which way it
+      landed is stored with your vote.</p>
+      <div class="panel"><div class="panel-b">
+        <p style="margin:0 0 .7rem"><b>Why a whole match rather than one forecast.</b> A single
+        call is verifiable five minutes later, so asking which reads better mostly measures which
+        reads better — and a harness can argue well for a call that loses. The candidate
+        dropped on 15 September predicted movement on 27 of 29 dead markets, and every one of its
+        reasons was plausible on its own. What gave it away was thirty-four of them in a row.</p>
+        <p style="margin:0;color:var(--faint);font-size:.87rem">The number worth watching is not
+        who wins. It is how often a reader and the arithmetic disagree — because a harness
+        that reads well and scores badly is the thing most likely to fool the rewriter, which is
+        judging text too.</p>
+      </div></div>
+      <div class="panel">
+        <div class="panel-h"><h3>Pick a generation</h3></div>
+        ${runs.map(r => `<div class="gen" onclick="go('compare=${encodeURIComponent(r.id)}')">
+          <div class="mark" style="background:var(--brand)"></div>
+          <div><div class="name">${esc(r.id)}</div>
+            <div class="why">${r.candidate_fp === r.incumbent_fp
+              ? "the search returned the incumbent, so both columns are the same harness"
+              : "a rewrite against its incumbent"}</div></div>
+          <div class="right crumb">choose a match →</div>
+        </div>`).join("")}
+      </div></div>`;
+  } catch (e) { fail(e); }
+}
+
 async function showCompare(runId, fixture) {
-  crumb.innerHTML = `<a onclick="location.hash='compare'">compare</a> / ${esc(runId)}`;
-  controls.innerHTML = "";
-  main.innerHTML = `<p class="msg">loading portfolios…</p>`;
+  nav("compare");
+  crumb.innerHTML = `<a onclick="go('compare')">compare</a> / ${esc(runId)}`;
+  loading();
   try {
     const rows = await q(`rollouts?run_id=eq.${encodeURIComponent(runId)}` +
-                         `&select=side,fixture,ticker,at,mid_now,realised,predicted,half_width,skill,output` +
-                         `&order=at.asc&limit=3000`);
-    if (!rows.length) return main.innerHTML = `<p class="msg">no rollouts for this generation</p>`;
-    const fixtures = [...new Set(rows.map(r => r.fixture))];
+      `&select=side,fixture,ticker,at,mid_now,realised,predicted,half_width,skill,output` +
+      `&order=at.asc&limit=4000`);
+    if (!rows.length) return main.innerHTML = `<div class="msg">no rollouts for this generation</div>`;
+
     if (!fixture) {
-      return main.innerHTML = `<div class="scroll"><table><thead><tr><th>match</th><th class="n">windows</th></tr></thead>
-        <tbody>${fixtures.map(f => `<tr class="click" onclick="location.hash='compare=${encodeURIComponent(runId)}&fixture=${encodeURIComponent(f)}'">
-          <td class="mono">${esc(f)}</td><td class="n">${rows.filter(r => r.fixture === f && r.side === "baseline").length}</td>
-        </tr>`).join("")}</tbody></table></div>`;
+      const by = {};
+      for (const r of rows) (by[r.fixture] = by[r.fixture] || []).push(r);
+      return main.innerHTML = `<div class="fade"><div class="panel">
+        <div class="panel-h"><h3>Pick a match</h3>
+          <span class="pill">${Object.keys(by).length} played</span></div>
+        ${Object.entries(by).map(([f, rs]) => `
+          <div class="gen" onclick="go('compare=${encodeURIComponent(runId)}&fixture=${encodeURIComponent(f)}')">
+            <div class="mark" style="background:var(--brand)"></div>
+            <div><div class="name mono" style="font-size:.9rem">${esc(f)}</div>
+              <div class="why">${rs.filter(r => r.side === "baseline").length} windows each</div></div>
+            <div class="right crumb">read both →</div>
+          </div>`).join("")}
+      </div></div>`;
     }
 
-    const mine = rows.filter(r => r.fixture === fixture);
-    const byTicker = {};
-    for (const r of mine) {
+    const paired = {};
+    for (const r of rows.filter(r => r.fixture === fixture)) {
       const k = r.ticker + "|" + r.at;
-      byTicker[k] = byTicker[k] || {};
-      byTicker[k][r.side] = r;
+      (paired[k] = paired[k] || {})[r.side] = r;
     }
-    const pairs = Object.values(byTicker).filter(p => p.baseline && p.candidate);
-    if (!pairs.length) return main.innerHTML = `<p class="msg">this match has no paired windows</p>`;
+    const pairs = Object.values(paired).filter(p => p.baseline && p.candidate);
+    if (!pairs.length) return main.innerHTML = `<div class="msg">this match has no paired windows</div>`;
 
-    // Left is a coin flip, and which way it landed is recorded with the vote —
-    // position bias is real and a vote nobody can correct for is unusable.
+    // A coin decides the left column, and which way it landed is stored with the
+    // vote: position bias is real, and a vote nobody can correct for is unusable.
     const flipped = Math.random() < 0.5;
-    const leftSide = flipped ? "candidate" : "baseline";
-    const pooled = side => {
-      const rs = pairs.map(p => p[side]);
-      return rs.reduce((a, r) => a + (r.skill ?? 0), 0) / rs.length;
-    };
+    const L = flipped ? "candidate" : "baseline", R = flipped ? "baseline" : "candidate";
+    const pooled = side => pairs.reduce((a, p) => a + (p[side].skill ?? 0), 0) / pairs.length;
+    const spoke = side => pairs.filter(p =>
+      Math.abs((p[side].output && p[side].output.delta_cents) ?? 0) > 0.001).length;
 
-    main.innerHTML = `
-      <div class="card"><h3>${esc(fixture)} — ${pairs.length} windows</h3>
-        <p>Read both columns, then say which set of judgements you would rather
-        have had. The answer already exists; it is hidden until you vote.</p></div>
-      <div class="scroll"><table><thead><tr>
-        <th>when</th><th class="n">mid</th>
-        <th>${flipped ? "B" : "A"}</th><th>${flipped ? "A" : "B"}</th>
-      </tr></thead><tbody>${pairs.map(p => {
-        const L = flipped ? p.candidate : p.baseline, R = flipped ? p.baseline : p.candidate;
-        const cell = r => {
-          const o = r.output || {};
-          const d = o.delta_cents;
-          return `<td style="max-width:24rem">
-            <span class="mono" style="font-size:.8rem"><b>${d == null ? "—" : (d > 0 ? "+" : "") + d + "c"}</b>
-              <span style="color:var(--faint)"> ±${o.half_width_cents ?? "?"}c</span></span>
-            <div style="font-size:.8rem;color:var(--soft);margin-top:.2rem">${esc((o.driver || "").slice(0, 220))}</div>
-          </td>`;
-        };
-        return `<tr>
-          <td class="mono" style="font-size:.74rem;white-space:nowrap">${esc((p.baseline.at || "").slice(11, 16))}</td>
-          <td class="n">${p.baseline.mid_now?.toFixed(3) ?? "—"}</td>
-          ${cell(L)}${cell(R)}
-        </tr>`;
-      }).join("")}</tbody></table></div>
-      <div class="card" id="voteBox"><h3>which set would you rather have had?</h3>
-        <p><button onclick="castVote('${esc(runId)}','${esc(fixture)}','${leftSide}','${flipped ? "candidate" : "baseline"}',${pooled("baseline")},${pooled("candidate")})">${flipped ? "B" : "A"} (left)</button>
-           <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${leftSide}','${flipped ? "baseline" : "candidate"}',${pooled("baseline")},${pooled("candidate")})">${flipped ? "A" : "B"} (right)</button>
-           <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${leftSide}','neither',${pooled("baseline")},${pooled("candidate")})">neither</button></p>
-      </div>`;
+    const column = (side, tag) => `<div class="side">
+      <div class="head"><div class="tag">${tag}</div>
+        <div><div style="font-weight:640;font-size:.9rem">Harness ${tag}</div>
+          <div class="crumb">had an opinion on ${spoke(side)} of ${pairs.length} windows</div></div></div>
+      ${pairs.map(p => {
+        const r = p[side], o = r.output || {};
+        const d = o.delta_cents;
+        return `<div class="call">
+          <div class="top">
+            <span class="clock">${esc((r.at || "").slice(11, 16))}</span>
+            <span class="move ${d > 0 ? "up" : d < 0 ? "down" : ""}">${d == null ? "—" : cents(d)}</span>
+            <span class="width">±${o.half_width_cents ?? "?"}c</span>
+            <span class="clock" style="margin-left:auto">mid ${
+              r.mid_now == null ? "—" : r.mid_now.toFixed(3)}</span>
+          </div>
+          ${o.driver ? `<p class="say">${esc(o.driver)}</p>`
+                     : `<p class="say crumb">no reasoning kept for this generation</p>`}
+          ${o.falsifier ? `<p class="falsi">wrong if: ${esc(o.falsifier)}</p>` : ""}
+        </div>`;
+      }).join("")}
+    </div>`;
+
+    main.innerHTML = `<div class="fade">
+      <h2 class="mono" style="font-size:1.02rem">${esc(fixture)}</h2>
+      <p class="sub">${pairs.length} windows, both harnesses on each. Read the pair, then say
+      which set you would rather have had — the answer already exists and is hidden until
+      you vote.</p>
+      <div class="duel">${column(L, flipped ? "B" : "A")}${column(R, flipped ? "A" : "B")}</div>
+      <div class="panel" id="voteBox"><div class="panel-b">
+        <div class="eyebrow">your call</div>
+        <div class="vote">
+          <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${L}','${L}',${pooled("baseline")},${pooled("candidate")})">
+            ${flipped ? "B" : "A"} — the left column</button>
+          <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${L}','${R}',${pooled("baseline")},${pooled("candidate")})">
+            ${flipped ? "A" : "B"} — the right column</button>
+          <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${L}','neither',${pooled("baseline")},${pooled("candidate")})">
+            neither</button>
+        </div>
+      </div></div></div>`;
   } catch (e) { fail(e); }
 }
 
@@ -336,137 +681,26 @@ async function castVote(runId, fixture, leftSide, chose, bSkill, cSkill) {
   const box = document.getElementById("voteBox");
   try {
     await fetch(`${URL_}/rest/v1/rsi_votes`, {
-      method: "POST",
-      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`,
-                 "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ run_id: runId, fixture, chose, left_side: leftSide,
-                             baseline_skill: bSkill, candidate_skill: cSkill, voter: VOTER })
+      method:"POST",
+      headers:{ apikey:KEY, Authorization:`Bearer ${KEY}`,
+                "Content-Type":"application/json", Prefer:"return=minimal" },
+      body: JSON.stringify({ run_id:runId, fixture, chose, left_side:leftSide,
+                             baseline_skill:bSkill, candidate_skill:cSkill, voter:VOTER }),
     });
   } catch (e) { /* a lost vote is not worth an error page */ }
   const better = bSkill === cSkill ? "neither" : (bSkill > cSkill ? "baseline" : "candidate");
   const agreed = chose === better;
-  box.innerHTML = `<h3>the answer</h3>
-    <p>You picked <b>${esc(chose)}</b>. Over these windows the incumbent scored
-       <b>${bSkill.toFixed(3)}</b> and the rewrite <b>${cSkill.toFixed(3)}</b>,
-       so the arithmetic preferred <b>${better}</b>.</p>
-    <p class="${agreed ? "up" : "down"}">${agreed
+  box.innerHTML = `<div class="panel-b fade">
+    <div class="eyebrow">the answer</div>
+    <div class="cards" style="margin-bottom:.9rem">
+      <div class="stat"><b class="${bSkill > 0 ? "up" : "down"}">${n3(bSkill)}</b><span>incumbent</span></div>
+      <div class="stat"><b class="${cSkill > 0 ? "up" : "down"}">${n3(cSkill)}</b><span>rewrite</span></div>
+      <div class="stat"><b style="font-size:1.1rem">${better}</b><span>the arithmetic preferred</span></div>
+    </div>
+    <p style="margin:0" class="${agreed ? "up" : "down"}">${agreed
       ? "Your reading and the score agree."
-      : "Your reading and the score disagree — which is the interesting case: a harness can argue well for a call that loses."}</p>`;
-}
-
-async function showRuns() {
-  crumb.innerHTML = ""; controls.innerHTML = "";
-  main.innerHTML = `<p class="msg">loading runs…</p>`;
-  try {
-    const runs = await q("runs?select=*&order=created.desc");
-    if (!runs.length) return main.innerHTML = `<p class="msg">no runs published yet</p>`;
-    main.innerHTML = `<div class="scroll"><table><thead><tr>
-      <th>generation</th><th>topic</th><th></th>
-      <th class="n">train</th><th class="n">held out</th>
-      <th class="n">Δ held out</th><th class="n">cands</th><th>why</th>
-    </tr></thead><tbody>${runs.map(r => {
-      const bh = r.baseline?.holdout?.statistic, ch = r.candidate?.holdout?.statistic;
-      const bt = r.baseline?.train?.statistic;
-      const d = r.decision?.holdout?.diff;
-      return `<tr class="click" onclick="location.hash='run=${encodeURIComponent(r.id)}'">
-        <td><b>${esc(r.id)}</b><br><span class="crumb">${esc(r.candidate_fp || "")}</span></td>
-        <td>${esc(r.topic)}</td>
-        <td><span class="chip ${r.accepted ? "ok" : "no"}">${r.accepted ? "accepted" : "rejected"}</span></td>
-        <td class="n">${sign(bt)}</td>
-        <td class="n">${sign(bh)}${ch != null && ch !== bh ? ` → ${sign(ch)}` : ""}</td>
-        <td class="n">${sign(d)}</td>
-        <td class="n">${r.search?.candidates ?? "—"}</td>
-        <td style="max-width:22rem">${esc((r.reasons || [])[0] || "")}</td>
-      </tr>`;
-    }).join("")}</tbody></table></div>`;
-  } catch (e) { fail(e); }
-}
-
-async function showRun(id, side) {
-  crumb.innerHTML = `<a onclick="location.hash=''">runs</a> / ${esc(id)}`;
-  controls.innerHTML = `<select onchange="location.hash='run=${encodeURIComponent(id)}&side='+this.value">
-    <option value="baseline"${side === "baseline" ? " selected" : ""}>baseline</option>
-    <option value="candidate"${side === "candidate" ? " selected" : ""}>candidate</option>
-  </select>`;
-  main.innerHTML = `<p class="msg">loading windows…</p>`;
-  try {
-    const [run] = await q(`runs?id=eq.${encodeURIComponent(id)}&select=*`);
-    // Worst first: the windows it lost are the only ones a rewrite can aim at.
-    const rows = await q(`rollouts?run_id=eq.${encodeURIComponent(id)}&side=eq.${side}` +
-                         `&select=id,split,fixture,ticker,at,mid_now,realised,predicted,skill,` +
-                         `echoed,unmeasurable,cost_usd,ok,output&order=skill.asc&limit=400`);
-    const s = run?.[side]?.holdout || {};
-    main.innerHTML = `
-      <div class="grid">
-        <div class="stat"><b>${sign(s.statistic)}</b><span>held-out skill</span></div>
-        <div class="stat"><b>${s.instances ?? rows.length}</b><span>windows</span></div>
-        <div class="stat"><b>${s.echoed ?? "—"}</b><span>echoed the mid</span></div>
-        <div class="stat"><b>${s.unmeasurable ?? "—"}</b><span>unmeasurable</span></div>
-        <div class="stat"><b>$${(s.cost_usd ?? 0).toFixed(3)}</b><span>cost</span></div>
-      </div>
-      ${(run?.reasons || []).length ? `<div class="card"><h3>verdict</h3>
-        <p>${(run.reasons || []).map(esc).join("<br>")}</p></div>` : ""}
-      <div class="scroll"><table><thead><tr>
-        <th>window</th><th>split</th>
-        <th class="n">mid</th><th class="n">said</th><th class="n">printed</th>
-        <th class="n">skill</th><th>driver</th>
-      </tr></thead><tbody>${rows.map(r => `
-        <tr class="click" onclick="location.hash='rollout=${r.id}'">
-          <td class="mono" style="font-size:.76rem">${esc(r.ticker)}<br>
-              <span class="crumb">${esc((r.at || "").replace("T", " ").slice(0, 16))}</span></td>
-          <td><span class="chip">${esc(r.split)}</span>${r.echoed ? ' <span class="chip">echo</span>' : ""}${r.unmeasurable ? ' <span class="chip">quiet</span>' : ""}</td>
-          <td class="n">${r.mid_now?.toFixed(3) ?? "—"}</td>
-          <td class="n">${r.predicted?.toFixed(3) ?? "—"}</td>
-          <td class="n">${r.realised?.toFixed(3) ?? "—"}</td>
-          <td class="n">${sign(r.skill)}</td>
-          <td style="max-width:26rem;font-size:.8rem">${esc((r.output?.driver || "").slice(0, 150))}</td>
-        </tr>`).join("")}</tbody></table></div>`;
-  } catch (e) { fail(e); }
-}
-
-async function showTrace(rid) {
-  main.innerHTML = `<p class="msg">loading trace…</p>`;
-  try {
-    const [r] = await q(`rollouts?id=eq.${rid}&select=*`);
-    if (!r) return main.innerHTML = `<p class="msg">no such window</p>`;
-    crumb.innerHTML = `<a onclick="location.hash=''">runs</a> / ` +
-      `<a onclick="location.hash='run=${encodeURIComponent(r.run_id)}&side=${r.side}'">${esc(r.run_id)}</a> / ${esc(r.ticker)}`;
-    controls.innerHTML = "";
-    const t = await q(`traces?rollout_id=eq.${rid}&select=spans`);
-    const spans = t[0]?.spans || [];
-    const o = r.output || {};
-    main.innerHTML = `
-      <div class="grid">
-        <div class="stat"><b>${r.mid_now?.toFixed(3) ?? "—"}</b><span>mid at the instant</span></div>
-        <div class="stat"><b>${r.predicted?.toFixed(3) ?? "—"}</b><span>it said</span></div>
-        <div class="stat"><b>${r.realised?.toFixed(3) ?? "—"}</b><span>it printed</span></div>
-        <div class="stat"><b>${sign(r.skill)}</b><span>skill vs no change</span></div>
-        <div class="stat"><b>$${(r.cost_usd ?? 0).toFixed(4)}</b><span>cost</span></div>
-      </div>
-      <div class="card">
-        <h3>the forecast</h3>
-        <p><b>${o.delta_cents != null ? (o.delta_cents > 0 ? "+" : "") + o.delta_cents + "c" : "—"}</b>
-           with a half-width of ${o.half_width_cents ?? "—"}c${o.confidence != null ? `, confidence ${o.confidence}` : ""}</p>
-        ${o.driver ? `<p><span class="lbl">driver</span>${esc(o.driver)}</p>` : ""}
-        ${o.falsifier ? `<p><span class="lbl">falsifier</span>${esc(o.falsifier)}</p>` : ""}
-      </div>
-      ${r.feedback ? `<div class="card"><h3>how it was scored</h3><p>${esc(r.feedback)}</p></div>` : ""}
-      <h3 class="sans" style="font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);margin:1.4rem 0 .7rem">
-        what it did — ${spans.length} steps</h3>
-      ${spans.length ? spans.map(s => `
-        <details class="span" data-kind="${esc(s.kind)}"${s.kind === "llm" ? " open" : ""}>
-          <summary>
-            <span class="k">${esc(s.kind)}</span>
-            <span class="nm">${esc(s.name)}</span>
-            ${s.error ? `<span class="chip no">error</span>` : ""}
-            <span class="meta">${s.duration_s != null ? s.duration_s + "s" : ""}${s.cost_usd ? " · $" + s.cost_usd.toFixed(5) : ""}${s.cached ? " · cached" : ""}</span>
-          </summary>
-          ${s.input != null ? `<pre><span class="lbl">in</span>${esc(s.input)}</pre>` : ""}
-          ${s.output != null ? `<pre><span class="lbl">out</span>${esc(s.output)}</pre>` : ""}
-          ${s.error ? `<pre class="err">${esc(s.error)}</pre>` : ""}
-        </details>`).join("")
-        : `<p class="msg">this run was scored without <code>--trace</code>, so there is nothing to show</p>`}`;
-  } catch (e) { fail(e); }
+      : "Your reading and the score disagree — the interesting case. A harness can argue well for a call that loses, and the rewriter is judging text too."}</p>
+  </div>`;
 }
 
 addEventListener("hashchange", route);
