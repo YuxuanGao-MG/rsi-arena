@@ -5,6 +5,7 @@ five minutes. The answer is in the candle history."""
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import sys
 from typing import Any
 
@@ -74,6 +75,16 @@ class KalshiHorizon:
                                   log=lambda m: print(m, file=sys.stderr))
             self._windows = _thin(built, self.per_fixture)
         return self._windows
+
+    def tools(self) -> list[str]:
+        """Every tool a harness on this topic may name.
+
+        Independent of any window, because the frozen box holds the same names
+        whatever instant it is bound to — and asking for a window to find out
+        would load the whole question set for a list of strings.
+        """
+        return sorted(replay_tools(datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                   self.history, self.tool_cache))
 
     def toolbox(self, window: Window) -> Toolbox:
         return replay_tools(window.at, self.history, self.tool_cache)

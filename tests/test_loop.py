@@ -335,3 +335,23 @@ async def test_the_probe_is_the_train_scoreboard(t0, history):
                      candidate_holdout=good, incumbent_holdout=base, min_groups=1)
     assert verdict.accepted, verdict.reasons
     assert verdict.train["paired"] == len(probe), "judged on what was actually scored"
+
+
+def test_the_rewriter_is_told_every_tool_it_may_reach_for(t0, history):
+    """It was told the three the harness already used, and that no others
+    existed. The box holds nine.
+
+    That is not a wording problem. The arena's premise is that a harness
+    composes primitives; a search that cannot learn what it is allowed to call
+    is a search over the prompt with extra steps, and every rewrite GEPA has
+    produced so far changed only the context.
+    """
+    from rsi_arena.loop.adapter import reflection_templates
+
+    tk = task(history, t0)
+    base = Harness.load(BASE)
+    prompt = reflection_templates(tk, base)["tools"]
+
+    for name in tk.tools():
+        assert name in prompt, f"{name} is in the box and not in the prompt"
+    assert len(tk.tools()) > len(base.tools), "the box is wider than what the seed uses"

@@ -58,6 +58,30 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
         return {component: records for component in components_to_update}
 
 
+def _available(task: Task, base: Harness) -> list[str]:
+    """Every tool a rewrite may reach for, not just the ones it already uses.
+
+    This read `base.tools` and so told the rewriter that the three tools the
+    harness happened to list were the only ones in existence. The box holds
+    nine. A search that cannot learn what it is allowed to call is a search over
+    the prompt with extra steps — and the arena's premise is that a harness
+    composes primitives.
+
+    Falls back to what the harness lists if the topic cannot say, because being
+    wrong in that direction only narrows the search.
+
+    Asks the topic rather than building an instance: loading the question set to
+    find out which tools exist costs the whole benchmark for a string.
+    """
+    named = getattr(task, "tools", None)
+    if callable(named):
+        try:
+            return sorted(named())
+        except Exception:
+            pass
+    return list(base.tools)
+
+
 def reflection_templates(task: Task, base: Harness) -> dict[str, str]:
     """One reflection prompt per component, with the task stated once.
 
@@ -67,7 +91,8 @@ def reflection_templates(task: Task, base: Harness) -> dict[str, str]:
     """
     head = (f"You are improving one part of a harness: a model wired to tools by a plan.\n\n"
             f"The task:\n{task.background}\n\n"
-            f"Tools the harness may list (no others exist): {', '.join(base.tools)}.\n"
+            f"Tools the harness may list (no others exist): "
+            f"{', '.join(_available(task, base))}.\n"
             f"Inputs a plan may read: {', '.join(sorted(task.inputs))}.\n\n")
     examples = ("Below are instances the current harness ran on, what it did, and feedback on "
                 "each. Read the feedback for patterns: what the harness kept getting wrong, "
@@ -84,7 +109,9 @@ def reflection_templates(task: Task, base: Harness) -> dict[str, str]:
                 "output contract described in the task. Provide the JSON within ``` blocks.",
         "tools": head + "The current tool list:\n```\n<curr_param>\n```\n\n" + examples
                  + "Write the new tool list as comma-separated names drawn only from the tools "
-                 "named above. A plan may only call tools in this list. Provide it within ``` blocks.",
+                 "named above — including ones the current list leaves out, if the feedback "
+                 "argues for them. A plan may only call tools in this list. Provide it within "
+                 "``` blocks.",
     }
 
 
