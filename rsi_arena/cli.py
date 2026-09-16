@@ -81,9 +81,17 @@ def _closing(llm: OpenRouter):
     return _run
 
 
-def _dump_rollouts(path: Path, rollouts: list[Rollout]) -> None:
+def _dump_rollouts(path: Path, rollouts: list[Rollout], *, trace: bool = False) -> None:
+    """Write scored instances. With ``trace``, every step the harness took too.
+
+    Off by default because a trace is two orders larger than the row it hangs
+    off, and a thousand-window run does not want a hundred megabytes of prompts
+    on disk for a number nobody disputed. On when something is going to be read
+    — which is most of the time a human is involved.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps([r.to_dict() for r in rollouts], indent=1, default=str))
+    path.write_text(json.dumps([r.to_dict(trace=trace) for r in rollouts],
+                               indent=1, default=str))
 
 
 # -- windows ----------------------------------------------------------------
@@ -133,7 +141,7 @@ def cmd_bench(args: argparse.Namespace) -> int:
     summary = {"harness": harness.name, "source": source, "fingerprint": fingerprint(harness),
                "split": args.split, **summarise(task, rollouts)}
     if args.out:
-        _dump_rollouts(Path(args.out), rollouts)
+        _dump_rollouts(Path(args.out), rollouts, trace=args.trace)
     if args.json:
         print(json.dumps(summary, indent=2))
     else:
@@ -171,8 +179,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     log(f"baseline: {incumbent.name} ({gen.incumbent_fingerprint})")
     base_train, base_hold = _bench(task, incumbent, train, llm, s), _bench(task, incumbent, hold, llm, s)
     gen.baseline = {"train": summarise(task, base_train), "holdout": summarise(task, base_hold)}
-    _dump_rollouts(run_dir / "rollouts" / "baseline.train.json", base_train)
-    _dump_rollouts(run_dir / "rollouts" / "baseline.holdout.json", base_hold)
+    _dump_rollouts(run_dir / "rollouts" / "baseline.train.json", base_train,
+                   trace=args.trace)
+    _dump_rollouts(run_dir / "rollouts" / "baseline.holdout.json", base_hold,
+                   trace=args.trace)
     gen.save()
     log(f"  train {gen.baseline['train']['statistic']:+.3f}   held-out {gen.baseline['holdout']['statistic']:+.3f}")
 
@@ -194,8 +204,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
 
     cand_train, cand_hold = _bench(task, candidate, train, llm, s), _bench(task, candidate, hold, llm, s)
     gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
-    _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train)
-    _dump_rollouts(run_dir / "rollouts" / "candidate.holdout.json", cand_hold)
+    _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train,
+                   trace=args.trace)
+    _dump_rollouts(run_dir / "rollouts" / "candidate.holdout.json", cand_hold,
+                   trace=args.trace)
     decision = accept(task, candidate_train=cand_train, incumbent_train=base_train,
                       candidate_holdout=cand_hold, incumbent_holdout=base_hold,
                       max_cost_ratio=s.max_cost_ratio, seed=s.seed,
@@ -242,6 +254,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--split", choices=["train", "holdout", "all"], default="all")
     b.add_argument("--json", action="store_true")
     b.add_argument("--out", default=None, help="write every rollout to this JSON file")
+    b.add_argument("--trace", action="store_true",
+                   help="keep every step the harness took, not just the score")
     b.set_defaults(fn=cmd_bench)
 
     d = Settings()
@@ -252,6 +266,8 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("--reflection-model", default=d.reflection_model)
     o.add_argument("--minibatch", type=int, default=d.minibatch)
     o.add_argument("--max-cost-ratio", type=float, default=d.max_cost_ratio)
+    o.add_argument("--trace", action="store_true",
+                   help="keep every step each harness took, not just the score")
     o.set_defaults(fn=cmd_optimize)
 
     sh = sub.add_parser("show", help="the lineage that leads to a run directory")
