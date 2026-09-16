@@ -1,0 +1,66 @@
+"""Everything that has to be true before a generation is worth paying for.
+
+A generation is about thirty-five dollars and an hour, and it runs unattended
+twice a day. Most of what can go wrong is quiet: a metric that rewards silence,
+a held-out split too small to draw an interval from, a harness whose plan reads
+a name nobody supplies. Each of those has happened here, and each was found
+after a run rather than before one.
+
+    python scripts/preflight.py       # exits non-zero if anything is off
+
+Needs no key and no network beyond the question set already on disk.
+"""
+import json, sys, glob, collections
+sys.path.insert(0, '.')
+from pathlib import Path
+
+ok, bad = [], []
+def check(name, cond, detail=""):
+    (ok if cond else bad).append(f"{name}: {detail}")
+    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"  — {detail}" if detail else ""))
+
+from rsi_arena.harness.spec import Harness
+from rsi_arena.loop.settings import Settings
+from rsi_arena.topics.kalshi_horizon import score_output, pooled_skill
+from rsi_arena.topics.kalshi_horizon.task import KalshiHorizon
+from rsi_arena.loop.task import split_by_group
+
+s = Settings(benchmark="benchmarks/soccer-2026.json", per_fixture=8, holdout=35)
+h = Harness.load(s.harness)
+
+print("\n— the harness —")
+check("model is set", bool(h.config.model), h.config.model)
+check("tools are the frozen three", sorted(h.tools) == ["candlesticks", "market_quote", "previous_trades"], str(h.tools))
+check("plan inputs are supplied", h.plan.required_inputs() <= {"game"}, str(h.plan.required_inputs()))
+check("components round-trip", h.from_components(h.to_components()).to_components() == h.to_components())
+
+print("\n— the metric —")
+quiet = [score_output({"delta_cents": 0}, 0.5, 0.5) for _ in range(9)]
+mover = [score_output({"delta_cents": 0}, 0.5, 0.57) for _ in range(20)]
+check("silence pools to exactly zero", abs(pooled_skill(quiet + mover)) < 1e-12, f"{pooled_skill(quiet+mover):+.2e}")
+check("silence is 0.5 to the optimizer", quiet[0].value == 0.5)
+loud = [score_output({"delta_cents": 4}, 0.5, 0.5) for _ in range(9)] + mover
+check("noise on a dead market costs", pooled_skill(loud) < 0, f"{pooled_skill(loud):+.4f}")
+
+print("\n— the question set —")
+task = KalshiHorizon.from_settings(s)
+inst = task.instances()
+groups = collections.Counter(i.group for i in inst)
+train, hold = split_by_group(inst, s.holdout, s.seed)
+tg, hg = {i.group for i in train}, {i.group for i in hold}
+check("matches", len(groups) >= 100, f"{len(groups)} matches, {len(inst)} windows")
+check("no match on both sides", not (tg & hg), f"{len(tg)} train / {len(hg)} held out")
+check("held-out clears the bootstrap floor", len(hg) >= 8, f"{len(hg)} matches, floor is 8")
+check("windows per match capped", max(groups.values()) <= 16, f"max {max(groups.values())}")
+moved = sum(1 for i in inst if abs(i.realised - i.mid_now) >= 0.01)
+check("enough windows actually move", moved / len(inst) > 0.4, f"{moved}/{len(inst)} moved >= 1c")
+
+print("\n— the gate —")
+check("cascade is on", s.cascade > 0, f"{s.cascade} matches, floor {s.cascade_floor:+.3f}")
+check("search budget buys several rewrites", s.max_metric_calls >= 400, str(s.max_metric_calls))
+check("cost ceiling is set", s.max_cost_ratio > 1, f"{s.max_cost_ratio}x")
+
+print(f"\n{len(ok)} pass, {len(bad)} fail")
+for b in bad:
+    print(f"  ! {b}")
+sys.exit(1 if bad else 0)

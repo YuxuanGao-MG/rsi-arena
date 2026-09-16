@@ -119,6 +119,13 @@ jobs:
 
       # A scheduled run arrives with no inputs at all, so the chain is resolved
       # here and everything downstream reads these rather than `inputs.*`.
+      # Fifteen things that have to hold before a generation is worth paying
+      # for, none of which need a key. Every one of them is something that went
+      # wrong here and was found after a run rather than before one.
+      - name: Preflight
+        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        run: python scripts/preflight.py
+
       - name: Where this generation goes
         id: chain
         if: github.event_name == 'schedule' || inputs.chain

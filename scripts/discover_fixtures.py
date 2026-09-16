@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -94,12 +95,28 @@ def resolve(client: KalshiClient, league: str, event: str,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--league", default="EPL", help="comma separated; see kalshi/_taxonomy.py")
-    ap.add_argument("--limit", type=int, default=40, help="settled events to examine per league")
+    ap.add_argument("--limit", type=int, default=600,
+                    help="settled events to examine per league. Kalshi has about "
+                         "3,600 settled soccer fixtures across the majors; the "
+                         "first version of this script looked at 40 of them")
+    ap.add_argument("--workers", type=int, default=6,
+                    help="fixtures resolved at once. Each costs two round trips "
+                         "and the fixture feed is throttled at four a second")
     ap.add_argument("--out", default="", help="write a benchmark file here")
+    ap.add_argument("--resume", action="store_true",
+                    help="keep what --out already holds and only look at what is missing")
     args = ap.parse_args()
 
     client = KalshiClient()
-    rows, rejected = [], []
+    # Resuming matters at this size: three thousand fixtures is hours of network,
+    # and a dropped connection an hour in should not mean starting again.
+    already: set[str] = set()
+    rows: list[dict] = []
+    if args.resume and args.out and Path(args.out).exists():
+        rows = json.loads(Path(args.out).read_text())
+        already = {r["event"] for r in rows}
+        print(f"resuming with {len(rows)} fixtures already found")
+    rejected: list[tuple[str, str]] = []
     for league in [x.strip().upper() for x in args.league.split(",") if x.strip()]:
         if league not in COMPETITIONS:
             print(f"{league}: not a known competition", file=sys.stderr)
