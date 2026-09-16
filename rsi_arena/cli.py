@@ -36,6 +36,9 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--holdout", type=int, default=d.holdout, help="fixtures the optimizer never sees")
     ap.add_argument("--seed", type=int, default=d.seed)
     ap.add_argument("--every", type=int, default=d.every, help="minutes between windows")
+    ap.add_argument("--per-fixture", type=int, default=d.per_fixture,
+                    help="cap windows kept per match; 0 keeps all. Power comes from "
+                         "matches, not windows within one")
     ap.add_argument("--model", default=d.model, help="override the harness model")
     ap.add_argument("--cache-dir", default=d.cache_dir)
     ap.add_argument("--no-llm-cache", action="store_true")

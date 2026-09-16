@@ -45,26 +45,34 @@ class KalshiHorizon:
 
     def __init__(self, *, fixtures=(), history: History | None = None, every_minutes: int = 5,
                  windows_dir: str | None = None, cache_dir: str | None = None,
-                 windows: list[Window] | None = None) -> None:
+                 windows: list[Window] | None = None,
+                 per_fixture: int = 0) -> None:
         self.fixtures = list(fixtures)
         self.history = history or History()
         self.every_minutes = every_minutes
         self.windows_dir = windows_dir
         self.tool_cache = ToolCache(f"{cache_dir}/tools") if cache_dir else None
         self._windows = windows
+        #: Cap on windows kept per match. Statistical power comes from matches —
+        #: the gate resamples by match — so thirty-four windows of one game are
+        #: thirty-four correlated observations bought at thirty-four times the
+        #: price of eight. Zero keeps all of them.
+        self.per_fixture = per_fixture
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "KalshiHorizon":
         return cls(fixtures=load_fixtures(settings.benchmark), every_minutes=settings.every,
-                   windows_dir=settings.windows_dir, cache_dir=settings.cache_dir)
+                   windows_dir=settings.windows_dir, cache_dir=settings.cache_dir,
+                   per_fixture=getattr(settings, "per_fixture", 0))
 
     # -- Task --
 
     def instances(self) -> list[Window]:
         if self._windows is None:
-            self._windows = build_windows(self.fixtures, history=self.history,
-                                          every_minutes=self.every_minutes, windows_dir=self.windows_dir,
-                                          log=lambda m: print(m, file=sys.stderr))
+            built = build_windows(self.fixtures, history=self.history,
+                                  every_minutes=self.every_minutes, windows_dir=self.windows_dir,
+                                  log=lambda m: print(m, file=sys.stderr))
+            self._windows = _thin(built, self.per_fixture)
         return self._windows
 
     def toolbox(self, window: Window) -> Toolbox:
@@ -133,3 +141,26 @@ def _feedback(w: Window, s: WindowScore | None, run: Run | None) -> str:
             lines.append("Tool errors: " + "; ".join(f"{t['tool']}: {t['error']}" for t in bad) + ".")
         lines.append(f"Cost ${run.cost_usd:.4f}.")
     return " ".join(lines)
+
+
+def _thin(windows: list[Window], per_fixture: int) -> list[Window]:
+    """At most ``per_fixture`` windows per match, spread across the match.
+
+    Evenly spaced rather than the first N, because the first N of a football
+    match are all the opening twenty minutes — the quietest part, before the
+    scoreline has done anything a forecast could be wrong about.
+    """
+    if per_fixture <= 0:
+        return windows
+    by_group: dict[str, list[Window]] = {}
+    for w in windows:
+        by_group.setdefault(w.group, []).append(w)
+    out: list[Window] = []
+    for group in sorted(by_group):
+        rows = sorted(by_group[group], key=lambda w: (w.at, w.ticker))
+        if len(rows) <= per_fixture:
+            out.extend(rows)
+            continue
+        step = len(rows) / per_fixture
+        out.extend(rows[int(i * step)] for i in range(per_fixture))
+    return out

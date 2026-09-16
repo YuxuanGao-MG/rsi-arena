@@ -97,3 +97,28 @@ def test_the_optimizer_and_the_gate_cannot_disagree_in_direction():
     assert d_mean * d_pool > 0, (
         f"mean moved {d_mean:+.4f} and pooled moved {d_pool:+.4f} — opposite "
         "directions means the loop is optimising something it is not judged on")
+
+
+def test_thinning_keeps_matches_and_spreads_across_each():
+    """Power comes from matches — the gate resamples by match — so thirty-four
+    windows of one game are thirty-four correlated observations bought at
+    thirty-four times the price of eight. Thinning drops windows, never matches,
+    and spreads what it keeps: the first eight of a football match are all the
+    opening twenty minutes, before the scoreline has done anything a forecast
+    could be wrong about.
+    """
+    from rsi_arena.topics.kalshi_horizon.task import _thin
+
+    class W:
+        def __init__(self, group, at):
+            self.group, self.at, self.ticker = group, at, "t"
+
+    windows = [W(g, f"2026-09-05T{12 + i // 60:02d}:{i % 60:02d}:00Z")
+               for g in ("a", "b") for i in range(34)]
+    thinned = _thin(windows, 8)
+
+    assert len({w.group for w in thinned}) == 2, "no match is dropped"
+    assert all(sum(1 for w in thinned if w.group == g) == 8 for g in "ab")
+    kept = [w.at for w in thinned if w.group == "a"]
+    assert kept[-1] > windows[20].at, "the tail of the match is represented"
+    assert _thin(windows, 0) == windows, "zero keeps everything"

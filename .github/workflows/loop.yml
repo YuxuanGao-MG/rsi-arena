@@ -26,9 +26,19 @@ on:
       max_metric_calls:
         description: "optimize: window evaluations GEPA may spend"
         default: "200"
+      benchmark:
+        description: "the fixture list"
+        default: benchmarks/soccer-2026.json
       holdout:
         description: "fixtures kept from the optimizer"
-        default: "2"
+        default: "35"
+      per_fixture:
+        description: "windows kept per match; 0 keeps all. Power comes from matches, not windows within one"
+        default: "8"
+      trace:
+        description: "keep every step each harness took, so the reader can show it"
+        type: boolean
+        default: true
       model:
         description: "override the harness model (blank keeps the file's)"
         default: ""
@@ -75,13 +85,17 @@ jobs:
 
       - name: Build the question set
         run: |
-          rsi-arena windows --holdout "${{ inputs.holdout }}" | tee windows.txt
+          rsi-arena windows --benchmark "${{ inputs.benchmark }}" \
+            --holdout "${{ inputs.holdout }}" | tee windows.txt
           { echo "### Question set"; echo '```'; cat windows.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bench
         if: inputs.command == 'bench'
         run: |
-          args=(--harness "${{ inputs.harness }}" --split "${{ inputs.split }}" --holdout "${{ inputs.holdout }}")
+          args=(--harness "${{ inputs.harness }}" --split "${{ inputs.split }}"
+                --benchmark "${{ inputs.benchmark }}" --holdout "${{ inputs.holdout }}"
+                --per-fixture "${{ inputs.per_fixture }}")
+          [ "${{ inputs.trace }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
           mkdir -p runs/bench
           rsi-arena bench "${args[@]}" --out "runs/bench/$(date -u +%Y%m%dT%H%M)-${{ inputs.split }}.rollouts.json" | tee bench.txt
@@ -90,11 +104,30 @@ jobs:
       - name: Optimize
         if: inputs.command == 'optimize'
         run: |
-          args=(--harness "${{ inputs.harness }}" --run-dir "${{ inputs.run_dir }}" --holdout "${{ inputs.holdout }}"
+          args=(--harness "${{ inputs.harness }}" --run-dir "${{ inputs.run_dir }}"
+                --benchmark "${{ inputs.benchmark }}" --holdout "${{ inputs.holdout }}"
+                --per-fixture "${{ inputs.per_fixture }}"
                 --max-metric-calls "${{ inputs.max_metric_calls }}" --reflection-model "${{ inputs.reflection_model }}")
+          [ "${{ inputs.trace }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
           rsi-arena optimize "${args[@]}" | tee optimize.txt
           { echo "### Generation ${{ inputs.run_dir }}"; echo '```'; cat optimize.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # The reader is the point of keeping traces at all. Publishing here means a
+      # run is readable the moment it finishes rather than when someone
+      # remembers to push it, and a missing database secret is a warning rather
+      # than a failed generation — the run already happened and is committed.
+      - name: Publish to the reader
+        if: always() && env.SUPABASE_DB_URL != ''
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          pip install -q psycopg2-binary
+          shopt -s nullglob
+          dirs=(runs/*/)
+          if [ ${#dirs[@]} -eq 0 ]; then echo "no run directories"; exit 0; fi
+          python scripts/publish_runs.py "${dirs[@]}" \
+            || echo "::warning::publishing failed; the run is still committed"
 
       - name: Commit results
         if: always()

@@ -15,6 +15,7 @@ class Settings:
     holdout: int = 2                               # instance groups (fixtures) the optimizer never sees
     seed: int = 0
     every: int = 5                                 # minutes between windows
+    per_fixture: int = 0                           # cap windows kept per match; 0 keeps all
     model: str | None = None                       # override the harness model
     reflection_model: str = "anthropic/claude-sonnet-4.5"
     cache_dir: str = ".cache"
