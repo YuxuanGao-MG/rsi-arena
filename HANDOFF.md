@@ -41,7 +41,7 @@ repo as reference only; do not depend on it.
 | Kalshi horizon topic (windows, score, background, feedback) | `rsi_arena/topics/kalshi_horizon/` | done |
 | CLI `rsi-arena windows / bench / optimize / show` | `rsi_arena/cli.py` | done; `windows` verified live |
 | GitHub Actions: `ci` (pytest) and `loop` (workflow_dispatch) | `.github/workflows/` | done; `loop windows` ran twice successfully |
-| Question set: 170 windows, 5 EPL fixtures, 34 each, 115 moved >= 1c | `benchmarks/windows/` | committed, built by the workflow |
+| Question set: 11,146 windows over 485 matches in nine leagues, thinned to 8 a match | `benchmarks/windows/` | committed, built by the workflow |
 | Tests, 32, offline, fake model and fake history | `tests/` | passing |
 
 **Model calls have now happened.** Baseline, and two full generations against
@@ -57,7 +57,7 @@ the measurement rather than the harness:
 3. The interval was resampled over windows rather than matches, and two held-out
    matches cannot support an interval at all.
 
-The question set is 177 matches now, not five, because the gate's power turned
+The question set is 485 matches now, not five, because the gate's power turned
 on that and not on the optimizer.
 
 ## What to do next, in order

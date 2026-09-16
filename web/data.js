@@ -163,6 +163,38 @@ export async function qAll(path, { signal, ttl = TTL_MS, fresh = false,
   return data;
 }
 
+/**
+ * A file this server holds rather than a row Supabase holds.
+ *
+ * The candidate archive is committed to the repository — it is the record of
+ * what the search proposed, which is not a published result — so it arrives
+ * from the same origin as the page, with no key and no PostgREST.
+ */
+export async function local(path, { signal, ttl = 5 * TTL_MS } = {}) {
+  const key = `LOCAL ${path}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.data;
+
+  const link = linked(signal);
+  let res;
+  try {
+    res = await fetch(path, { signal: link.signal });
+  } catch (err) {
+    if (link.timedOut) throw new ApiError("timeout", "This server did not answer in time.");
+    if (err && err.name === "AbortError") throw new ApiError("aborted", "superseded");
+    throw new ApiError("network", "Could not read a file this server holds.",
+                       { detail: String(err) });
+  } finally {
+    link.done();
+  }
+  if (res.status === 404) throw new ApiError("notfound", `${path} is not deployed here.`, { status: 404 });
+  if (!res.ok) throw new ApiError("http", `This server refused ${path} (${res.status}).`,
+                                  { status: res.status });
+  const data = await res.json();
+  cache.set(key, { at: Date.now(), data });
+  return data;
+}
+
 /** A `security definer` function. The only write the anon key can make. */
 export async function rpc(name, args, { signal } = {}) {
   const { rows } = await request(`${base()}/rest/v1/rpc/rsi_${name}`, {

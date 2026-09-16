@@ -52,10 +52,35 @@ doubled it.
 
 ### The question set
 
-177 matches across five leagues, about 3,000 windows, built by
+485 matches across nine leagues, 11,146 windows on disk, built by
 `scripts/discover_fixtures.py` from settled Kalshi events that link to a fixture
-with a usable timeline. Up from five matches and 170 windows, because the
-question set — not the optimizer — was what the gate's power turned on.
+with a usable timeline. A generation thins to eight windows a match — about
+3,900 — because power comes from matches, not from windows within one.
+
+Up from five matches and 170 windows. The last jump was 168 matches recovered in
+one change: Kalshi dates an event by the day it listed the contract and the
+fixture feed by the day it kicked off, so Sevilla against Valencia trades as
+26SEP13 and was played on the 11th. Looking one day either side of the ticker's
+date lost a quarter of the settled events; three days catches them.
+
+### What the gate can see
+
+Asked, finally, by `scripts/power.py`, from the real paired rollouts rather than
+an assumed variance. On a thirty-five match held-out set the smallest pooled
+gap the gate can resolve at 80% power is about **0.027**. The best rewrite
+anyone has found moved held-out skill by **under 0.01**.
+
+So the gate could not see its own search's output, and three generations of "no
+improvement" were statements about the sample size rather than about the
+candidates. The held-out set is a hundred matches now — also above the forty
+clusters below which a pairs cluster bootstrap over-rejects — and every interval
+the gate draws reports `detectable` beside `diff`, so a rejection that was never
+winnable says so rather than looking like a verdict.
+
+The honest reading is that this is a resolution problem the benchmark cannot
+fully solve: even all 485 matches as held-out would only resolve 0.007. What
+closes the gap is evidence accumulated across generations, which is what the
+archive is for, not a larger single experiment.
 
 ### The model is a bigger lever than the harness, so far
 

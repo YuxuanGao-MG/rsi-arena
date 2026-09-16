@@ -69,13 +69,31 @@ def days_around(day: str) -> list[str]:
 _DAYS: dict[tuple[str, str], list[dict]] = {}
 
 
+#: Days the fixture feed refused this sweep, and how often it refused them.
+#:
+#: A failed fetch and a day with no football look identical once both are an
+#: empty list, and that cost four of nine Eredivisie events on 2026-09-16: one
+#: blank answer for the 19th was memoised for the whole sweep, and every event
+#: kicking off that day was then weighed against a shortlist that could not
+#: contain it — reported, correctly but uselessly, as four names that matched
+#: nothing. A refusal is retried by the next event asking for the same day and
+#: only given up on after three, so a feed that is genuinely down costs three
+#: timeouts rather than one per probe.
+_REFUSED: dict[tuple[str, str], int] = {}
+MAX_DAY_ATTEMPTS = 3
+
+
 def fixtures_on(league: str, day: str) -> list[dict]:
     key = (league, day)
-    if key not in _DAYS:
-        try:
-            _DAYS[key] = todays_games(league, day)
-        except Exception:
-            _DAYS[key] = []
+    if key in _DAYS:
+        return _DAYS[key]
+    if _REFUSED.get(key, 0) >= MAX_DAY_ATTEMPTS:
+        return []
+    try:
+        _DAYS[key] = todays_games(league, day)
+    except Exception:
+        _REFUSED[key] = _REFUSED.get(key, 0) + 1
+        return []
     return _DAYS[key]
 
 
@@ -96,11 +114,14 @@ def identify(client: KalshiClient, league: str, event: str,
     is the only thing that makes it fixable.
     """
     seen: list[str] = []
+    refused: list[str] = []
 
     def by_date(lg: str, day: str) -> list[dict]:
         out: list[dict] = []
         for probe in days_around(day):
             games = fixtures_on(lg, probe)
+            if not games and (lg, probe) in _REFUSED:
+                refused.append(probe)
             out.extend(games)
             seen.extend(f"{g.get('away')} at {g.get('home')} ({probe})" for g in games)
         return out
@@ -112,13 +133,19 @@ def identify(client: KalshiClient, league: str, event: str,
     except Exception as exc:
         return None, f"link raised {type(exc).__name__}: {exc}"
     if link is None:
+        # Which of the two it is matters: a feed that did not answer is fixed by
+        # asking again, and a name that did not match is fixed in the linker.
+        blank = (f"; the feed refused {', '.join(sorted(set(refused)))}"
+                 if refused else "")
         if not seen:
+            if refused:
+                return None, f"no fixtures came back for any probed day{blank}"
             # by_date is never reached when the ticker will not split into two
             # team codes, so an empty shortlist means the ticker, not the feed.
             return None, ("could not split the ticker into two team codes "
                           f"(series codes: {len(codes)})")
         shortlist = ", ".join(sorted(set(seen))[:6])
-        return None, f"no fixture cleared the threshold; weighed against {shortlist}"
+        return None, f"no fixture cleared the threshold; weighed against {shortlist}{blank}"
     return str(link.game_id), f"{link.method} at {link.confidence:.2f}"
 
 
@@ -225,8 +252,10 @@ async def main() -> int:
     try:
         while time.time() < deadline:
             # Cheap to refill and wrong to keep: a sweep an hour later has
-            # fixtures the last one had not been told about.
+            # fixtures the last one had not been told about, and a day the feed
+            # refused an hour ago deserves another ask.
             _DAYS.clear()
+            _REFUSED.clear()
             targets: list[tuple[str, str, str]] = []
             for league in leagues:
                 if league not in catalogue:
@@ -247,6 +276,12 @@ async def main() -> int:
                             unidentified[ticker] = why
                             print(f"  UNIDENTIFIED  {ticker}: {why}", file=sys.stderr)
                         continue
+                    # An event that links now was never really unidentifiable:
+                    # the sweep that missed it was reading a feed that had not
+                    # answered. Counting a transient blank against the job would
+                    # make the alarm below fire on the weather.
+                    if unidentified.pop(ticker, None):
+                        print(f"  recovered      {ticker} on a later sweep", file=sys.stderr)
                     try:
                         markets = client.get(f"/events/{ticker}")["markets"]
                     except Exception:

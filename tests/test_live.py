@@ -169,3 +169,45 @@ def test_publisher_resumes_and_never_reads_half_a_line(tmp_path):
     # A file shorter than the mark was rotated, and resuming would skip the lot.
     path.write_text(json.dumps({"n": 9}) + "\n")
     assert pub.offset_of(sidecar, path) == 0
+
+
+def test_a_refused_day_is_retried_but_an_empty_one_is_not(monkeypatch):
+    """The four Eredivisie events of 2026-09-16, in the form that lost them.
+
+    One blank answer from the fixture feed was memoised for the whole sweep and
+    every event kicking off that day reported as unlinkable. A refusal has to be
+    worth asking about again; a day with no football does not.
+    """
+    live = load_script("collect_live")
+    calls: list[str] = []
+
+    def flaky(league: str, day: str) -> list[dict]:
+        calls.append(day)
+        if len(calls) == 1:
+            raise RuntimeError("503 from the fixture feed")
+        return [{"id": "1", "home": "Ajax Amsterdam", "away": "Excelsior"}]
+
+    monkeypatch.setattr(live, "todays_games", flaky)
+    assert live.fixtures_on("EREDIVISIE", "2026-09-19") == []
+    assert live.fixtures_on("EREDIVISIE", "2026-09-19")          # asked again, answered
+    assert live.fixtures_on("EREDIVISIE", "2026-09-19")          # and now remembered
+    assert calls == ["2026-09-19", "2026-09-19"]
+
+    monkeypatch.setattr(live, "todays_games", lambda league, day: [])
+    assert live.fixtures_on("EREDIVISIE", "2026-06-30") == []
+    monkeypatch.setattr(live, "todays_games", lambda league, day: 1 / 0)
+    assert live.fixtures_on("EREDIVISIE", "2026-06-30") == []    # an empty day is final
+
+
+def test_a_feed_that_stays_down_is_given_up_on(monkeypatch):
+    live = load_script("collect_live")
+    calls: list[str] = []
+
+    def down(league: str, day: str) -> list[dict]:
+        calls.append(day)
+        raise RuntimeError("timed out")
+
+    monkeypatch.setattr(live, "todays_games", down)
+    for _ in range(6):
+        assert live.fixtures_on("EPL", "2026-09-19") == []
+    assert len(calls) == live.MAX_DAY_ATTEMPTS
