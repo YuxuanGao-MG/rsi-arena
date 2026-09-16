@@ -239,9 +239,15 @@ def harvest_team_codes(client: KalshiClient, series_ticker: str,
                              {"series_ticker": series_ticker, "status": status}):
         ticker = m.get("ticker", "")
         tail = ticker.rsplit("-", 1)[-1] if "-" in ticker else ""
-        tail = re.sub(r"\d+$", "", tail)          # drop a spread or total number
-        if tail and tail.isalnum() and tail not in ignore and len(tail) <= 4:
-            codes.add(tail)
+        # Both forms. Stripping trailing digits is what turns a spread line into
+        # its team, and it is also what turned Mainz 05 into "M" — after which
+        # BMGM05 could not be split and Gladbach against Mainz went unidentified
+        # while the other eight Bundesliga events linked fine. A spare code that
+        # no blob splits on costs nothing; a missing one costs a fixture.
+        for candidate in (re.sub(r"\d+$", "", tail), tail):
+            if (candidate and candidate.isalnum() and candidate not in ignore
+                    and len(candidate) <= 4):
+                codes.add(candidate)
     return codes
 
 

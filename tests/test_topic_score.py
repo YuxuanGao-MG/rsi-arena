@@ -182,3 +182,47 @@ def test_thinning_keeps_matches_and_spreads_across_each():
     kept = [w.at for w in thinned if w.group == "a"]
     assert kept[-1] > windows[20].at, "the tail of the match is represented"
     assert _thin(windows, 0) == windows, "zero keeps everything"
+
+
+# -- the optimizer and the gate read a failure the same way -------------------
+
+def test_a_failed_run_is_worth_exactly_silence():
+    """Not zero.
+
+    The optimizer used to be handed 0.0 for a run that produced nothing — the
+    floor of the scale, what a harness gets for being ten cents wrong — while
+    the gate read the same window as exactly silence. Half the range of
+    disagreement about the most common failure there is.
+    """
+    from rsi_arena.topics.kalshi_horizon.task import KalshiHorizon
+    from rsi_arena.topics.kalshi_horizon.windows import Window
+    from datetime import datetime, timezone
+
+    task = KalshiHorizon(windows=[])
+    w = Window(ticker="T", at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+               mid_now=0.40, realised=0.46, event="E")
+    silent = WindowScore.silent(w.mid_now, w.realised)
+
+    unrunnable = task.failed(w, "no such tool")
+    assert unrunnable.value == pytest.approx(silent.value)
+    assert unrunnable.objectives["skill"] == pytest.approx(silent.value)
+
+    class _NoOutput:
+        output = None
+        cost_usd = 0.0
+        ok = False
+        error = "provider"
+        error_kind = "provider"
+
+        def tools_seen(self):
+            return []
+
+    quiet = task.score(w, _NoOutput())
+    assert quiet.value == pytest.approx(unrunnable.value), \
+        "a run that failed and a run that said nothing are the same result"
+
+
+def test_silence_is_the_middle_of_the_optimizer_scale():
+    """0.5, because value is affine in error removed and silence removes none."""
+    assert WindowScore.silent(0.40, 0.46).value == pytest.approx(0.5)
+    assert WindowScore.silent(0.40, 0.40).value == pytest.approx(0.5)

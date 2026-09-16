@@ -55,6 +55,24 @@ def days_around(day: str) -> list[str]:
     return [(d + timedelta(days=n)).isoformat() for n in offsets]
 
 
+#: One day of fixtures, fetched once per sweep.
+#:
+#: Identification asks for seven days around each event's ticker date, and a
+#: league's events cluster on the same handful of days — without this, sixteen
+#: LaLiga events cost 112 fetches of about a dozen distinct days.
+_DAYS: dict[tuple[str, str], list[dict]] = {}
+
+
+def fixtures_on(league: str, day: str) -> list[dict]:
+    key = (league, day)
+    if key not in _DAYS:
+        try:
+            _DAYS[key] = todays_games(league, day)
+        except Exception:
+            _DAYS[key] = []
+    return _DAYS[key]
+
+
 def live_events(client: KalshiClient, league: str) -> list[dict]:
     """Open events on this league's match-winner series."""
     series = f"KX{league.replace('_', '')}GAME"
@@ -76,10 +94,7 @@ def identify(client: KalshiClient, league: str, event: str,
     def by_date(lg: str, day: str) -> list[dict]:
         out: list[dict] = []
         for probe in days_around(day):
-            try:
-                games = todays_games(lg, probe)
-            except Exception:
-                continue
+            games = fixtures_on(lg, probe)
             out.extend(games)
             seen.extend(f"{g.get('away')} at {g.get('home')} ({probe})" for g in games)
         return out
@@ -91,7 +106,12 @@ def identify(client: KalshiClient, league: str, event: str,
     except Exception as exc:
         return None, f"link raised {type(exc).__name__}: {exc}"
     if link is None:
-        shortlist = ", ".join(sorted(set(seen))[:6]) or "nothing that week"
+        if not seen:
+            # by_date is never reached when the ticker will not split into two
+            # team codes, so an empty shortlist means the ticker, not the feed.
+            return None, ("could not split the ticker into two team codes "
+                          f"(series codes: {len(codes)})")
+        shortlist = ", ".join(sorted(set(seen))[:6])
         return None, f"no fixture cleared the threshold; weighed against {shortlist}"
     return str(link.game_id), f"{link.method} at {link.confidence:.2f}"
 
@@ -174,6 +194,9 @@ async def main() -> int:
 
     try:
         while time.time() < deadline:
+            # Cheap to refill and wrong to keep: a sweep an hour later has
+            # fixtures the last one had not been told about.
+            _DAYS.clear()
             targets: list[tuple[str, str, str]] = []
             for league in leagues:
                 if league not in catalogue:

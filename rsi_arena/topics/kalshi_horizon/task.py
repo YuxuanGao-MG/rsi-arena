@@ -124,8 +124,15 @@ class KalshiHorizon:
         return self._outcome(window, score, run)
 
     def failed(self, window: Window, reason: str) -> Outcome:
+        """A harness that cannot run at all said nothing, which is what silence is.
+
+        Scored identically to a run that finished and declined to forecast.
+        Anything else would pay the optimizer to avoid breaking rather than to
+        be right, and would still not match what the gate reads.
+        """
         out = self._outcome(window, None, None)
-        return Outcome(value=0.0, feedback=f"The harness could not run: {reason} {out.feedback}",
+        return Outcome(value=out.value,
+                       feedback=f"The harness could not run: {reason} {out.feedback}",
                        objectives=out.objectives, details=out.details)
 
     def statistic(self, outcomes: list[Outcome]) -> float:
@@ -140,13 +147,27 @@ class KalshiHorizon:
     # -- internals --
 
     def _outcome(self, w: Window, score: WindowScore | None, run: Run | None) -> Outcome:
+        """One window's result, read the same way by the optimizer and the gate.
+
+        It was not. A run that produced nothing handed the optimizer ``0.0`` —
+        the floor of the scale, what a harness gets for being ten cents wrong —
+        while the gate read the same window through ``WindowScore.silent`` and
+        scored it as exactly silence, which is ``0.5`` on that scale. The two
+        halves of the loop disagreed by half the range about the most common
+        failure there is. Direction made it conservative rather than exploitable,
+        so it never showed up as a wrong promotion, but it is the same defect
+        class as the dead-market gap the benchmark floor was written to kill, and
+        it was quietly taxing every candidate whose rewrite was merely fragile.
+        """
         cost = run.cost_usd if run else 0.0
-        details = {"scored": score is not None, "mid_now": w.mid_now, "realised": w.realised,
-                   **(score.to_dict() if score else WindowScore.silent(w.mid_now, w.realised).to_dict())}
+        # Silence is a real result with a real value, not a missing one.
+        reading = score or WindowScore.silent(w.mid_now, w.realised)
+        details = {"scored": score is not None, "mid_now": w.mid_now,
+                   "realised": w.realised, **reading.to_dict()}
         return Outcome(
-            value=score.value if score else 0.0,
+            value=reading.value,
             feedback=_feedback(w, score, run),
-            objectives={"skill": score.value if score else 0.0,
+            objectives={"skill": reading.value,
                         "cost": max(0.0, 1.0 - cost / 0.05)},
             details=details)
 

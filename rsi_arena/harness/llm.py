@@ -33,6 +33,28 @@ class LLMError(RuntimeError):
         self.status = status
 
 
+class GenerationBudgetExceeded(LLMError):
+    """The whole generation's money is gone, not just this window's.
+
+    ``_Ledger`` bounds one run at a fifth of a dollar. Nothing bounded the
+    generation around it, so the ceiling on a search was ``max_metric_calls``
+    multiplied by whatever a window happened to cost — and a candidate that
+    grows the context roughly doubles that, which has already happened once.
+    A run killed by the job timeout after five and a half hours is the same
+    money with none of the answer.
+
+    Raised as an ``LLMError`` on purpose: the runner already records one as a
+    provider failure and scores the window as silence, so the first window past
+    the line ends the generation tidily with a manifest rather than a traceback,
+    and every window after it costs nothing to refuse.
+    """
+
+    def __init__(self, spent: float, ceiling: float) -> None:
+        super().__init__(None, f"generation budget exhausted: spent ${spent:.2f} "
+                               f"of ${ceiling:.2f}")
+        self.spent, self.ceiling = spent, ceiling
+
+
 @dataclass
 class Completion:
     text: str
@@ -80,7 +102,7 @@ class OpenRouter:
     def __init__(self, api_key: str | None = None, *, base_url: str | None = None,
                  cache_dir: str | os.PathLike | None = ".cache/llm", cache: bool = True,
                  timeout_s: float = 120.0, max_retries: int = 4, concurrency: int = 8,
-                 app_title: str = "RSI Arena") -> None:
+                 app_title: str = "RSI Arena", budget_usd: float | None = None) -> None:
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.base_url = (base_url or os.environ.get("OPENROUTER_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.cache_dir = Path(cache_dir) if (cache and cache_dir) else None
@@ -100,6 +122,19 @@ class OpenRouter:
         self.calls = 0
         self.cache_hits = 0
         self.spent_usd = 0.0
+        #: Total this client may spend before it refuses to call out. None is no
+        #: ceiling, which is what every run before today had.
+        self.budget_usd = budget_usd
+
+    @property
+    def over_budget(self) -> bool:
+        """Spent at or past the ceiling. False when there is no ceiling.
+
+        Checked after the cache lookup, not before: a cached completion costs
+        nothing and refusing one would make an exhausted generation report
+        differently on a re-run than it did the first time.
+        """
+        return self.budget_usd is not None and self.spent_usd >= self.budget_usd
 
     def _bind(self) -> None:
         """Attach to the running loop, discarding anything bound to an older one.
@@ -178,6 +213,8 @@ class OpenRouter:
             self.cache_hits += 1
             return self._completion(data, model, cached=True)
 
+        if self.over_budget:
+            raise GenerationBudgetExceeded(self.spent_usd, float(self.budget_usd))
         data = await self._post(body)
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
