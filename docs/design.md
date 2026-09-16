@@ -1,20 +1,58 @@
 # Design: the alternative
 
-## Status, 2026-09-13
+## Status, 2026-09-15
 
-Built and tested offline: the harness contract and runner (`rsi_arena/harness`),
-the frozen-tool replay and match timeline (`rsi_arena/kalshi/replay.py`), the
-topic-agnostic loop (`rsi_arena/loop`: Task protocol, GEPA adapter, gate,
-generation records), the Kalshi horizon topic (`rsi_arena/topics/kalshi_horizon`)
-and one CLI (`rsi-arena bench | optimize | show`). Decision A below
-is settled: a slim runtime with the same JSON contract, no dependency on the
-earlier package. Decision D is settled: this repository.
+**The loop has run end to end against the real API.** Everything below is what
+that cost to learn, because none of it was visible against fakes.
 
-The live data path is verified on GitHub Actions: the `loop` workflow built
-the question set from Kalshi and the fixture feed and committed it under
-`benchmarks/windows/`, 170 windows over five EPL fixtures, 34 per fixture, 115
-of them moving a cent or more over the horizon. `bench` and `optimize` wait on
-the `OPENROUTER_API_KEY` repository secret; their numbers go in `runs/`.
+Built and tested: the harness contract and runner (`rsi_arena/harness`), the
+frozen-tool replay and match timeline (`rsi_arena/kalshi/replay.py`), the
+topic-agnostic loop (`rsi_arena/loop`), the Kalshi horizon topic
+(`rsi_arena/topics/kalshi_horizon`), and one CLI. Decisions A and D are settled.
+
+### What the first real runs found
+
+**The measurement was not self-consistent.** GEPA selects on the mean of
+per-window scores; the gate promotes on pooled skill. On the quarter of windows
+where the market did not move, the first said the window did not matter and the
+second said it could only cost — so a candidate could climb one while sinking
+the other, and the first thousand-call run did exactly that: mean +0.020, pooled
+-0.044, on the same 102 windows. GEPA had followed its own correct reflection
+("you are rewarded only for anticipating moves") and gone from predicting
+movement on 6 of 29 dead markets to 27 of 29, which the objective it could see
+scored as free. Fixed by flooring the benchmark's error at one tick in both
+places, so saying nothing on a dead market is right and saying something is
+wrong, visibly, to both halves.
+
+**The interval was drawn over the wrong unit.** Thirty-four windows of one match
+are one match seen thirty-four times. Resampling them independently reported
+±6.8 points on a baseline whose skill is 4.3 — an interval wider than the
+quantity, so nothing could ever be promoted — while also overstating the
+evidence. It resamples by match now.
+
+**Two held-out matches cannot support any inference.** A cluster bootstrap over
+two groups draws only {A,A}, {A,B}, {B,B}. Below eight groups the gate reports
+the interval as unusable and refuses to promote at all.
+
+**The noise band is about ±1 point.** Three runs of the same harness over the
+same windows scored -1.18%, +1.18%, +1.18%. That is the same order as the effect
+the loop exists to detect, and it belongs beside every gain ever reported.
+
+**Cost is $0.013 a window**, and a candidate that grew the context roughly
+doubled it.
+
+### The question set
+
+177 matches across five leagues, about 3,000 windows, built by
+`scripts/discover_fixtures.py` from settled Kalshi events that link to a fixture
+with a usable timeline. Up from five matches and 170 windows, because the
+question set — not the optimizer — was what the gate's power turned on.
+
+### Still open
+
+- No generation has been accepted. Two have been rejected honestly.
+- Transfer is unmeasured: every number is soccer at a five-minute horizon.
+- Nothing re-scores an old winner, so persistence is unchecked.
 
 ## Goal
 

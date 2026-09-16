@@ -44,8 +44,21 @@ repo as reference only; do not depend on it.
 | Question set: 170 windows, 5 EPL fixtures, 34 each, 115 moved >= 1c | `benchmarks/windows/` | committed, built by the workflow |
 | Tests, 32, offline, fake model and fake history | `tests/` | passing |
 
-The one thing that has not happened: **no model call has been made yet.**
-`bench` and `optimize` have run only against fakes.
+**Model calls have now happened.** Baseline, and two full generations against
+the real API. What they found is in `docs/design.md`'s Status section; the short
+version is that three defects were invisible against fakes and all three were in
+the measurement rather than the harness:
+
+1. The HTTP client was bound to a loop that no longer existed, so every run
+   exited 1 after printing correct results.
+2. The optimizer's objective and the gate's statistic disagreed about the
+   quarter of windows where the market did not move, and GEPA found the gap
+   immediately.
+3. The interval was resampled over windows rather than matches, and two held-out
+   matches cannot support an interval at all.
+
+The question set is 177 matches now, not five, because the gate's power turned
+on that and not on the optimizer.
 
 ## What to do next, in order
 
@@ -53,9 +66,11 @@ The one thing that has not happened: **no model call has been made yet.**
    repository secret `OPENROUTER_API_KEY`. OpenRouter bills against prepaid
    credits; a 402 means no credits and is not retried.
 2. **Baseline.** `rsi-arena bench --split holdout` then `--split train`.
-   Expected from the old repo's measurements: pooled skill about zero, run to
-   run between -5% and +1%; 70 to 80% of forecasts echo the current mid. If the
-   first real call fails, the likely causes are listed under Risks.
+   Measured on the small set: pooled skill +0.043 held out under the floored
+   metric, and a noise band of about ±1 point across repeated runs. Roughly half
+   of forecasts echo the current mid. Run the baseline more than once with
+   `--no-llm-cache` before believing any gain — the band is the same size as the
+   effect.
 3. **One generation.** `rsi-arena optimize --run-dir runs/gen1 --max-metric-calls 200`.
    Read `runs/gen1/manifest.json` (both scoreboards, the search, the verdict),
    `runs/gen1/best.json` (what GEPA wrote), `runs/gen1/rollouts/*.json` (every
@@ -119,15 +134,16 @@ results are committed to `main` and summarised on the run page.
 
 ## Backlog, roughly in the order it would pay off
 
-- **More fixtures.** `benchmarks/epl-2026-09.json` has five. A fixture needs
-  the league, the ESPN event id (`game`), the Kalshi event ticker and its
-  market tickers. Other leagues in `kalshi/_taxonomy.py:COMPETITIONS` work the
-  same way; `rsi-arena windows` builds and commits the windows.
+- **More fixtures, still.** `benchmarks/soccer-2026.json` has 177 across five
+  leagues, built by `scripts/discover_fixtures.py`. Sixty soccer competitions
+  are supported; the script takes `--league` as a comma-separated list. More
+  matters because the gate resamples by match: the interval narrows with the
+  number of *matches*, not windows.
 - **Cascade evaluation.** Score a candidate on a cheap subset first and only
   run the full set if it clears the incumbent there. OpenEvolve does this;
   GEPA's `val_evaluation_policy` may be the hook.
-- **Noise band.** Run the baseline several times uncached and report the
-  spread next to every gain.
+- **Noise band.** Measured at about ±1 point on 68 windows; re-measure on the
+  larger set, where it should be narrower, and report it beside every gain.
 - **Population diversity.** GEPA runs one candidate lineage per seed; several
   seeds or several task models per generation would test the "diverse
   optimizer" claim in the original README.
