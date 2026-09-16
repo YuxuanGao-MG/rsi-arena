@@ -26,11 +26,32 @@ class Settings:
     cache_dir: str = ".cache"
     llm_cache: bool = True
     concurrency: int = 4
-    max_metric_calls: int = 300                    # instance evaluations GEPA may spend
+    # Window evaluations GEPA may spend searching. At a minibatch of eight this
+    # is about sixty reflection rounds — enough to try a dozen rewrites and keep
+    # the ones that survive, which is where the earlier budget of 200 fell down:
+    # it bought exactly one rewrite before running out.
+    #
+    # The search is the largest recurring line now that the probe replaced the
+    # full train evaluation, so it is the number to revisit if a generation ever
+    # gets accepted and the loop is worth running deeper.
+    max_metric_calls: int = 500                    # instance evaluations GEPA may spend
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
-    cascade: int = 6                               # train matches to probe before the full run; 0 disables
-    cascade_floor: float = -0.02                   # a probe below this is not worth confirming
+    # Train matches the candidate is scored on. Doubles as the regression
+    # check, so the full train set is never re-scored: the gate asks of train
+    # only "did this get worse", which twenty matches answer as well as a
+    # hundred and forty at a fifteenth of the price. Held-out is what needs
+    # power, and held-out is scored in full.
+    cascade: int = 20                              # 0 disables and scores all of train
+    # A candidate half a point behind the incumbent on the probe is rejected
+    # without paying for the rest. Tight on purpose: the full evaluation is two
+    # thirds of a generation's bill, no candidate has yet cleared the gate, and
+    # the cost of cutting one that would have is one wasted generation rather
+    # than a wrong result — the gate is still the only way in.
+    #
+    # Worth loosening once something is accepted, because then a near miss is
+    # evidence rather than noise.
+    cascade_floor: float = -0.005
     run_dir: str = "runs/latest"
     extra: dict[str, Any] = field(default_factory=dict)
 

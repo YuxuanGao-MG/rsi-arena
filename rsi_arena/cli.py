@@ -293,23 +293,27 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     cand_train: list = []
     cand_hold: list = []
     if s.cascade > 0:
+        # The probe is scored first and kept either way. It is the cheap filter
+        # *and* the train scoreboard: the gate asks of train only whether the
+        # candidate got worse, and twenty matches answer that as well as a
+        # hundred and forty at a fifteenth of the price. Held-out is the half
+        # that needs power, and held-out is scored in full.
         probe_groups = sorted({i.group for i in train})[:s.cascade]
         probe = [i for i in train if i.group in probe_groups]
-        cand_probe = _bench(task, candidate, probe, llm, s)
-        against = [r for r in base_train if r.instance.group in probe_groups]
-        gap = (task.statistic([r.outcome for r in cand_probe])
-               - task.statistic([r.outcome for r in against]))
+        cand_train = _bench(task, candidate, probe, llm, s)
+        base_train = [r for r in base_train if r.instance.group in probe_groups]
+        gap = (task.statistic([r.outcome for r in cand_train])
+               - task.statistic([r.outcome for r in base_train]))
         log(f"  cascade: {len(probe)} windows over {len(probe_groups)} matches, "
             f"{gap:+.3f} against the incumbent")
         if gap < s.cascade_floor:
-            log(f"  stopping here: {gap:+.3f} is below {s.cascade_floor:+.3f}, and the "
-                f"full evaluation would only confirm it")
-            # A probe is a real evaluation of real windows, so it is kept: a
-            # candidate that was rejected still leaves a record of what it did.
-            cand_train, stopped_early = cand_probe, True
+            log(f"  stopping here: {gap:+.3f} is below {s.cascade_floor:+.3f}, and "
+                f"held-out would only confirm it")
+            stopped_early = True
+    else:
+        cand_train = _bench(task, candidate, train, llm, s)
 
     if not stopped_early:
-        cand_train = _bench(task, candidate, train, llm, s)
         cand_hold = _bench(task, candidate, hold, llm, s)
     gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
     _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train,

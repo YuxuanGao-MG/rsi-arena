@@ -312,3 +312,26 @@ async def test_a_candidate_that_clears_the_probe_is_still_gated(t0, history):
                      candidate_holdout=good[3:], incumbent_holdout=base[3:],
                      stopped_early=False, min_groups=1)
     assert verdict.accepted, verdict.reasons
+
+
+async def test_the_probe_is_the_train_scoreboard(t0, history):
+    """The gate asks of train only whether the candidate got worse, and a
+    regression shows on twenty matches as well as on a hundred and forty. Scoring
+    the full train set again was two thirds of a generation's bill for an answer
+    the probe already had — held-out is the half that needs power, and held-out
+    is still scored in full.
+    """
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
+    good = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle))
+
+    groups = sorted({r.instance.group for r in base})
+    probe = [r for r in good if r.instance.group in groups[:1]]
+    against = [r for r in base if r.instance.group in groups[:1]]
+    assert probe and len(probe) < len(good), "a probe is a subset, or it is not a probe"
+
+    verdict = accept(tk, candidate_train=probe, incumbent_train=against,
+                     candidate_holdout=good, incumbent_holdout=base, min_groups=1)
+    assert verdict.accepted, verdict.reasons
+    assert verdict.train["paired"] == len(probe), "judged on what was actually scored"
