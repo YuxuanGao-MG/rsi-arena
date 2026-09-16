@@ -56,7 +56,11 @@ async def test_a_harness_that_cannot_run_fails_every_instance_with_the_reason(t0
     tk = task(history, t0)
     broken = Harness.load(BASE).from_components({"tools": "market_quote, news_search"})
     rollouts = await evaluate(tk, broken, tk.instances(), FakeLLM(oracle))
-    assert all(r.run is None and r.outcome.value == 0.0 for r in rollouts)
+    # The two numbers on this line used to disagree: the optimizer was handed
+    # 0.0 and the gate computed 0.0 skill, which look equal and are not — 0.0 on
+    # the optimizer's scale is a ten-cent error, and 0.0 skill is silence, which
+    # is 0.5. They now say the same thing about the same window.
+    assert all(r.run is None and r.outcome.value == 0.5 for r in rollouts)
     assert "news_search" in rollouts[0].outcome.feedback
     assert tk.statistic([r.outcome for r in rollouts]) == 0.0        # counted as silence
 
@@ -82,7 +86,15 @@ def test_adapter_speaks_gepa(t0, history):
     assert "skill +1.00" in rec["Feedback"] and "Score 0.75" in rec["Feedback"]
     assert json.loads(rec["Generated Outputs"])["delta_cents"] == 5
     bad = adapter.evaluate(tk.instances()[:2], {**adapter.base.to_components(), "plan": "nope"}, True)
-    assert bad.scores == [0.0, 0.0] and "not valid JSON" in bad.trajectories[0]["feedback"]
+    # 0.5, not 0.0. A harness that cannot run said nothing, and saying nothing is
+    # worth exactly silence — which is the middle of this scale, because value is
+    # affine in error removed and silence removes none. This asserted 0.0 until
+    # the day someone noticed the gate was reading the same window as silence
+    # while the optimizer was reading it as ten cents wrong: half the range of
+    # disagreement about the commonest failure there is. The reason for the
+    # rejection still has to be in the feedback, and that is the part that
+    # matters here.
+    assert bad.scores == [0.5, 0.5] and "not valid JSON" in bad.trajectories[0]["feedback"]
 
 
 def test_reflection_templates_state_the_task_once_per_component():

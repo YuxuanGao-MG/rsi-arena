@@ -6,11 +6,20 @@ a held-out split too small to draw an interval from, a harness whose plan reads
 a name nobody supplies. Each of those has happened here, and each was found
 after a run rather than before one.
 
-    python scripts/preflight.py       # exits non-zero if anything is off
+    python scripts/preflight.py --benchmark benchmarks/soccer-2026.json --holdout 35
+
+Takes the same flags the run takes, and parses them with the run's own parser.
+It used to build its own ``Settings`` instead, which is how it came to assert
+that no match contributed more than sixteen windows while the generation beside
+it kept all thirty-four of them: the flag that would have thinned the set was
+being dropped in ``_settings``, and the one check that could have caught it was
+asking a different object. A guard that does not read what it guards is
+decoration.
 
 Needs no key and no network beyond the question set already on disk.
 """
 import json, sys, glob, collections
+from datetime import datetime, timezone
 sys.path.insert(0, '.')
 from pathlib import Path
 
@@ -24,13 +33,19 @@ from rsi_arena.loop.settings import Settings
 from rsi_arena.topics.kalshi_horizon import score_output, pooled_skill
 from rsi_arena.topics.kalshi_horizon.task import KalshiHorizon
 from rsi_arena.loop.task import split_by_group
+from rsi_arena.cli import _settings, build_parser
+from rsi_arena.kalshi.replay import replay_tools
 
-s = Settings(benchmark="benchmarks/soccer-2026.json", per_fixture=8, holdout=35)
+# The run's own parser, so a flag the run honours is a flag this sees.
+s = _settings(build_parser().parse_args(["optimize", *sys.argv[1:]]))
 h = Harness.load(s.harness)
 
 print("\n— the harness —")
 check("model is set", bool(h.config.model), h.config.model)
-check("tools are the frozen three", sorted(h.tools) == ["candlesticks", "market_quote", "previous_trades"], str(h.tools))
+_box = set(replay_tools(datetime(2026, 1, 1, tzinfo=timezone.utc)))
+check("every declared tool exists in the frozen box", set(h.tools) <= _box,
+      f"{len(h.tools)} declared of {len(_box)} available: {sorted(set(h.tools) - _box) or 'all present'}")
+check("the rewriter has room to compose", len(_box) >= 10, f"{len(_box)} tools in the box")
 check("plan inputs are supplied", h.plan.required_inputs() <= {"game"}, str(h.plan.required_inputs()))
 check("components round-trip", h.from_components(h.to_components()).to_components() == h.to_components())
 
@@ -51,7 +66,13 @@ tg, hg = {i.group for i in train}, {i.group for i in hold}
 check("matches", len(groups) >= 100, f"{len(groups)} matches, {len(inst)} windows")
 check("no match on both sides", not (tg & hg), f"{len(tg)} train / {len(hg)} held out")
 check("held-out clears the bootstrap floor", len(hg) >= 8, f"{len(hg)} matches, floor is 8")
-check("windows per match capped", max(groups.values()) <= 16, f"max {max(groups.values())}")
+_cap = s.per_fixture or 10 ** 6
+check("windows per match respect --per-fixture", max(groups.values()) <= _cap,
+      f"max {max(groups.values())}, cap {s.per_fixture or 'none'}")
+_cost = len(inst) * 0.025
+check("a generation fits its budget", s.max_generation_usd > 0, f"ceiling ${s.max_generation_usd:.0f}")
+check("the question set is not itself the runaway", _cost < 400,
+      f"{len(inst)} windows is about ${_cost:.0f} per full pass")
 moved = sum(1 for i in inst if abs(i.realised - i.mid_now) >= 0.01)
 check("enough windows actually move", moved / len(inst) > 0.4, f"{moved}/{len(inst)} moved >= 1c")
 

@@ -37,6 +37,13 @@ class Settings:
     max_metric_calls: int = 500                    # instance evaluations GEPA may spend
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
+    # What a whole generation may spend. The per-window ledger caps one run at
+    # twenty cents; until today nothing capped the thousand runs around it, so
+    # the real ceiling was `max_metric_calls` times whatever a window happened
+    # to cost — and a candidate that grows the context roughly doubles that.
+    # Set a little above the ~$35 a healthy generation costs, so it is a
+    # backstop against a runaway rather than a budget the search plans around.
+    max_generation_usd: float = 45.0
     # Train matches the candidate is scored on. Doubles as the regression
     # check, so the full train set is never re-scored: the gate asks of train
     # only "did this get worse", which twenty matches answer as well as a

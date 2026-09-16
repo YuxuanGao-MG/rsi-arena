@@ -12,8 +12,9 @@ from .adapter import TaskAdapter, reflection_templates
 from .gate import Decision, accept, paired_bootstrap
 from .generation import Generation, lineage, render_lineage
 from .settings import Settings
-from .task import Instance, Outcome, Rollout, Task, evaluate, split_by_group, summarise
+from .task import (Instance, Outcome, Rollout, Task, evaluate, probe_sample,
+                   split_by_group, summarise)
 
 __all__ = ["TaskAdapter", "reflection_templates", "Decision", "accept", "paired_bootstrap",
            "Generation", "lineage", "render_lineage", "Settings", "Instance", "Outcome", "Rollout", "Task",
-           "evaluate", "split_by_group", "summarise"]
+           "evaluate", "probe_sample", "split_by_group", "summarise"]

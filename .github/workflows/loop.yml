@@ -51,6 +51,9 @@ on:
       per_fixture:
         description: "windows kept per match; 0 keeps all. Power comes from matches, not windows within one"
         default: "8"
+      max_generation_usd:
+        description: "backstop on the whole generation; 0 removes it"
+        default: "45"
       trace:
         description: "keep every step each harness took, so the reader can show it"
         type: boolean
@@ -72,9 +75,17 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    # A healthy generation is about an hour. 330 was a ceiling high enough to
+    # hide a runaway: the first scheduled attempt ran the full five and a half
+    # and was killed by it, having bought a train pass it then discarded. Ninety
+    # minutes fails fast and fails visibly.
+    timeout-minutes: 90
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # At job level, not on the publish step. A step's own `env:` block is not
+      # in scope when that step's `if:` is evaluated, so `env.SUPABASE_DB_URL != ''`
+      # read empty every time and the reader has never once been fed.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -124,7 +135,12 @@ jobs:
       # wrong here and was found after a run rather than before one.
       - name: Preflight
         if: github.event_name == 'schedule' || inputs.command == 'optimize'
-        run: python scripts/preflight.py
+        run: |
+          python scripts/preflight.py \
+            --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
+            --holdout "${{ inputs.holdout || '35' }}" \
+            --per-fixture "${{ inputs.per_fixture || '8' }}" \
+            --max-metric-calls "${{ inputs.max_metric_calls || '1000' }}"
 
       - name: Where this generation goes
         id: chain
@@ -145,6 +161,7 @@ jobs:
                 --holdout "${{ inputs.holdout || '35' }}"
                 --per-fixture "${{ inputs.per_fixture || '8' }}"
                 --max-metric-calls "${{ inputs.max_metric_calls || '1000' }}"
+                --max-generation-usd "${{ inputs.max_generation_usd || '45' }}"
                 --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")
           [ "${{ inputs.trace || 'true' }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
@@ -157,8 +174,6 @@ jobs:
       # than a failed generation — the run already happened and is committed.
       - name: Publish to the reader
         if: always() && env.SUPABASE_DB_URL != ''
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           pip install -q psycopg2-binary
           shopt -s nullglob

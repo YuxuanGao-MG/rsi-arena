@@ -74,6 +74,26 @@ def trim_span(span: dict[str, Any]) -> dict[str, Any]:
             "output": short(span.get("output")) if span.get("output") is not None else None}
 
 
+def forecast(run: dict, details: dict) -> dict:
+    """What the harness said, from the run if it was kept and the score if not.
+
+    Runs written before the answer was kept in the summary have only the graded
+    numbers. A delta is the predicted price less the mid, and a half width is
+    half the quote — both recoverable, and a reader looking at an old generation
+    should see a forecast rather than a dash.
+    """
+    said = run.get("output")
+    if isinstance(said, dict) and said:
+        return said
+    mid, predicted = details.get("mid_now"), details.get("predicted")
+    if mid is None or predicted is None:
+        return {}
+    half = details.get("half_width")
+    return {"delta_cents": round((predicted - mid) * 100, 1),
+            "half_width_cents": None if half is None else round(half * 100, 1),
+            "reconstructed": True}
+
+
 def rollout_rows(run_id: str, side: str, split: str,
                  path: Path) -> list[tuple[tuple, list | None]]:
     """``(row, spans)`` per window. ``spans`` is None unless it was traced."""
@@ -94,7 +114,7 @@ def rollout_rows(run_id: str, side: str, split: str,
             d.get("error"), d.get("naive_error"), d.get("skill"),
             d.get("echoed"), d.get("unmeasurable"), d.get("scored"),
             r.get("cost_usd"), run.get("ok"), run.get("error"),
-            Json(run.get("output")), Json(inst.get("game")), out.get("feedback"),
+            Json(forecast(run, d)), Json(inst.get("game")), out.get("feedback"),
         ), [trim_span(x) for x in spans] if spans else None))
     return rows
 

@@ -89,6 +89,44 @@ def split_by_group(instances: list[Instance], holdout: int, seed: int = 0
     return [i for i in instances if i.group not in held], [i for i in instances if i.group in held]
 
 
+def probe_sample(groups: set[str], n: int, seed: int = 0) -> set[str]:
+    """``n`` groups drawn to stand for the rest, stratified by their prefix.
+
+    It used to be ``sorted(groups)[:n]``, and group ids are Kalshi event tickers,
+    so alphabetical order is league order: the first twenty were every
+    ``KXBUNDESLIGAGAME-*`` there is and nothing else. Both the cheap filter that
+    kills a candidate and the train scoreboard the gate reads were computed on
+    one league of twenty-four matches. A harness that happened to suit the
+    Bundesliga was being asked about nothing but the Bundesliga.
+
+    Stratified rather than merely shuffled because the leagues are wildly
+    unequal — MLS has a hundred and twenty matches to the Bundesliga's
+    twenty-four — and a uniform draw of twenty would be mostly MLS by accident
+    where this is mostly MLS in proportion.
+    """
+    if n <= 0 or n >= len(groups):
+        return set(groups)
+    rng = random.Random(seed)
+    by_league: dict[str, list[str]] = {}
+    for g in sorted(groups):
+        by_league.setdefault(g.split("-")[0], []).append(g)
+    for members in by_league.values():
+        rng.shuffle(members)
+    # Round-robin across leagues, so the smallest is represented before the
+    # largest is exhausted.
+    picked: list[str] = []
+    order = sorted(by_league)
+    while len(picked) < n:
+        took = False
+        for league in order:
+            if by_league[league] and len(picked) < n:
+                picked.append(by_league[league].pop())
+                took = True
+        if not took:
+            break
+    return set(picked)
+
+
 async def evaluate(task: Task, harness: Harness, instances: list[Instance], llm: LLM, *,
                    concurrency: int = 4) -> list[Rollout]:
     """One run per instance. A harness that cannot run at all fails every instance, with the reason."""

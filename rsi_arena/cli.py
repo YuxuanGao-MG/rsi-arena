@@ -13,12 +13,14 @@ import argparse
 import asyncio
 import json
 import sys
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
 from .harness import Harness, OpenRouter, SyncLLM
 from .loop import (Generation, Rollout, Settings, TaskAdapter, accept, evaluate, lineage,
-                   reflection_templates, render_lineage, split_by_group, summarise)
+                   probe_sample, reflection_templates, render_lineage, split_by_group,
+                   summarise)
 from .loop.generation import BEST, fingerprint, resolve_harness
 from .topics import TOPICS, load_topic
 
@@ -47,21 +49,36 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
                     help="train matches to probe before paying for the full evaluation; 0 disables")
     ap.add_argument("--cascade-floor", type=float, default=d.cascade_floor,
                     help="a probe below this is rejected without confirming")
+    ap.add_argument("--max-generation-usd", type=float, default=d.max_generation_usd,
+                    help="a backstop on the whole generation; 0 removes it")
 
 
 def _settings(args: argparse.Namespace) -> Settings:
-    s = Settings(topic=args.topic, harness=args.harness, benchmark=args.benchmark,
-                 windows_dir=args.windows_dir, holdout=args.holdout,
-                 seed=args.seed, every=args.every, model=args.model, cache_dir=args.cache_dir,
-                 llm_cache=not args.no_llm_cache, concurrency=args.concurrency)
-    for name in ("reflection_model", "max_metric_calls", "minibatch", "max_cost_ratio", "run_dir"):
-        if hasattr(args, name):
-            setattr(s, name, getattr(args, name))
+    """Every parsed flag, on the settings object the run will actually use.
+
+    Written as a sweep over the dataclass rather than a list of names because
+    the list of names is what went wrong. It enumerated five of eleven, so
+    ``--per-fixture 8`` parsed, printed in the workflow log, and was discarded:
+    the scheduled generation kept all thirty-four windows of all four hundred
+    and fifty matches and was killed by the job timeout five and a half hours
+    later. ``--cascade`` and ``--cascade-floor`` went the same way. A flag added
+    to the parser now reaches the run by construction, and ``test_cli.py`` holds
+    the parser and the dataclass to the same set of names.
+    """
+    s = Settings()
+    for f in fields(Settings):
+        if hasattr(args, f.name):
+            setattr(s, f.name, getattr(args, f.name))
+    # The one flag whose name is not its setting: argparse has no --llm-cache to
+    # turn back on, so the switch is phrased as the negative.
+    if getattr(args, "no_llm_cache", False):
+        s.llm_cache = False
     return s
 
 
 def _llm(s: Settings) -> OpenRouter:
-    return OpenRouter(cache_dir=f"{s.cache_dir}/llm", cache=s.llm_cache, concurrency=s.concurrency)
+    return OpenRouter(cache_dir=f"{s.cache_dir}/llm", cache=s.llm_cache, concurrency=s.concurrency,
+                      budget_usd=s.max_generation_usd or None)
 
 
 def _bench(task, harness, instances, llm, s: Settings) -> list[Rollout]:
@@ -252,8 +269,25 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         return 1
 
     llm = _llm(s)
+    # The probe is chosen before anything is paid for, not after the search.
+    #
+    # It used to be picked after GEPA returned, which meant the incumbent was
+    # first scored on the whole train split and then all but the probe's rollouts
+    # were thrown away. On the scheduled benchmark that is thirty-six hundred
+    # windows bought and a hundred and sixty kept — about ninety dollars a
+    # generation for a number nobody reads. The gate only ever asks of train
+    # "did this get worse", and it asks it of the probe; so score the probe, and
+    # score it once.
+    probe_groups = (probe_sample({i.group for i in train}, s.cascade, s.seed)
+                    if s.cascade > 0 else {i.group for i in train})
+    probe = [i for i in train if i.group in probe_groups]
+    gen.split["probe_groups"] = sorted(probe_groups)
+    gen.split["probe"] = len(probe)
+
     log(f"baseline: {incumbent.name} ({gen.incumbent_fingerprint})")
-    base_train, base_hold = _bench(task, incumbent, train, llm, s), _bench(task, incumbent, hold, llm, s)
+    log(f"  scoring {len(probe)} probe windows over {len(probe_groups)} matches "
+        f"and {len(hold)} held-out windows")
+    base_train, base_hold = _bench(task, incumbent, probe, llm, s), _bench(task, incumbent, hold, llm, s)
     gen.baseline = {"train": summarise(task, base_train), "holdout": summarise(task, base_hold)}
     _dump_rollouts(run_dir / "rollouts" / "baseline.train.json", base_train,
                    trace=args.trace)
@@ -298,10 +332,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         # candidate got worse, and twenty matches answer that as well as a
         # hundred and forty at a fifteenth of the price. Held-out is the half
         # that needs power, and held-out is scored in full.
-        probe_groups = sorted({i.group for i in train})[:s.cascade]
-        probe = [i for i in train if i.group in probe_groups]
         cand_train = _bench(task, candidate, probe, llm, s)
-        base_train = [r for r in base_train if r.instance.group in probe_groups]
         gap = (task.statistic([r.outcome for r in cand_train])
                - task.statistic([r.outcome for r in base_train]))
         log(f"  cascade: {len(probe)} windows over {len(probe_groups)} matches, "
@@ -313,6 +344,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     else:
         cand_train = _bench(task, candidate, train, llm, s)
 
+    if llm.over_budget and not stopped_early:
+        log("  not scoring held-out: the generation's budget is already gone, and a "
+            "half-paid held-out set is worse than none")
+        stopped_early = True
     if not stopped_early:
         cand_hold = _bench(task, candidate, hold, llm, s)
     gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
@@ -326,8 +361,16 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                       unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint,
                       stopped_early=stopped_early)
     gen.decision = decision.to_dict()
-    gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits, "spent_usd": round(llm.spent_usd, 4)}
+    gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits, "spent_usd": round(llm.spent_usd, 4),
+               "budget_usd": s.max_generation_usd or None, "exhausted": llm.over_budget}
     gen.save()
+    if llm.over_budget:
+        # Said out loud rather than inferred from a number, because a generation
+        # that ran out of money and one that ran to completion produce the same
+        # shaped manifest, and the difference is the whole meaning of the result.
+        log(f"budget exhausted: ${llm.spent_usd:.2f} of ${s.max_generation_usd:.2f}. "
+            f"Everything after the line scored as silence; read this generation "
+            f"as incomplete, not as evidence.")
     asyncio.run(llm.close())
 
     print(render_lineage(lineage(run_dir)))
