@@ -7,7 +7,13 @@ from rsi_arena.kalshi.replay import MatchEvent, MatchTimeline, ToolCache, realis
 def test_frozen_tools_never_see_past_the_instant(history, t0):
     at = t0 + timedelta(minutes=20)
     box = replay_tools(at, history)
-    assert set(box) == {"market_quote", "candlesticks", "previous_trades"}
+    # Not an exact set: the box grows, and pinning its size turns widening the
+    # search into a test failure. What must stay true is that nothing in it can
+    # see past the instant — so the named absentees are the assertion.
+    assert {"market_quote", "candlesticks", "previous_trades"} <= set(box)
+    for reaches_forward in ("game_state", "recent_plays", "team_news", "web_research",
+                            "live_markets", "todays_fixtures", "market_settlement"):
+        assert reaches_forward not in box, f"{reaches_forward} would answer with the future"
     quote = box["market_quote"].safe_call(ticker="A")
     assert quote.ok and abs(quote.data["mid"] - 0.60) < 1e-9
     path = box["candlesticks"].safe_call(ticker="A", hours_back=0.25)
@@ -62,3 +68,96 @@ def test_build_windows_attaches_truth_and_caches(history, t0, tmp_path):
     again = build_windows([fixture], history=history, windows_dir=tmp_path,
                           timeline_for=fake_timeline, log=lambda m: None)
     assert calls == ["g"] and [w.id for w in again] == [w.id for w in windows]
+
+
+# --- the box a harness gets to compose from ----------------------------------
+
+
+def test_game_state_needs_a_timeline_and_says_so(t0, history):
+    """Score and clock are as replayable as the book — a timeline is timestamped
+    events, so what the score was at an instant is a lookup. Without one those
+    tools are absent rather than wrong, so a harness that names them fails to
+    load instead of quietly getting a guess."""
+    without = replay_tools(t0, history)
+    assert "game_state" not in without and "minutes_since_goal" not in without
+
+    line = MatchTimeline(game_id="g", league="EPL", home="H", away="A",
+                         kickoff=t0 - timedelta(minutes=30),
+                         events=[MatchEvent(seconds=600, kind="goal", team="H", text="1-0")])
+    withline = replay_tools(t0, history, line=line)
+    assert {"game_state", "minutes_since_goal", "recent_plays"} <= set(withline)
+
+    state = withline["game_state"].safe_call()
+    assert state.ok and state.data["home_score"] == 1
+
+    quiet = withline["minutes_since_goal"].safe_call()
+    assert quiet.ok and quiet.data["last_goal_minute"] == 10
+    assert quiet.data["minutes_since"] == 20, "thirty minutes in, a goal on ten"
+
+
+def test_a_later_event_is_not_visible_yet(t0, history):
+    """The timeline holds the whole match including its goals. Standing at
+    minute thirty, the ones at minute seventy have not happened."""
+    line = MatchTimeline(game_id="g", league="EPL", home="H", away="A",
+                         kickoff=t0 - timedelta(minutes=30),
+                         events=[MatchEvent(seconds=600, kind="goal", team="H", text="early"),
+                                 MatchEvent(seconds=4200, kind="goal", team="A", text="late")])
+    box = replay_tools(t0, history, line=line)
+    plays = box["recent_plays"].safe_call(limit=10)
+    assert plays.ok
+    texts = " ".join(e["text"] for e in plays.data["events"])
+    assert "early" in texts and "late" not in texts
+
+
+def test_the_box_has_more_than_three_tools(t0, history):
+    """A search over three tools is barely a search. The arena's premise is that
+    a harness composes primitives, and it had almost nothing to compose: GEPA
+    could rewrite the prompt and the plan, and any tool name it reached for
+    outside the box made the candidate fail to load."""
+    box = replay_tools(t0, history)
+    assert len(box) >= 14, sorted(box)
+    assert {"market_quote", "candlesticks", "previous_trades"} <= set(box)
+
+
+def test_arithmetic_tools_need_no_clock(t0, history):
+    """Fees, de-vigging and sizing have no time in them, so freezing them is a
+    matter of definition rather than care. They are the cheapest way to widen
+    what a harness can compose."""
+    box = replay_tools(t0, history)
+    fees = box["trading_fees"].safe_call(price=0.35, contracts=100)
+    assert fees.ok and fees.data["round_trip_usd"] > 0
+    later = replay_tools(t0 + timedelta(hours=2), history)
+    assert (fees.data["taker_fee_usd"]
+            == later["trading_fees"].safe_call(price=0.35, contracts=100).data["taker_fee_usd"]), \
+        "the same answer at any instant, because there is no instant in it"
+
+    edge = box["price_the_edge"].safe_call(probability=0.6, yes_price=0.5)
+    assert edge.ok and edge.data["worth_taking"] is True
+    none_left = box["price_the_edge"].safe_call(probability=0.50, yes_price=0.50)
+    assert none_left.ok and none_left.data["worth_taking"] is False
+
+
+def test_a_bad_devig_method_is_a_sentence_not_a_traceback(t0, history):
+    """The author of this file guessed 'multiplicative' and it is not one of the
+    names. A model guessing will do the same, and should read which names exist."""
+    out = replay_tools(t0, history)["devig_odds"].safe_call(
+        american_odds=[-150, 320], method="multiplicative")
+    assert not out.ok and "proportional" in out.error
+
+
+def test_asking_for_a_time_past_the_window_gets_the_window(t0, history):
+    """The one tool that takes a timestamp is the one place a harness could
+    reach forward by asking. It is clamped rather than refused — a plan that asks
+    for a later time gets this instant and is told so — because refusing would
+    teach a rewriter to avoid the tool rather than to use it properly."""
+    box = replay_tools(t0, history)
+    ahead = box["market_at_time"].safe_call(ticker="A",
+                                     when=(t0 + timedelta(hours=3)).isoformat())
+    if ahead.ok:
+        assert ahead.data["clamped"] is True
+        assert ahead.data["answered_at"] <= t0.isoformat()
+
+    behind = box["market_at_time"].safe_call(ticker="A",
+                                      when=(t0 - timedelta(minutes=20)).isoformat())
+    if behind.ok:
+        assert behind.data["clamped"] is False
