@@ -207,3 +207,95 @@ async def test_too_few_matches_is_no_sample_rather_than_a_small_one(t0, history)
                      candidate_holdout=good, incumbent_holdout=base, min_groups=99)
     assert verdict.accepted is False
     assert "too few to draw an interval" in " ".join(verdict.reasons)
+
+
+# --- where the next generation goes ------------------------------------------
+
+
+def _fake_run(root, name, created, **extra):
+    import json
+    d = root / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "manifest.json").write_text(json.dumps(
+        {"run_dir": str(d), "topic": "t", "created": created, **extra}))
+    return d
+
+
+def test_the_next_generation_follows_the_deepest_one(tmp_path):
+    """A schedule cannot be told "continue from gen4" by a person twice a day,
+    and one that always starts from the seed is not a lineage — it is the same
+    experiment repeated."""
+    from rsi_arena.cli import _next_name
+
+    _fake_run(tmp_path, "gen1", "2026-09-15T01:00:00+00:00")
+    _fake_run(tmp_path, "gen3", "2026-09-15T03:00:00+00:00")
+    assert _next_name("gen3", tmp_path) == "gen4"
+
+
+def test_a_number_in_the_middle_of_a_name_is_not_a_generation(tmp_path):
+    """`gen1-floored` ends in a letter. Reading the 1 out of its middle produced
+    `gen1-floore2`, a name that says nothing about which generation it is."""
+    from rsi_arena.cli import _next_name
+
+    _fake_run(tmp_path, "gen1-floored", "2026-09-15T01:00:00+00:00")
+    assert _next_name("gen1-floored", tmp_path) == "gen2"
+
+
+def test_a_name_is_never_reused(tmp_path):
+    from rsi_arena.cli import _next_name
+
+    _fake_run(tmp_path, "gen1", "2026-09-15T01:00:00+00:00")
+    _fake_run(tmp_path, "gen2", "2026-09-15T02:00:00+00:00")
+    assert _next_name("gen1", tmp_path) == "gen2b", "gen2 is taken"
+
+
+def test_an_unreadable_manifest_is_skipped_not_fatal(tmp_path, capsys):
+    """A half-written or hand-made manifest should not stop a schedule from
+    finding where to continue."""
+    import argparse
+
+    from rsi_arena.cli import cmd_next
+
+    _fake_run(tmp_path, "gen1", "2026-09-15T01:00:00+00:00")
+    (tmp_path / "broken").mkdir()
+    (tmp_path / "broken" / "manifest.json").write_text('{"topic": "no run_dir"}')
+
+    code = cmd_next(argparse.Namespace(runs_dir=str(tmp_path), seed="seed.json", json=True))
+    assert code == 0
+    out = capsys.readouterr()
+    assert "gen2" in out.out and "skipping" in out.err
+
+
+# --- the cascade -------------------------------------------------------------
+
+
+async def test_a_cascade_rejection_says_it_never_paid_for_held_out(t0, history):
+    """Scoring a candidate on train and held-out is two thirds of a generation's
+    bill and most candidates are not close. When the probe rejects one, held-out
+    was never run — and reporting that as "no held-out instances" would read as a
+    fault when it was a decision."""
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
+
+    verdict = accept(tk, candidate_train=base[:3], incumbent_train=base[:3],
+                     candidate_holdout=[], incumbent_holdout=[],
+                     stopped_early=True, min_groups=1)
+    assert verdict.accepted is False
+    reason = " ".join(verdict.reasons)
+    assert "cascade" in reason and "never paid for" in reason
+    assert "no paired held-out" not in reason
+
+
+async def test_a_candidate_that_clears_the_probe_is_still_gated(t0, history):
+    """The cascade only ever rejects. Surviving it buys the full evaluation, not
+    a promotion — the held-out interval is still the only way in."""
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent))
+    good = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle))
+
+    verdict = accept(tk, candidate_train=good[:3], incumbent_train=base[:3],
+                     candidate_holdout=good[3:], incumbent_holdout=base[3:],
+                     stopped_early=False, min_groups=1)
+    assert verdict.accepted, verdict.reasons

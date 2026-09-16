@@ -86,7 +86,8 @@ class Decision:
 def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[Rollout],
            candidate_holdout: list[Rollout], incumbent_holdout: list[Rollout],
            max_cost_ratio: float = 2.0, seed: int = 0,
-           unchanged: bool = False, min_groups: int = MIN_GROUPS) -> Decision:
+           unchanged: bool = False, min_groups: int = MIN_GROUPS,
+           stopped_early: bool = False) -> Decision:
     """Promote a candidate, or say why not.
 
     ``unchanged`` is for the case the first real run hit: GEPA's best was the
@@ -107,6 +108,14 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         return Decision(accepted=False, holdout=hold, train=train,
                         reasons=["the search returned the incumbent unchanged; "
                                  "nothing was proposed to gate"])
+    if stopped_early:
+        # The cascade rejected it on a sample of train, so held-out was never
+        # run and there is nothing to draw an interval from. Saying "no
+        # held-out instances" would read as a fault; it was a decision.
+        return Decision(accepted=False, holdout=hold, train=train,
+                        reasons=[f"the cascade rejected it on {train.get('groups', 0)} "
+                                 f"train matches ({train.get('diff', 0.0):+.3f}), so "
+                                 f"held-out was never paid for"])
     if hold["paired"] < 2:
         ok = False
         reasons.append("no paired held-out instances to judge on")

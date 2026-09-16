@@ -24,6 +24,8 @@ class Settings:
     max_metric_calls: int = 300                    # instance evaluations GEPA may spend
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
+    cascade: int = 6                               # train matches to probe before the full run; 0 disables
+    cascade_floor: float = -0.02                   # a probe below this is not worth confirming
     run_dir: str = "runs/latest"
     extra: dict[str, Any] = field(default_factory=dict)
 

@@ -5,6 +5,18 @@
 # Needs one repository secret for anything but "windows": OPENROUTER_API_KEY.
 name: loop
 on:
+  # Two generations a day, twelve hours apart. A generation is about an hour of
+  # wall clock and thirty dollars once the incumbent's evaluation is cached, so
+  # this is roughly sixty dollars a day — a pace chosen to be read, not to be
+  # the fastest possible.
+  #
+  # Each one continues from the last: `rsi-arena next` finds the deepest
+  # generation and names the one after it, so nobody has to remember whether the
+  # lineage is on gen4 or gen5. A schedule that always started from the seed
+  # would not be a lineage, only the same experiment repeated.
+  schedule:
+    - cron: "17 3 * * *"
+    - cron: "17 15 * * *"
   workflow_dispatch:
     inputs:
       command:
@@ -12,6 +24,10 @@ on:
         type: choice
         options: [windows, bench, optimize]
         default: bench
+      chain:
+        description: "ignore harness/run_dir and continue from the deepest generation"
+        type: boolean
+        default: false
       harness:
         description: "harness file, or a run directory to continue from (runs/gen1)"
         default: harnesses/horizon-5m.json
@@ -101,17 +117,32 @@ jobs:
           rsi-arena bench "${args[@]}" --out "runs/bench/$(date -u +%Y%m%dT%H%M)-${{ inputs.split }}.rollouts.json" | tee bench.txt
           { echo "### Bench"; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Optimize
-        if: inputs.command == 'optimize'
+      # A scheduled run arrives with no inputs at all, so the chain is resolved
+      # here and everything downstream reads these rather than `inputs.*`.
+      - name: Where this generation goes
+        id: chain
+        if: github.event_name == 'schedule' || inputs.chain
         run: |
-          args=(--harness "${{ inputs.harness }}" --run-dir "${{ inputs.run_dir }}"
-                --benchmark "${{ inputs.benchmark }}" --holdout "${{ inputs.holdout }}"
-                --per-fixture "${{ inputs.per_fixture }}"
-                --max-metric-calls "${{ inputs.max_metric_calls }}" --reflection-model "${{ inputs.reflection_model }}")
-          [ "${{ inputs.trace }}" = "true" ] && args+=(--trace)
+          eval "$(rsi-arena next --runs-dir runs --seed harnesses/horizon-5m.json)"
+          echo "harness=$harness"   >> "$GITHUB_OUTPUT"
+          echo "run_dir=$run_dir"   >> "$GITHUB_OUTPUT"
+          echo "continuing from ${harness} into ${run_dir} (generation $((generations + 1)))"
+
+      - name: Optimize
+        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        run: |
+          harness="${{ steps.chain.outputs.harness || inputs.harness }}"
+          run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
+          args=(--harness "$harness" --run-dir "$run_dir"
+                --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}"
+                --holdout "${{ inputs.holdout || '35' }}"
+                --per-fixture "${{ inputs.per_fixture || '8' }}"
+                --max-metric-calls "${{ inputs.max_metric_calls || '1000' }}"
+                --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")
+          [ "${{ inputs.trace || 'true' }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
           rsi-arena optimize "${args[@]}" | tee optimize.txt
-          { echo "### Generation ${{ inputs.run_dir }}"; echo '```'; cat optimize.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Generation ${run_dir}"; echo '```'; cat optimize.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       # The reader is the point of keeping traces at all. Publishing here means a
       # run is readable the moment it finishes rather than when someone
