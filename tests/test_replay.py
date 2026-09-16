@@ -73,13 +73,49 @@ def test_build_windows_attaches_truth_and_caches(history, t0, tmp_path):
 # --- the box a harness gets to compose from ----------------------------------
 
 
+def test_game_state_needs_a_timeline_and_says_so(t0, history):
+    """Score and clock are as replayable as the book — a timeline is timestamped
+    events, so what the score was at an instant is a lookup. Without one those
+    tools are absent rather than wrong, so a harness that names them fails to
+    load instead of quietly getting a guess."""
+    without = replay_tools(t0, history)
+    assert "game_state" not in without and "minutes_since_goal" not in without
+
+    line = MatchTimeline(game_id="g", league="EPL", home="H", away="A",
+                         kickoff=t0 - timedelta(minutes=30),
+                         events=[MatchEvent(seconds=600, kind="goal", team="H", text="1-0")])
+    withline = replay_tools(t0, history, line=line)
+    assert {"game_state", "minutes_since_goal", "recent_plays"} <= set(withline)
+
+    state = withline["game_state"].safe_call()
+    assert state.ok and state.data["home_score"] == 1
+
+    quiet = withline["minutes_since_goal"].safe_call()
+    assert quiet.ok and quiet.data["last_goal_minute"] == 10
+    assert quiet.data["minutes_since"] == 20, "thirty minutes in, a goal on ten"
+
+
+def test_a_later_event_is_not_visible_yet(t0, history):
+    """The timeline holds the whole match including its goals. Standing at
+    minute thirty, the ones at minute seventy have not happened."""
+    line = MatchTimeline(game_id="g", league="EPL", home="H", away="A",
+                         kickoff=t0 - timedelta(minutes=30),
+                         events=[MatchEvent(seconds=600, kind="goal", team="H", text="early"),
+                                 MatchEvent(seconds=4200, kind="goal", team="A", text="late")])
+    box = replay_tools(t0, history, line=line)
+    plays = box["recent_plays"].safe_call(limit=10)
+    assert plays.ok
+    texts = " ".join(e["text"] for e in plays.data["events"])
+    assert "early" in texts and "late" not in texts
+
+
 def test_the_box_has_more_than_three_tools(t0, history):
     """A search over three tools is barely a search. The arena's premise is that
     a harness composes primitives, and it had almost nothing to compose: GEPA
     could rewrite the prompt and the plan, and any tool name it reached for
     outside the box made the candidate fail to load."""
     box = replay_tools(t0, history)
-    assert len(box) >= 9, sorted(box)
+    assert len(box) >= 14, sorted(box)
     assert {"market_quote", "candlesticks", "previous_trades"} <= set(box)
 
 

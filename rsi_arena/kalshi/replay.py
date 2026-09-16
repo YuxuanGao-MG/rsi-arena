@@ -195,14 +195,40 @@ class ToolCache:
 
 
 def replay_tools(at: datetime, history: History | None = None,
-                 cache: ToolCache | None = None) -> Toolbox:
+                 cache: ToolCache | None = None,
+                 line: "MatchTimeline | None" = None) -> Toolbox:
     """Every tool that can be replayed honestly, bounded at ``at``.
 
     Same names as a live toolbox would use, so a harness binds against either.
     Anything that reads news or live game state has no frozen form and is
     deliberately absent: a harness that names it fails to load.
 
-    Three of these read history and stop at the instant. The rest are
+    Seventeen of the forty live tools, and the other twenty-three are absent for
+    three different reasons worth keeping straight.
+
+    **Five would answer with the future.** `market_settlement` is the answer this
+    benchmark scores against. `todays_fixtures`, `active_leagues`, `live_markets`
+    and `find_game_for_market` resolve against the real today rather than the
+    replayed one, so at any past instant they describe a world that had not
+    happened yet. `similar_situations` reads how other contracts resolved, which
+    includes matches played after this window.
+
+    **Four read data that was never recorded.** Order book depth has no history
+    at all — candlesticks carry the best bid and ask, not the book behind them —
+    so `order_book` and `orderbook_imbalance` cannot be reconstructed at any
+    price. `game_context` reads injuries and form as they stand now, and
+    `sportsbook_line` a book's price now; neither feed keeps what it said an
+    hour ago. `my_positions` is a live portfolio.
+
+    **Two are external services**: `web_research` and `team_news` ask the web,
+    and the web has since read the result.
+
+    Game state is here when a timeline is supplied, and it is as replayable as
+    the book: a timeline is timestamped events, so what the score was at an
+    instant is a lookup rather than a guess. Without one those tools are absent
+    rather than wrong, and a harness that names them fails to load.
+
+    Several of these read history and stop at the instant. Others are
     arithmetic — fees, de-vigging, sizing, the mid a quote implies — and have no
     clock in them at all, so freezing is a matter of definition rather than
     care. They are here because a search over three tools is barely a search:
@@ -367,6 +393,162 @@ def replay_tools(at: datetime, history: History | None = None,
             return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
         return cached("volume_profile", {"ticker": ticker, "hours_back": float(hours_back)}, compute)
 
+    # -- the match, as the timeline recorded it ------------------------------
+
+    def game_now() -> ToolResult:
+        if line is None:
+            return ToolResult.failed("no timeline for this window")
+        out = line.state_at(at)
+        return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+
+    def since_goal() -> ToolResult:
+        """How long the match has been quiet. Almost everything that moves a
+        soccer price is a goal, so this is the closest thing to a clock on the
+        risk."""
+        if line is None:
+            return ToolResult.failed("no timeline for this window")
+        elapsed = (at - line.kickoff).total_seconds()
+        scored = [e for e in line.events if e.seconds <= elapsed and e.scored]
+        minute = int(elapsed // 60)
+        out = {"minute": minute, "goals": len(scored),
+               "last_goal_minute": scored[-1].minute if scored else None,
+               "minutes_since": (minute - scored[-1].minute) if scored else None,
+               "score": f"{line.away_score_at(at)}-{line.home_score_at(at)}"
+                        if hasattr(line, "away_score_at") else None}
+        return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+
+    def plays(limit: int = 6) -> ToolResult:
+        if line is None:
+            return ToolResult.failed("no timeline for this window")
+        elapsed = (at - line.kickoff).total_seconds()
+        seen = [e for e in line.events if e.seconds <= elapsed]
+        rows = [{"minute": e.minute, "kind": e.kind, "text": e.text[:120]}
+                for e in seen[-int(limit):]]
+        return ToolResult(ok=True, text=json.dumps(rows, default=str), data={"events": rows})
+
+    # -- more of the book's history ------------------------------------------
+
+    def velocity(ticker: str) -> ToolResult:
+        """How fast this contract is moving, against its own recent normal."""
+        def compute() -> ToolResult:
+            bars = [c for c in hist.price_path(ticker, at - timedelta(hours=1), at, MINUTE)
+                    if c.ts <= at and c.mid is not None]
+            if len(bars) < 4:
+                return ToolResult.failed(f"too few bars on {ticker} in the last hour")
+            mids = [c.mid for c in bars]
+            steps = [abs(b - a) for a, b in zip(mids, mids[1:])]
+            typical = sorted(steps)[len(steps) // 2] if steps else 0.0
+            def move(n: int) -> float:
+                return (mids[-1] - mids[-min(n + 1, len(mids))]) * 100
+            out = {"ticker": ticker, "mid": mids[-1], "bars": len(bars),
+                   "move_1m": round(move(1), 2), "move_3m": round(move(3), 2),
+                   "move_5m": round(move(5), 2),
+                   "typical_minute_move_cents": round(typical * 100, 2),
+                   "verdict": ("running" if abs(move(5)) > 400 * typical + 1
+                               else "moving" if abs(move(5)) > 200 * typical + 0.5
+                               else "still")}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("price_velocity", {"ticker": ticker}, compute)
+
+    def shock(ticker: str, minutes_back: int = 30,
+              threshold_cents: float = 5.0) -> ToolResult:
+        """Jumps in the recent path, and how much of each came back."""
+        def compute() -> ToolResult:
+            start = at - timedelta(minutes=max(2, int(minutes_back)))
+            bars = [c for c in hist.price_path(ticker, start, at, MINUTE)
+                    if c.ts <= at and c.mid is not None]
+            if len(bars) < 3:
+                return ToolResult.failed(f"too few bars on {ticker} in that window")
+            latest = bars[-1].mid
+            jumps = []
+            for before, after in zip(bars, bars[1:]):
+                move = (after.mid - before.mid) * 100
+                if abs(move) < float(threshold_cents):
+                    continue
+                retraced = 0.0 if move == 0 else max(0.0, min(1.0, (after.mid - latest) / (after.mid - before.mid)))
+                jumps.append({"at": after.ts.isoformat(), "move_cents": round(move, 1),
+                              "from": before.mid, "to": after.mid,
+                              "retraced": round(retraced, 3)})
+            if not jumps:
+                return ToolResult(ok=True, text=f"no move over {threshold_cents}c on {ticker}",
+                                  data={"ticker": ticker, "jumps": [], "mid": latest})
+            jumps.sort(key=lambda j: -abs(j["move_cents"]))
+            out = {"ticker": ticker, "mid": latest, "jumps": jumps[:6],
+                   "largest": jumps[0]}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("market_shock", {"ticker": ticker, "minutes_back": int(minutes_back),
+                                       "threshold_cents": float(threshold_cents)}, compute)
+
+    def rules(ticker: str) -> ToolResult:
+        """What actually settles this contract.
+
+        Published before the match, so reading it at any instant is reading
+        something already fixed — which is what makes it replayable at all.
+        """
+        def compute() -> ToolResult:
+            try:
+                terms = hist.rules(ticker)
+            except Exception as exc:
+                return ToolResult.failed(f"no rules for {ticker}: {type(exc).__name__}")
+            if not terms:
+                return ToolResult.failed(f"{ticker} publishes no settlement terms")
+            return ToolResult(ok=True, text=json.dumps(terms, default=str)[:1500], data=terms)
+        return cached("market_rules", {"ticker": ticker}, compute)
+
+    def countdown(ticker: str) -> ToolResult:
+        """How long this contract has left. The close time is published in
+        advance, so it is as knowable at the instant as afterwards."""
+        def compute() -> ToolResult:
+            try:
+                terms = hist.rules(ticker) or {}
+            except Exception as exc:
+                return ToolResult.failed(f"no market {ticker}: {type(exc).__name__}")
+            close = terms.get("close_time")
+            if not close:
+                return ToolResult.failed(f"{ticker} publishes no close time")
+            try:
+                closes = datetime.fromisoformat(str(close).replace("Z", "+00:00"))
+            except ValueError:
+                return ToolResult.failed(f"{close!r} is not an instant")
+            out = {"ticker": ticker, "close_time": closes.isoformat(),
+                   "minutes_left": round((closes - at).total_seconds() / 60, 1),
+                   "settles_on": str(terms.get("rules_primary") or "")[:300]}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("settlement_countdown", {"ticker": ticker}, compute)
+
+    def siblings(ticker: str) -> ToolResult:
+        """The other contracts on this fixture, priced at this instant.
+
+        Their prices have to be consistent with each other — two sides of one
+        match cannot both be likely — and an inconsistency is the one edge that
+        needs no view on the game at all.
+        """
+        def compute() -> ToolResult:
+            event = ticker.rsplit("-", 1)[0]
+            try:
+                card = hist.event_history(event, start=at - timedelta(minutes=5), end=at,
+                                          interval=MINUTE)
+            except Exception as exc:
+                return ToolResult.failed(f"no card for {event}: {type(exc).__name__}")
+            rows = []
+            for other, candles in sorted(card.items()):
+                usable = [c for c in candles if c.ts <= at and c.mid is not None]
+                if usable:
+                    last = usable[-1]
+                    rows.append({"ticker": other, "mid": last.mid,
+                                 "yes_bid": last.yes_bid_close, "yes_ask": last.yes_ask_close})
+            if not rows:
+                return ToolResult.failed(f"nothing on {event} was quoted at that instant")
+            total = sum(r["mid"] for r in rows)
+            out = {"event": event, "markets": rows, "sum_of_mids": round(total, 4),
+                   "overround": round(total - 1.0, 4),
+                   "note": ("prices sum above one, so the book carries margin"
+                            if total > 1.01 else
+                            "prices sum below one, which is a gap rather than a margin"
+                            if total < 0.99 else "prices are coherent")}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("coherence_check", {"ticker": ticker}, compute)
+
     return Toolbox([
         FunctionTool(name="market_quote",
                      description="The book on one contract as of now: bid, ask, mid, spread, last, volume.",
@@ -442,4 +624,61 @@ def replay_tools(at: datetime, history: History | None = None,
                                                 "index": {"type": "integer"}},
                                  "required": ["kalshi_price", "book_odds"]},
                      fn=against_book),
-    ])
+        FunctionTool(name="price_velocity",
+                     description=("How fast this contract is moving, against its own normal "
+                                  "over the last hour. Says still, moving or running."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=velocity),
+        FunctionTool(name="market_shock",
+                     description=("Jumps in the recent path and how much of each came back. "
+                                  "A jump that holds reads as information; one that snaps "
+                                  "back was a thin book."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"},
+                                                "minutes_back": {"type": "integer"},
+                                                "threshold_cents": {"type": "number"}},
+                                 "required": ["ticker"]},
+                     fn=shock),
+        FunctionTool(name="market_rules",
+                     description=("What settles this contract, as the exchange wrote it. "
+                                  "Published before the match, so it is fixed."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=rules),
+        FunctionTool(name="settlement_countdown",
+                     description=("How many minutes this contract has left, and what decides "
+                                  "it. A 'will happen' contract decays toward no as that "
+                                  "number falls."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=countdown),
+        FunctionTool(name="coherence_check",
+                     description=("Every contract on this fixture, priced at this instant, "
+                                  "with what their prices sum to. Two sides of one match "
+                                  "cannot both be likely, and a gap needs no view on the game."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=siblings),
+    ] + ([] if line is None else [
+        FunctionTool(name="game_state",
+                     description=("Score, period and clock as of now, with the events of the "
+                                  "last ten minutes."),
+                     parameters={"type": "object", "properties": {}},
+                     fn=game_now),
+        FunctionTool(name="minutes_since_goal",
+                     description=("How long the match has been quiet. Almost everything that "
+                                  "moves a soccer price is a goal, so this is the closest "
+                                  "thing to a clock on the risk."),
+                     parameters={"type": "object", "properties": {}},
+                     fn=since_goal),
+        FunctionTool(name="recent_plays",
+                     description="The match events so far, newest last.",
+                     parameters={"type": "object",
+                                 "properties": {"limit": {"type": "integer"}}},
+                     fn=plays),
+    ]))

@@ -11,7 +11,7 @@ from typing import Any
 
 from ...harness import Run, Toolbox
 from ...kalshi._history import History
-from ...kalshi.replay import ToolCache, replay_tools
+from ...kalshi.replay import MatchTimeline, ToolCache, match_timeline, replay_tools
 from ...loop import Outcome, Settings
 from .score import WindowScore, pooled, pooled_skill, score_output
 from .windows import Window, build_windows, load_fixtures
@@ -59,6 +59,7 @@ class KalshiHorizon:
         #: thirty-four correlated observations bought at thirty-four times the
         #: price of eight. Zero keeps all of them.
         self.per_fixture = per_fixture
+        self._timelines: dict[str, MatchTimeline | None] = {}
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "KalshiHorizon":
@@ -79,15 +80,41 @@ class KalshiHorizon:
     def tools(self) -> list[str]:
         """Every tool a harness on this topic may name.
 
-        Independent of any window, because the frozen box holds the same names
-        whatever instant it is bound to — and asking for a window to find out
-        would load the whole question set for a list of strings.
+        Named rather than derived. The box is built per window and three of its
+        tools need that window's timeline, so probing it with a made-up instant
+        reports a box narrower than any real one — which is exactly the mistake
+        that told the rewriter only three tools existed.
         """
+        stand_in = MatchTimeline(game_id="", league="", home="", away="",
+                                 kickoff=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                 events=[])
         return sorted(replay_tools(datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                   self.history, self.tool_cache))
+                                   self.history, self.tool_cache, line=stand_in))
+
+    def _timeline(self, window: Window) -> MatchTimeline | None:
+        """The match this window belongs to, built once per match.
+
+        Every window of a fixture shares one, and a fixture has dozens — asking
+        the feed for each would be a hundred and seventy calls per generation
+        for the same answer.
+        """
+        key = window.game.get("game_id") if isinstance(window.game, dict) else None
+        if not key:
+            return None
+        if key not in self._timelines:
+            league = (window.game or {}).get("league") or "EPL"
+            try:
+                self._timelines[key] = match_timeline(league, str(key))
+            except Exception:
+                self._timelines[key] = None
+        return self._timelines[key]
 
     def toolbox(self, window: Window) -> Toolbox:
-        return replay_tools(window.at, self.history, self.tool_cache)
+        # The timeline makes game state replayable: it is timestamped events, so
+        # the score at an instant is a lookup rather than a guess. Without one
+        # those tools are absent rather than wrong.
+        return replay_tools(window.at, self.history, self.tool_cache,
+                            line=self._timeline(window))
 
     def run_inputs(self, window: Window) -> dict[str, Any]:
         return {"question": window.ticker, "game": json.dumps(window.game)[:1200]}
