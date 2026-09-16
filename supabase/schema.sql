@@ -97,3 +97,48 @@ create or replace view public.rsi_traces as select * from rsi.traces;
 
 grant select on public.rsi_runs, public.rsi_rollouts, public.rsi_traces
   to anon, authenticated;
+
+-- Votes on a whole portfolio, not a single forecast.
+--
+-- One window's forecast is verifiable: five minutes later the price printed and
+-- there is an answer. Asking a person which of two is better mostly measures
+-- which reads better, and a harness can write a persuasive reason for a bad
+-- call — the candidate rejected on 2026-09-15 predicted movement on 27 of 29
+-- dead markets and every one of its drivers was plausible on its own.
+--
+-- A whole match is different. Thirty-four windows show when a harness stays
+-- quiet, whether its half-width tracks its uncertainty, and whether its reasons
+-- change with the situation or are one argument with the numbers swapped. Those
+-- are visible to a reader and invisible in a single row.
+--
+-- The vote is kept next to the pooled skill of both sides, so the interesting
+-- number is not who won but how often the crowd and the arithmetic disagree.
+
+create table if not exists rsi.votes (
+  id            bigserial primary key,
+  created       timestamptz not null default now(),
+  run_id        text not null references rsi.runs(id) on delete cascade,
+  fixture       text not null,
+  chose         text not null check (chose in ('baseline', 'candidate', 'neither')),
+  -- Which side was shown on the left. Recorded because position bias is real
+  -- and a vote nobody can correct for is a vote nobody can use.
+  left_side     text not null check (left_side in ('baseline', 'candidate')),
+  baseline_skill double precision,
+  candidate_skill double precision,
+  voter         text,                      -- an opaque browser id, not a person
+  note          text
+);
+
+create index if not exists votes_run on rsi.votes (run_id, fixture);
+
+alter table rsi.votes enable row level security;
+drop policy if exists votes_read on rsi.votes;
+drop policy if exists votes_cast on rsi.votes;
+create policy votes_read on rsi.votes for select using (true);
+-- Visitors vote; that is the point. They cannot read a vote back out and change
+-- it, and they cannot touch anything else.
+create policy votes_cast on rsi.votes for insert with check (true);
+
+create or replace view public.rsi_votes as select * from rsi.votes;
+grant select, insert on public.rsi_votes to anon, authenticated;
+grant usage, select on sequence rsi.votes_id_seq to anon, authenticated;

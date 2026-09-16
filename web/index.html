@@ -102,11 +102,39 @@
   .err { color:var(--down); }
   select { font:inherit; font-size:.82rem; padding:.3rem .5rem; border:1px solid var(--rule);
            border-radius:3px; background:var(--card); color:var(--ink); }
+  button {
+    font:640 .82rem/1 ui-sans-serif,-apple-system,sans-serif; cursor:pointer;
+    padding:.5rem .9rem; margin-right:.5rem; border:1px solid var(--rule);
+    border-radius:3px; background:var(--card); color:var(--ink);
+  }
+  button:hover { border-color:var(--signal); color:var(--signal); }
+  nav.crumb a { margin-right:.15rem; }
+
+  /* -- lineage -- */
+  .node { display:flex; gap:.5rem; margin-bottom:.55rem; }
+  .node .edge { color:var(--faint); font-family:ui-monospace,Menlo,monospace;
+                font-size:.8rem; padding-top:.7rem; }
+  .node-body { flex:1; background:var(--card); border:1px solid var(--rule);
+               border-left:3px solid var(--faint); border-radius:3px; padding:.7rem .9rem; }
+  .node-body.kept    { border-left-color:var(--up); }
+  .node-body.dropped { border-left-color:var(--down); }
+  .node-head { display:flex; flex-wrap:wrap; gap:.5rem; align-items:baseline;
+               font:.92rem/1.4 ui-sans-serif,-apple-system,sans-serif; }
+  .node-head .meta { margin-left:auto; font:.68rem ui-monospace,Menlo,monospace; color:var(--faint); }
+  .node-stats { font:.8rem/1.5 ui-monospace,Menlo,monospace; color:var(--soft); margin-top:.35rem; }
+  .node-why { font-size:.83rem; color:var(--faint); margin-top:.3rem; }
+  .node-links { margin-top:.45rem; font-size:.78rem; }
+  .node-links a { color:var(--signal); cursor:pointer; margin-right:.5rem; }
 </style>
 </head>
 <body>
 <header>
-  <h1>rsi-arena</h1>
+  <h1><a onclick="location.hash=''" style="color:inherit;text-decoration:none;cursor:pointer">rsi-arena</a></h1>
+  <nav class="crumb" id="nav">
+    <a onclick="location.hash=''">runs</a> ·
+    <a onclick="location.hash='tree'">lineage</a> ·
+    <a onclick="location.hash='compare'">compare</a>
+  </nav>
   <div class="crumb" id="crumb"></div>
   <div style="margin-left:auto" id="controls"></div>
 </header>
@@ -135,10 +163,195 @@ const pct = n => n == null ? "—" : `<span class="${n > 0 ? "up" : n < 0 ? "dow
 const fail = e => { main.innerHTML = `<p class="msg err">${esc(e.message)}</p>`; };
 
 function route() {
-  const h = new URLSearchParams(location.hash.slice(1));
+  const raw = location.hash.slice(1);
+  if (raw === "tree") return showTree();
+  if (raw === "compare") return pickMatch();
+  const h = new URLSearchParams(raw);
+  if (h.get("compare")) return showCompare(h.get("compare"), h.get("fixture"));
   if (h.get("rollout")) return showTrace(h.get("rollout"));
   if (h.get("run")) return showRun(h.get("run"), h.get("side") || "baseline");
   return showRuns();
+}
+
+// -- lineage ---------------------------------------------------------------
+
+async function showTree() {
+  crumb.innerHTML = "lineage"; controls.innerHTML = "";
+  main.innerHTML = `<p class="msg">loading lineage…</p>`;
+  try {
+    const runs = await q("runs?select=*&order=created.asc");
+    if (!runs.length) return main.innerHTML = `<p class="msg">nothing to draw yet</p>`;
+
+    // A generation's parent is the run it continued from; a run with none
+    // started from the seed harness on disk. Rejected generations still appear,
+    // because a lineage that only shows what survived is a lineage that cannot
+    // be learned from.
+    const kids = new Map();
+    for (const r of runs) {
+      const key = r.parent || "__seed__";
+      if (!kids.has(key)) kids.set(key, []);
+      kids.get(key).push(r);
+    }
+    const seedFp = runs[0]?.incumbent_fp || "";
+    const draw = (id, depth) => (kids.get(id) || []).map(r => {
+      const d = r.decision?.holdout?.diff;
+      const changed = r.candidate_fp && r.candidate_fp !== r.incumbent_fp;
+      return `<div class="node" style="margin-left:${depth * 1.6}rem">
+        <div class="edge">${depth ? "└─" : ""}</div>
+        <div class="node-body ${r.accepted ? "kept" : "dropped"}">
+          <div class="node-head">
+            <b>${esc(r.id)}</b>
+            <span class="chip ${r.accepted ? "ok" : "no"}">${r.accepted ? "kept" : "dropped"}</span>
+            ${changed ? "" : '<span class="chip">unchanged</span>'}
+            <span class="meta">${esc(r.candidate_fp || "")}</span>
+          </div>
+          <div class="node-stats">
+            held out ${sign(r.baseline?.holdout?.statistic)} → ${sign(r.candidate?.holdout?.statistic)}
+            &nbsp;·&nbsp; Δ ${sign(d)}
+            ${r.decision?.holdout?.usable === false ? ' <span class="chip no">no interval</span>' : ""}
+            &nbsp;·&nbsp; ${r.search?.candidates ?? "?"} candidates
+          </div>
+          <div class="node-why">${esc((r.reasons || [])[0] || "")}</div>
+          <div class="node-links">
+            <a onclick="location.hash='run=${encodeURIComponent(r.id)}&side=candidate'">windows</a> ·
+            <a onclick="location.hash='compare=${encodeURIComponent(r.id)}'">compare</a>
+          </div>
+        </div>
+      </div>` + draw(r.id, depth + 1);
+    }).join("");
+
+    main.innerHTML = `
+      <div class="card"><h3>the seed</h3>
+        <p class="mono" style="font-size:.8rem">${esc(seedFp)}</p>
+        <p style="font-size:.85rem;color:var(--faint)">Every generation below starts here.
+           A fingerprint covers the components and the model — what the loop can rewrite —
+           so a generation that changed nothing carries the same one.</p></div>
+      ${draw("__seed__", 0)}`;
+  } catch (e) { fail(e); }
+}
+
+// -- compare two portfolios ------------------------------------------------
+
+async function pickMatch() {
+  crumb.innerHTML = "compare"; controls.innerHTML = "";
+  main.innerHTML = `<p class="msg">loading…</p>`;
+  try {
+    const runs = await q("runs?select=id,topic,accepted,candidate_fp,incumbent_fp&order=created.desc");
+    const usable = runs.filter(r => r.candidate_fp && r.candidate_fp !== r.incumbent_fp);
+    main.innerHTML = `
+      <div class="card"><h3>what this asks</h3>
+        <p>Two harnesses, one match, every window they were both scored on — what
+        each said, how wide it quoted, and why. One of them is the incumbent and
+        one is a rewrite, and which is on the left is decided by a coin flip.</p>
+        <p style="color:var(--faint);font-size:.88rem">A single forecast is
+        verifiable five minutes later, so asking which reads better mostly
+        measures which reads better. A whole match shows when a harness stays
+        quiet, whether its width tracks its uncertainty, and whether its reasons
+        change with the situation — which is what a number cannot show you.</p>
+      </div>
+      ${usable.length ? `<div class="scroll"><table><thead><tr>
+        <th>generation</th><th>matches</th></tr></thead><tbody>
+        ${usable.map(r => `<tr class="click" onclick="location.hash='compare=${encodeURIComponent(r.id)}'">
+          <td><b>${esc(r.id)}</b></td><td>pick a match →</td></tr>`).join("")}
+      </tbody></table></div>`
+      : `<p class="msg">no generation yet has a rewrite to compare against its incumbent</p>`}`;
+  } catch (e) { fail(e); }
+}
+
+const VOTER = (() => {
+  let v = localStorage.getItem("rsi_voter");
+  if (!v) { v = Math.random().toString(36).slice(2, 12); localStorage.setItem("rsi_voter", v); }
+  return v;
+})();
+
+async function showCompare(runId, fixture) {
+  crumb.innerHTML = `<a onclick="location.hash='compare'">compare</a> / ${esc(runId)}`;
+  controls.innerHTML = "";
+  main.innerHTML = `<p class="msg">loading portfolios…</p>`;
+  try {
+    const rows = await q(`rollouts?run_id=eq.${encodeURIComponent(runId)}` +
+                         `&select=side,fixture,ticker,at,mid_now,realised,predicted,half_width,skill,output` +
+                         `&order=at.asc&limit=3000`);
+    if (!rows.length) return main.innerHTML = `<p class="msg">no rollouts for this generation</p>`;
+    const fixtures = [...new Set(rows.map(r => r.fixture))];
+    if (!fixture) {
+      return main.innerHTML = `<div class="scroll"><table><thead><tr><th>match</th><th class="n">windows</th></tr></thead>
+        <tbody>${fixtures.map(f => `<tr class="click" onclick="location.hash='compare=${encodeURIComponent(runId)}&fixture=${encodeURIComponent(f)}'">
+          <td class="mono">${esc(f)}</td><td class="n">${rows.filter(r => r.fixture === f && r.side === "baseline").length}</td>
+        </tr>`).join("")}</tbody></table></div>`;
+    }
+
+    const mine = rows.filter(r => r.fixture === fixture);
+    const byTicker = {};
+    for (const r of mine) {
+      const k = r.ticker + "|" + r.at;
+      byTicker[k] = byTicker[k] || {};
+      byTicker[k][r.side] = r;
+    }
+    const pairs = Object.values(byTicker).filter(p => p.baseline && p.candidate);
+    if (!pairs.length) return main.innerHTML = `<p class="msg">this match has no paired windows</p>`;
+
+    // Left is a coin flip, and which way it landed is recorded with the vote —
+    // position bias is real and a vote nobody can correct for is unusable.
+    const flipped = Math.random() < 0.5;
+    const leftSide = flipped ? "candidate" : "baseline";
+    const pooled = side => {
+      const rs = pairs.map(p => p[side]);
+      return rs.reduce((a, r) => a + (r.skill ?? 0), 0) / rs.length;
+    };
+
+    main.innerHTML = `
+      <div class="card"><h3>${esc(fixture)} — ${pairs.length} windows</h3>
+        <p>Read both columns, then say which set of judgements you would rather
+        have had. The answer already exists; it is hidden until you vote.</p></div>
+      <div class="scroll"><table><thead><tr>
+        <th>when</th><th class="n">mid</th>
+        <th>${flipped ? "B" : "A"}</th><th>${flipped ? "A" : "B"}</th>
+      </tr></thead><tbody>${pairs.map(p => {
+        const L = flipped ? p.candidate : p.baseline, R = flipped ? p.baseline : p.candidate;
+        const cell = r => {
+          const o = r.output || {};
+          const d = o.delta_cents;
+          return `<td style="max-width:24rem">
+            <span class="mono" style="font-size:.8rem"><b>${d == null ? "—" : (d > 0 ? "+" : "") + d + "c"}</b>
+              <span style="color:var(--faint)"> ±${o.half_width_cents ?? "?"}c</span></span>
+            <div style="font-size:.8rem;color:var(--soft);margin-top:.2rem">${esc((o.driver || "").slice(0, 220))}</div>
+          </td>`;
+        };
+        return `<tr>
+          <td class="mono" style="font-size:.74rem;white-space:nowrap">${esc((p.baseline.at || "").slice(11, 16))}</td>
+          <td class="n">${p.baseline.mid_now?.toFixed(3) ?? "—"}</td>
+          ${cell(L)}${cell(R)}
+        </tr>`;
+      }).join("")}</tbody></table></div>
+      <div class="card" id="voteBox"><h3>which set would you rather have had?</h3>
+        <p><button onclick="castVote('${esc(runId)}','${esc(fixture)}','${leftSide}','${flipped ? "candidate" : "baseline"}',${pooled("baseline")},${pooled("candidate")})">${flipped ? "B" : "A"} (left)</button>
+           <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${leftSide}','${flipped ? "baseline" : "candidate"}',${pooled("baseline")},${pooled("candidate")})">${flipped ? "A" : "B"} (right)</button>
+           <button onclick="castVote('${esc(runId)}','${esc(fixture)}','${leftSide}','neither',${pooled("baseline")},${pooled("candidate")})">neither</button></p>
+      </div>`;
+  } catch (e) { fail(e); }
+}
+
+async function castVote(runId, fixture, leftSide, chose, bSkill, cSkill) {
+  const box = document.getElementById("voteBox");
+  try {
+    await fetch(`${URL_}/rest/v1/rsi_votes`, {
+      method: "POST",
+      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`,
+                 "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ run_id: runId, fixture, chose, left_side: leftSide,
+                             baseline_skill: bSkill, candidate_skill: cSkill, voter: VOTER })
+    });
+  } catch (e) { /* a lost vote is not worth an error page */ }
+  const better = bSkill === cSkill ? "neither" : (bSkill > cSkill ? "baseline" : "candidate");
+  const agreed = chose === better;
+  box.innerHTML = `<h3>the answer</h3>
+    <p>You picked <b>${esc(chose)}</b>. Over these windows the incumbent scored
+       <b>${bSkill.toFixed(3)}</b> and the rewrite <b>${cSkill.toFixed(3)}</b>,
+       so the arithmetic preferred <b>${better}</b>.</p>
+    <p class="${agreed ? "up" : "down"}">${agreed
+      ? "Your reading and the score agree."
+      : "Your reading and the score disagree — which is the interesting case: a harness can argue well for a call that loses."}</p>`;
 }
 
 async function showRuns() {
