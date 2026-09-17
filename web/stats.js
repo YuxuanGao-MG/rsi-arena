@@ -60,6 +60,51 @@ export function groupBy(rows, key) {
   return out;
 }
 
+/**
+ * The three published generations were scored under three versions of this
+ * metric, and the numbers in their manifests are not on one scale.
+ *
+ * `runs/gen1-floored` was scored with the superseded per-window skill —
+ * `1 - error/benchmark`, which handed a full point to a harness that said
+ * nothing on a market that did not move — and published +0.043 for an
+ * incumbent whose windows recompute to -0.011 today. `runs/gen1` and
+ * `runs/gen1-1k` were scored with the numerator fixed but the denominator
+ * unfloored. Every one of those numbers was the gate's statistic on the day it
+ * ran, so none of them is wrong; they are just three different questions.
+ *
+ * The windows are the same either way, and `err` and `naive_error` are stored
+ * per window, so anything published can be recomputed on today's formula. That
+ * is what the cross-generation chart plots — otherwise a metric change reads as
+ * a result.
+ *
+ * The difference the gate reads survives this almost untouched (-0.0016 either
+ * way on gen1-floored), which is the reassuring half: the level moved, the
+ * paired comparison did not.
+ */
+export function recompute(rows) {
+  const byRun = new Map();
+  for (const r of rows) {
+    const key = `${r.run_id}|${r.side}`;
+    if (!byRun.has(key)) byRun.set(key, []);
+    byRun.get(key).push(r);
+  }
+  const out = new Map();
+  for (const [key, group] of byRun) {
+    const [runId, side] = key.split("|");
+    if (!out.has(runId)) out.set(runId, {});
+    out.get(runId)[side] = pooled(group);
+  }
+  return out;
+}
+
+/** How far a published statistic has drifted from today's arithmetic. */
+export function metricGap(run, side, recomputed) {
+  const published = run[side] && run[side].holdout && run[side].holdout.statistic;
+  const here = recomputed && recomputed[side] && recomputed[side].skill;
+  if (typeof published !== "number" || typeof here !== "number") return null;
+  return { published, here, gap: here - published, differs: Math.abs(here - published) > 0.002 };
+}
+
 /** The best number anywhere in these runs, or null when there is not one yet. */
 export function bestHoldout(runs) {
   const values = [];

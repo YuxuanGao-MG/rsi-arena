@@ -78,11 +78,20 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    # A healthy generation is about an hour. 330 was a ceiling high enough to
-    # hide a runaway: the first scheduled attempt ran the full five and a half
-    # and was killed by it, having bought a train pass it then discarded. Ninety
-    # minutes fails fast and fails visibly.
-    timeout-minutes: 90
+    # Measured, not guessed. A baseline of four hundred and forty windows took
+    # nineteen minutes, so about twenty-three a minute at concurrency four. A
+    # cold generation on the hundred-match held-out set is roughly twenty-five
+    # hundred window evaluations - baseline, search, candidate - which is under
+    # two hours; a warm one is closer to seventy-five minutes, because the
+    # incumbent's held-out rollouts are still in the cache until the held-out
+    # set rotates.
+    #
+    # 330 was high enough to hide a runaway: the first scheduled attempt ran the
+    # full five and a half hours and was killed by it, having bought a train
+    # pass it then discarded. This is the wrong backstop for that anyway -
+    # max-generation-usd is, because money is what was being wasted. This just
+    # stops a hung job from holding the runner all day.
+    timeout-minutes: 150
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # At job level, not on the publish step. A step's own `env:` block is not

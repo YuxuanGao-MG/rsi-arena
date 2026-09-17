@@ -29,6 +29,7 @@ import json
 import os
 import sys
 import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -255,6 +256,7 @@ async def main() -> int:
     #: collect — so it is reported and the job stays green.
     provider_failures = 0
     starved = False
+    forecasts_on: dict[str, int] = defaultdict(int)
 
     try:
         while time.time() < deadline:
@@ -310,12 +312,19 @@ async def main() -> int:
 
             if not targets:
                 print(f"  nothing live across {', '.join(leagues)}; waiting")
+            # Least-forecast first, and stable, so ties keep the order the
+            # leagues were swept in. Taking the head of the list every sweep
+            # spent the whole ceiling on whichever league sorts first — with two
+            # contracts a sweep and thirty markets live, that is one match
+            # watched closely and the card ignored.
+            targets.sort(key=lambda t: forecasts_on[t[2]])
             for league, game, ticker in targets[:args.max_contracts]:
                 if llm.over_budget:
                     break
                 row = await one(harness, llm, league, game, ticker, hist)
                 if row.get("skipped"):
                     continue
+                forecasts_on[ticker] += 1
                 kind = (row.get("run") or {}).get("error_kind")
                 provider_failures = provider_failures + 1 if kind == "provider" else 0
                 pending.append(row)
