@@ -315,6 +315,35 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     gen.save()
     log(f"  train {gen.baseline['train']['statistic']:+.3f}   held-out {gen.baseline['holdout']['statistic']:+.3f}")
 
+    if llm.over_budget:
+        # Stop here rather than search against a baseline that is half evidence
+        # and half refusals.
+        #
+        # A window whose model call was refused for want of money scores as
+        # silence, which is a real and meaningful value — so a baseline that ran
+        # out halfway through reads as a harness that went quiet halfway through,
+        # and there is nothing in the summary to say otherwise. Every number
+        # after this point would be computed against it: the cascade gap, the
+        # gate's interval, the archive's per-instance matrix. A generation that
+        # cannot afford its own baseline has not produced a weak result, it has
+        # produced no result, and the difference has to be recorded rather than
+        # inferred.
+        gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits,
+                   "spent_usd": round(llm.spent_usd, 4),
+                   "budget_usd": s.max_generation_usd or None, "exhausted": True}
+        gen.decision = {"accepted": False, "reasons": [
+            f"the budget went in the baseline: ${llm.spent_usd:.2f} of "
+            f"${s.max_generation_usd:.2f} before the search began. Nothing was "
+            f"searched and nothing was gated; this generation is incomplete, not "
+            f"negative."]}
+        gen.save()
+        asyncio.run(llm.close())
+        log(f"budget exhausted during the baseline (${llm.spent_usd:.2f} of "
+            f"${s.max_generation_usd:.2f}). Stopping before the search, because a "
+            f"baseline that is half refusals is not a baseline.")
+        print("INCOMPLETE " + gen.decision["reasons"][0])
+        return 0
+
     # Where the search starts, which is not necessarily the incumbent.
     #
     # The incumbent is what the gate compares against — that is a claim about
