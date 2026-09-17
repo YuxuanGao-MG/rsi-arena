@@ -22,10 +22,12 @@ import { compareView } from "./views/compare.js";
 import { votesView } from "./views/votes.js";
 import { liveView } from "./views/live.js";
 import { costView } from "./views/cost.js";
+import { archiveView } from "./views/archive.js";
 
 const VIEWS = {
   runs: runsView, run: runView, window: windowView, lineage: lineageView,
   compare: compareView, votes: votesView, live: liveView, cost: costView,
+  archive: archiveView,
 };
 
 const viewEl = document.getElementById("view");

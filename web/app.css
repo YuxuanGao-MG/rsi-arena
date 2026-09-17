@@ -398,3 +398,11 @@ ul.tree { list-style:none; margin:0; padding:0; }
 ul.tree ul.tree { margin:0 0 0 var(--s4); padding-left:var(--s4); border-left:1px solid var(--line); }
 .card-row { background:var(--panel); border:1px solid var(--line); border-radius:var(--r2);
             box-shadow:var(--shadow); margin-bottom:var(--s2); }
+
+/* A panel whose subject is a warning: the amber is on the left edge rather than
+   the whole surface, because a page of amber panels reads as decoration. */
+.panel.warnband { border-left:3px solid var(--warn); }
+.eyebrow.warn { color:var(--warn); }
+.legend i.wash { width:12px; height:12px; border-radius:3px; background:var(--c-cand); opacity:.35; }
+.provenance { margin:0 0 var(--s3); }
+.provenance p { margin:0 0 var(--s2); font-size:var(--t-sm); }

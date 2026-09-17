@@ -14,13 +14,34 @@
 import { qAll, ApiError } from "../data.js";
 import { href } from "../routes.js";
 import {
-  html, raw, stat, pill, n3, n2, usd, price, cents, dir, empty, stamp, clock, plural,
+  html, raw, stat, pill, n3, price, cents, dir, empty, stamp, plural,
 } from "../dom.js";
 import { predictedVsRealised } from "../charts.js";
 import { pooled, pooledOnMoves } from "../stats.js";
 
-const COLUMNS = "id,at,league,game_id,ticker,harness,mid_now,realised,predicted,half_width," +
-                "err,naive_error,skill,scored,unscored_because,ok,error_text,cost_usd,output";
+const COLUMNS = "at,league,game_id,ticker,harness,mid_now,realised,skill,scored,ok,error_text,output";
+
+/**
+ * The quote a forecast implied, and the two errors that make it scorable.
+ *
+ * The collector stores what it was given and what printed; it does not store
+ * the price it implied or the error either side made. All three fall out of
+ * `mid_now`, `realised` and `delta_cents` by the same arithmetic
+ * `topics/kalshi_horizon/score.py:quote_from` uses, so they are derived here
+ * rather than written twice and left to drift.
+ */
+function derive(r) {
+  const o = r.output || {};
+  const mid = r.mid_now;
+  const delta = typeof o.delta_cents === "number" ? o.delta_cents : null;
+  const predicted = mid == null || delta == null
+    ? null : Math.min(0.99, Math.max(0.01, mid + delta / 100));
+  const half = typeof o.half_width_cents === "number" ? o.half_width_cents / 100 : null;
+  const err = predicted == null || r.realised == null ? null : Math.abs(predicted - r.realised);
+  const naive = mid == null || r.realised == null ? null : Math.abs(mid - r.realised);
+  return { ...r, predicted, half_width: half, err, naive_error: naive,
+           unmeasurable: naive != null && naive < 1e-4 };
+}
 
 export async function liveView({ signal }) {
   let rows;
@@ -35,13 +56,14 @@ export async function liveView({ signal }) {
   }
   if (!rows.length) return notCollected();
 
-  const done = rows.filter(r => r.scored && r.skill != null);
+  rows = rows.map(derive);
+  const done = rows.filter(r => r.scored && r.realised != null && r.err != null);
   const pending = rows.filter(r => !r.scored && r.error_text == null);
   const failed = rows.filter(r => r.ok === false);
   const all = pooled(done);
   const moved = pooledOnMoves(done);
-  const cost = rows.reduce((a, r) => a + (r.cost_usd || 0), 0);
   const leagues = [...new Set(rows.map(r => r.league).filter(Boolean))];
+  const matches = new Set(rows.map(r => r.game_id).filter(Boolean)).size;
   const latest = rows[0];
 
   const body = html`
@@ -52,8 +74,8 @@ export async function liveView({ signal }) {
                note: `${moved.instances} of ${done.length} moved a tick or more` })}
       ${stat({ value: pending.length, label: "waiting on the horizon",
                note: "scored five minutes after the fact, never before" })}
-      ${stat({ value: usd(cost), label: "spent live",
-               note: `${usd(cost / rows.length)} a forecast` })}
+      ${stat({ value: matches || "—", label: "matches watched",
+               note: `${plural(rows.length, "forecast")} in all` })}
     </div>
 
     <section class="panel"><div class="panel-b prose">
@@ -103,12 +125,10 @@ export async function liveView({ signal }) {
             ? html`<span class="crumb">pending</span>` : price(r.realised)}</td>
           <td class="n ${dir(r.skill)}">${r.skill == null
             ? html`<span class="crumb">—</span>` : n3(r.skill)}</td>
-          <td class="why-cell">${r.ok === false
-            ? html`<span class="down">${r.error_text || "the run failed"}</span>`
-            : r.unscored_because
-              ? html`<span class="crumb">${r.unscored_because}</span>`
-              : ((r.output && r.output.driver) || "").slice(0, 160)
-                || html`<span class="crumb">not recorded</span>`}</td>
+          <td class="why-cell">${r.ok === false || (r.scored === false && r.error_text)
+            ? html`<span class="${raw(r.ok === false ? "down" : "crumb")}">${r.error_text}</span>`
+            : ((r.output && r.output.driver) || "").slice(0, 160)
+              || html`<span class="crumb">not recorded</span>`}</td>
         </tr>`)}</tbody>
       </table></div>
     </section>`;

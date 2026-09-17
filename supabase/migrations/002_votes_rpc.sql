@@ -168,68 +168,68 @@ grant execute on function public.rsi_cast_vote(text, text, text, text, text, tex
 -- 4. Live forecasts.
 --
 -- `scripts/collect_live.py` puts the harness on markets being played now and
--- comes back five minutes later to see what printed. Same columns as a rollout
--- wherever the meaning is the same, because the scoring is the same function
--- and the page draws both with the same code — but no `run_id`, no `side` and
--- no `split`, because a live forecast belongs to no generation and is not part
--- of any comparison. Nothing here feeds the gate.
+-- comes back five minutes later to see what printed. This is the collector
+-- author's table, taken as written: the publisher upserts on (ticker, at), so
+-- that pair has to be the primary key or every re-run of a sweep errors.
 --
--- The collector writes `runs/live/forecasts.jsonl`; a publisher maps it as:
---
---     at, league, game_id, ticker, mid_now, realised  → same keys
---     harness                                         → row["harness"]
---     skill, err, naive_error                         → row["scored"]["skill"], ["error"], ["naive_error"]
---     scored                                          → row["scored"] is not null
---     unscored_because                                → row["unscored_because"]
---     ok, error_text                                  → row["ok"], row["error"]
---     cost_usd, spans                                 → row["run"]["cost_usd"], row["run"]["trace"]
---     output, game                                    → row["output"], row["game"]
---
--- `predicted` and `half_width` are not in the jsonl; derive them the way
--- `score.py:quote_from` does, from `mid_now` and the forecast's `delta_cents`
--- and `half_width_cents`, so the scatter on the live page is the same plot as
--- the one on a generation's page.
+-- Deliberately narrower than `rsi.rollouts`. What the page needs and this does
+-- not store — the quote the forecast implied, the error it made, the error
+-- no-change would have made — is all recoverable from `mid_now`, `realised` and
+-- `output.delta_cents` by the same arithmetic `score.py:quote_from` uses, so
+-- the reader derives it rather than the collector storing it twice and the two
+-- drifting apart.
 
+-- Forecasts on markets that were still trading, from scripts/collect_live.py.
+--
+-- Not a rollout: nothing here feeds the gate, the split does not apply, and there
+-- is no run to hang it off. It is keyed by the contract and the instant it was
+-- asked, which is the only uniqueness the collector can promise.
 create table if not exists rsi.live_forecasts (
-  id               bigserial primary key,
-  at               timestamptz not null,
-  league           text,
-  game_id          text,
-  ticker           text not null,
-  harness          text,
-  mid_now          double precision,
-  realised         double precision,
-  predicted        double precision,
-  half_width       double precision,
-  err              double precision,
-  naive_error      double precision,
-  skill            double precision,
-  -- False until the horizon prints. A forecast is never scored against the
-  -- price it was handed, and one that never gets a two-sided quote at the
-  -- horizon stays unscored with a reason rather than counting as a miss.
-  scored           boolean not null default false,
-  unscored_because text,
-  ok               boolean,
-  error_text       text,
-  cost_usd         double precision,
-  output           jsonb,                    -- the forecast, with driver and falsifier
-  game             jsonb,                    -- match state as it was replayed at that instant
-  spans            jsonb,                    -- the trace; kept inline, these are single sweeps
-  unique (ticker, at)
+  at           timestamptz not null,      -- when the harness was asked
+  league       text,
+  game_id      text,                      -- the fixture, from the linker
+  ticker       text not null,
+  mid_now      double precision,          -- the mid it was given
+  realised     double precision,          -- the mid five minutes later, when one printed
+  harness      text,
+  output       jsonb,                     -- the forecast, with driver and falsifier
+  game         jsonb,                     -- match state at that instant
+  spans        jsonb,                     -- trimmed trace: tool calls and the model turn
+  skill        double precision,
+  scored       boolean,                   -- false when the horizon printed no two-sided quote
+  ok           boolean,
+  error_text   text,                      -- the run's error, or why it went unscored
+  primary key (ticker, at)
 );
 
-create index if not exists live_at       on rsi.live_forecasts (at desc);
-create index if not exists live_game     on rsi.live_forecasts (game_id, at);
-create index if not exists live_unscored on rsi.live_forecasts (scored, at) where not scored;
+create index if not exists live_forecasts_at   on rsi.live_forecasts (at desc);
+create index if not exists live_forecasts_game on rsi.live_forecasts (game_id, at);
 
 alter table rsi.live_forecasts enable row level security;
-drop policy if exists live_read on rsi.live_forecasts;
-create policy live_read on rsi.live_forecasts for select using (true);
+drop policy if exists live_forecasts_read on rsi.live_forecasts;
+create policy live_forecasts_read on rsi.live_forecasts for select using (true);
 
-grant select on rsi.live_forecasts to anon, authenticated;
-
-create or replace view public.rsi_live_forecasts as
-  select * from rsi.live_forecasts;
+create or replace view public.rsi_live_forecasts as select * from rsi.live_forecasts;
 grant select on public.rsi_live_forecasts to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. Two columns the loop grew after the tables were written.
+
+-- The confirmation pass. `cli.py` writes `gen.audit` when a promotion has to be
+-- checked against the frozen audit set, and `rsi.runs` had nowhere to put it,
+-- so `publish_runs.py` was dropping it on the floor.
+alter table rsi.runs add column if not exists audit jsonb;
+
+-- `public.rsi_runs` fixed its column list when it was created, so a new column
+-- on the table is invisible through the view until the view is replaced.
+create or replace view public.rsi_runs as select * from rsi.runs;
+grant select on public.rsi_runs to anon, authenticated;
+
+-- The audit set is a third split, and the check constraint only knew two.
+-- `publish_runs.py` writes `baseline.audit.json` and `candidate.audit.json`
+-- rows with split='audit', and every one of them would have been rejected.
+alter table rsi.rollouts drop constraint if exists rollouts_split_check;
+alter table rsi.rollouts add constraint rollouts_split_check
+  check (split in ('train', 'holdout', 'audit'));
 
 commit;

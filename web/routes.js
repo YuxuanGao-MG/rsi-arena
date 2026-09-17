@@ -16,6 +16,7 @@ export const href = {
   compare: (runId, fixture) =>
     "#/compare" + (runId ? `/${e(runId)}` : "") + (fixture ? `/${e(fixture)}` : ""),
   votes: () => "#/votes",
+  archive: () => "#/archive",
   live: () => "#/live",
   cost: () => "#/cost",
 };
@@ -23,6 +24,7 @@ export const href = {
 export const NAV = [
   ["Generations", href.runs(), "runs"],
   ["Live", href.live(), "live"],
+  ["Archive", href.archive(), "archive"],
   ["Lineage", href.lineage(), "lineage"],
   ["Compare", href.compare(), "compare"],
   ["Votes", href.votes(), "votes"],
@@ -44,6 +46,7 @@ export function parse(hash) {
     case "lineage":       return { name: "lineage", params: {}, query };
     case "compare":       return { name: "compare", params: { runId: rest[0], fixture: rest[1] }, query };
     case "votes":         return { name: "votes", params: {}, query };
+    case "archive":       return { name: "archive", params: { id: rest[0] }, query };
     case "live":          return { name: "live", params: {}, query };
     case "cost":          return { name: "cost", params: {}, query };
     default:              return { name: "missing", params: { path }, query };

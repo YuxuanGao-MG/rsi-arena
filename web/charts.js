@@ -97,28 +97,30 @@ const pad = (lo, hi, frac = 0.12) => {
  * anchored on the incumbent rather than on the candidate. A band that crosses
  * the silence line is a generation that cannot be promoted, and so far every
  * band does.
+ *
+ * The whiskers, where a generation has them, are what this test could resolve
+ * at all: on a two-fixture held-out set the smallest gap the bootstrap can
+ * separate from noise is larger than any gain anyone has found, so the
+ * rejection was a statement about the sample size rather than about the
+ * candidate. Drawing it is the difference between "the rewrite failed" and
+ * "nobody could have told".
+ *
+ * Takes points rather than run records because the levels are recomputed on
+ * one metric first — see stats.js:recompute.
  */
-export function generationSkill(el, runs) {
+export function generationSkill(el, points) {
   host(el, width => {
     const H = 330, m = { t: 30, r: 26, b: 58, l: 58 };
     const plotW = width - m.l - m.r, plotH = H - m.t - m.b;
-    const pts = runs.map(r => ({
-      id: r.id,
-      accepted: !!r.accepted,
-      inc: r.baseline?.holdout?.statistic ?? null,
-      cand: r.candidate?.holdout?.statistic ?? null,
-      diff: r.decision?.holdout?.diff ?? null,
-      low: r.decision?.holdout?.low ?? null,
-      high: r.decision?.holdout?.high ?? null,
-    }));
     const vals = [0];
-    for (const p of pts) {
+    for (const p of points) {
       for (const v of [p.inc, p.cand]) if (v != null) vals.push(v);
       if (p.inc != null && p.low != null) vals.push(p.inc + p.low, p.inc + p.high);
+      if (p.inc != null && p.detectable) vals.push(p.inc + p.detectable, p.inc - p.detectable);
     }
     const [lo, hi] = pad(Math.min(...vals), Math.max(...vals), 0.18);
     const y = v => m.t + plotH - ((v - lo) / (hi - lo)) * plotH;
-    const band = plotW / Math.max(1, pts.length);
+    const band = plotW / Math.max(1, points.length);
     const cx = i => m.l + band * (i + 0.5);
 
     const ticks = niceTicks(lo, hi, 5);
@@ -134,7 +136,7 @@ export function generationSkill(el, runs) {
       <text x="${m.l + plotW}" y="${(y(0) - 8).toFixed(1)}" text-anchor="end"
             font-size="11" font-weight="600" fill="var(--soft)">silence</text>`;
 
-    const marks = pts.map((p, i) => {
+    const marks = points.map((p, i) => {
       const x = cx(i);
       const parts = [];
       if (p.inc != null && p.low != null && p.high != null) {
@@ -142,6 +144,12 @@ export function generationSkill(el, runs) {
         parts.push(`<rect x="${(x - 11).toFixed(1)}" y="${top.toFixed(1)}" width="22"
           height="${Math.max(2, bottom - top).toFixed(1)}" rx="4"
           fill="var(--c-cand)" fill-opacity="var(--c-wash)"/>`);
+      }
+      if (p.inc != null && p.detectable) {
+        for (const edge of [p.inc + p.detectable, p.inc - p.detectable])
+          parts.push(`<line x1="${(x - 16).toFixed(1)}" x2="${(x + 16).toFixed(1)}"
+            y1="${y(edge).toFixed(1)}" y2="${y(edge).toFixed(1)}"
+            stroke="var(--warn)" stroke-width="1"/>`);
       }
       if (p.inc != null && p.cand != null)
         parts.push(`<line x1="${x}" x2="${x}" y1="${y(p.inc).toFixed(1)}" y2="${y(p.cand).toFixed(1)}"
@@ -151,7 +159,7 @@ export function generationSkill(el, runs) {
         parts.push(`<circle cx="${x}" cy="${y(v).toFixed(1)}" r="5" fill="var(${colour})"
           stroke="var(--panel)" stroke-width="2"/>`);
       }
-      if (pts.length <= 6) {
+      if (points.length <= 6) {
         if (p.cand != null)
           parts.push(`<text x="${x}" y="${(y(p.cand) - 12).toFixed(1)}" text-anchor="middle"
             font-size="11" font-weight="600" fill="var(--soft)" class="tnum">${n3(p.cand)}</text>`);
@@ -159,14 +167,15 @@ export function generationSkill(el, runs) {
           parts.push(`<text x="${x}" y="${(y(p.inc) + 19).toFixed(1)}" text-anchor="middle"
             font-size="11" fill="var(--faint)" class="tnum">${n3(p.inc)}</text>`);
       }
-      const label = esc(p.id.length > 13 ? p.id.slice(0, 12) + "…" : p.id);
+      const label = esc(p.id.length > 13 ? p.id.slice(0, 12) + "\u2026" : p.id);
       parts.push(`<text x="${x}" y="${m.t + plotH + 22}" text-anchor="middle"
         font-size="11" fill="var(--soft)">${label}</text>`);
       parts.push(`<text x="${x}" y="${m.t + plotH + 38}" text-anchor="middle" font-size="10"
         fill="var(${p.accepted ? "--up" : "--faint"})">${p.accepted ? "promoted" : "dropped"}</text>`);
 
       const tip = `${p.id}: incumbent ${n3(p.inc)}, candidate ${n3(p.cand)}` +
-        (p.low != null ? `, difference ${n3(p.diff)} (${n3(p.low)} to ${n3(p.high)})` : "");
+        (p.low != null ? `, difference ${n3(p.diff)} (${n3(p.low)} to ${n3(p.high)})` : "") +
+        (p.detectable ? `. This test could only resolve ${n3(p.detectable)}` : "");
       parts.push(`<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
         <rect x="${(x - band / 2).toFixed(1)}" y="${m.t}" width="${band.toFixed(1)}"
               height="${plotH}" fill="transparent"/></g>`);
@@ -434,6 +443,66 @@ export function spendByGeneration(el, runs, ceiling) {
       ${grid}${bars}${limit}
       <line x1="${m.l}" x2="${m.l + plotW}" y1="${m.t + plotH}" y2="${m.t + plotH}"
             stroke="var(--line)" stroke-width="1"/>
+    </svg>`;
+  });
+}
+
+/* ---------- 7. the archive's frontier -------------------------------------- */
+
+/**
+ * Every candidate the search has ever proposed: how well it did on average
+ * against how much of the instance space it is the best thing anyone has found
+ * on.
+ *
+ * The point of the picture is the bottom right — a candidate that loses on the
+ * mean while being the only thing that ever worked on some match. Keeping those
+ * is worth roughly twice keeping the best mean scorer in GEPA's own ablation,
+ * and a page that ranks candidates by their average erases exactly them.
+ */
+export function archiveFrontier(el, points, { silence = 0.5 } = {}) {
+  host(el, width => {
+    const H = Math.min(420, Math.max(300, width * 0.55));
+    const m = { t: 24, r: 24, b: 52, l: 58 };
+    const plotW = width - m.l - m.r, plotH = H - m.t - m.b;
+    const xs = points.map(p => p.mean), ys = points.map(p => p.wins);
+    const [xlo, xhi] = pad(Math.min(silence, ...xs), Math.max(silence, ...xs), 0.12);
+    const yhi = Math.max(1, ...ys) * 1.12;
+    const x = v => m.l + ((v - xlo) / (xhi - xlo)) * plotW;
+    const y = v => m.t + plotH - (v / yhi) * plotH;
+
+    const grid = niceTicks(0, yhi, 4).map(t => `
+      <line x1="${m.l}" x2="${m.l + plotW}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"
+            stroke="var(--c-grid)" stroke-width="1"/>
+      <text x="${m.l - 10}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end" font-size="11"
+            fill="var(--faint)" class="tnum">${Math.round(t)}</text>`).join("");
+    const xticks = niceTicks(xlo, xhi, 5).map(t => `
+      <text x="${x(t).toFixed(1)}" y="${m.t + plotH + 18}" text-anchor="middle" font-size="11"
+            fill="var(--faint)" class="tnum">${t.toFixed(2)}</text>`).join("");
+
+    const dots = points.map(p => {
+      const tip = `${p.id} (${p.generation}): mean ${p.mean.toFixed(3)}, best on ` +
+        `${p.wins} of ${p.n} instances` + (p.onFrontier ? ", on the frontier" : ", dominated");
+      return `<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
+        <circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="13" fill="transparent"/>
+        <circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="6"
+          fill="${p.onFrontier ? "var(--c-cand)" : "none"}"
+          stroke="${p.onFrontier ? "var(--panel)" : "var(--ghost)"}" stroke-width="2"/>
+        ${p.promoted ? `<circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="10"
+          fill="none" stroke="var(--up)" stroke-width="1.5"/>` : ""}
+      </g>`;
+    }).join("");
+
+    return `<svg viewBox="0 0 ${width} ${H}" width="${width}" height="${H}" role="group"
+      aria-label="Every archived candidate: mean score against how many instances it is best on">
+      ${grid}${xticks}
+      <line x1="${x(silence).toFixed(1)}" x2="${x(silence).toFixed(1)}" y1="${m.t}"
+            y2="${m.t + plotH}" stroke="var(--c-zero)" stroke-width="1.5"/>
+      <text x="${(x(silence) + 6).toFixed(1)}" y="${m.t + 12}" font-size="11" font-weight="600"
+            fill="var(--soft)">silence</text>
+      ${dots}
+      <text x="${m.l + plotW}" y="${H - 6}" text-anchor="end" font-size="11"
+            fill="var(--faint)">mean score across every instance it was asked</text>
+      <text x="${m.l - 50}" y="${m.t - 8}" font-size="11" fill="var(--faint)">instances it is best on</text>
     </svg>`;
   });
 }

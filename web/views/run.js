@@ -70,10 +70,21 @@ export async function runView({ params, query, signal }) {
                note: `${usd((published.cost_usd ?? cost) / all.length)} a window` })}
     </div>
 
-    ${drift ? html`<div class="panel"><div class="panel-b note">
-      The published scoreboard says ${n3(published.statistic)} and the windows in the database
-      add up to ${n3(mine.skill)}. One of the two is stale — most likely the run was re-scored
-      without being re-published.</div></div>` : ""}
+    ${power(run, all)}
+
+    ${drift ? html`<section class="panel"><div class="panel-b prose">
+      <p class="eyebrow">two numbers for one generation</p>
+      <p>The gate recorded ${n3(published.statistic)} here. The same windows recompute to
+      ${n3(mine.skill)} on today's formula.</p>
+      <p class="note">Nothing was re-scored: the metric changed after this run. The earliest runs
+      divided by an unfloored benchmark, and <code>gen1-floored</code> was scored while a
+      per-window skill of <code>1 - error/benchmark</code> still paid a full point for saying
+      nothing on a market that did not move. The published figure is what the gate read on the
+      day and is the one that decided the promotion; the recomputed figure is the one that can be
+      compared with another generation.</p>
+    </div></section>` : ""}
+
+    ${audit(run)}
 
     <section class="panel">
       <div class="panel-h">
@@ -85,6 +96,7 @@ export async function runView({ params, query, signal }) {
       <div class="panel-b">
         <div class="prose">${(run.reasons || []).map(x => html`<p>${x}</p>`)}
           ${(run.reasons || []).length ? "" : html`<p class="note">No reasons were recorded.</p>`}</div>
+        ${provenance(run)}
         <nav class="btn-row" aria-label="Which harness">
           <a class="btn" href="${raw(href.run(id, "baseline"))}"
              ${raw(side === "baseline" ? 'aria-current="page"' : "")}>incumbent</a>
@@ -154,6 +166,87 @@ export async function runView({ params, query, signal }) {
       skillHistogram(root.querySelector("#hist"), all);
     },
   };
+}
+
+/**
+ * What this test could see at all.
+ *
+ * An interval that straddles zero says "not proven", and "not proven" means two
+ * different things depending on whether the test could resolve the effect. On a
+ * two-fixture held-out set the smallest gap the bootstrap separates from noise
+ * is larger than any gain anyone has found — so the rejection was a statement
+ * about the sample, and saying so is the difference between a result and an
+ * absence of one.
+ */
+function power(run, rows) {
+  const h = run.decision?.holdout || {};
+  const groups = h.groups ?? new Set(rows.map(r => r.fixture)).size;
+  if (h.usable === false) {
+    return html`<section class="panel warnband"><div class="panel-b prose">
+      <p class="eyebrow warn">no interval could be drawn</p>
+      <p>${plural(groups, "held-out fixture")} is too few for the gate to resample from, so no
+      gain could have been promoted here no matter how large it was. The interval narrows with
+      the number of <em>matches</em>, not the number of windows: fifty windows on one match are
+      fifty correlated observations of one game.</p>
+    </div></section>`;
+  }
+  if (!h.detectable) return "";
+  return html`<section class="panel ${raw(h.underpowered ? "warnband" : "")}">
+    <div class="panel-b prose">
+      <p class="eyebrow ${raw(h.underpowered ? "warn" : "")}">${h.underpowered
+        ? "this test could not have seen it" : "what this test could resolve"}</p>
+      <p>On ${plural(groups, "held-out fixture")} the smallest difference this bootstrap can
+      separate from noise is ${n3(h.detectable)}${h.se ? html` (a standard error of
+        ${h.se.toFixed(4)})` : ""}. The difference it measured was ${n3(h.diff)}.
+      ${h.underpowered
+        ? html`That is inside the noise floor, so this generation's rejection is a fact about the
+            number of matches it was judged on and not about the rewrite. More fixtures, not a
+            better candidate, is what would change it.`
+        : html`The measurement was large enough to be visible to the test that judged it.`}</p>
+    </div></section>`;
+}
+
+/** The confirmation pass, when there was one. */
+function audit(run) {
+  const a = run.audit;
+  if (!a || !a.candidate) return "";
+  const confirmed = a.decision?.accepted;
+  return html`<section class="panel">
+    <div class="panel-h"><h2>The audit set</h2>
+      ${pill(confirmed ? "confirmed" : "not confirmed", confirmed ? "up" : "down")}</div>
+    <div class="panel-b prose">
+      <p>Cut away before anything else and shown to nothing until the gate had already said yes:
+      ${plural(a.candidate.instances ?? 0, "window")} the search has never seen.
+      The candidate scored ${n3(a.candidate.statistic)} there against the incumbent's
+      ${n3(a.baseline?.statistic)}.</p>
+      <p class="note">${confirmed
+        ? "A promotion that survives this is a promotion."
+        : "A promotion that does not survive this is the winner's curse caught in the act, and it was withdrawn."}
+        ${(a.decision?.reasons || []).join(" ")}</p>
+    </div></section>`;
+}
+
+/** Where this generation's search started, and what it cost. */
+function provenance(run) {
+  const s = run.search || {}, llm = run.llm || {};
+  const archive = s.archive_after || s.archive;
+  const bits = [];
+  if (s.seed && s.seed_is_incumbent === false)
+    bits.push(html`<p>The search started from archived candidate <code>${s.seed}</code> rather
+      than from the incumbent — the frontier is sampled in proportion to how much of the instance
+      space a candidate uniquely owns, so a stepping stone that lost on average can still be the
+      thing worth mutating. <a href="${raw(href.archive())}">The archive</a>.</p>`);
+  else if (s.seed)
+    bits.push(html`<p>The search started from the incumbent.</p>`);
+  if (archive)
+    bits.push(html`<p class="note">${archive.candidates} candidates remembered,
+      ${archive.frontier} on the frontier, across ${plural(archive.generations, "generation")}.</p>`);
+  if (llm.spent_usd != null)
+    bits.push(html`<p class="note">Spent ${usd(llm.spent_usd)}${llm.budget_usd
+      ? ` of a ${usd(llm.budget_usd)} ceiling` : ""}${llm.exhausted
+      ? " — and stopped because that ran out, not because the search was finished" : ""}.
+      ${llm.cache_hits ? `${llm.cache_hits} of ${(llm.calls || 0) + llm.cache_hits} model calls came from the cache.` : ""}</p>`);
+  return bits.length ? html`<div class="prose provenance">${bits}</div>` : "";
 }
 
 function windowTable(rows) {
