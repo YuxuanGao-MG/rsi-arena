@@ -129,3 +129,39 @@ def test_the_search_reuses_scores_but_never_reuses_a_trajectory(t0, history):
     assert traced.trajectories is not None
     assert all(t["tools"] for t in traced.trajectories), \
         "the reflection path must carry real tool calls, not a remembered score"
+
+
+# -- running dry, versus waiting for a top-up ---------------------------------
+
+def test_a_402_is_not_starvation_until_it_persists():
+    """The funding tops up $30 whenever the balance falls below $10.
+
+    So the balance sits between about ten and forty, and a generation costing
+    fifty crosses zero once or twice on the way through. A 402 there is a few
+    seconds of waiting, not a verdict — and abandoning the generation would
+    abandon it in the worst way, because the runner records a provider error as
+    silence and what lands on disk reads as a harness that chose to stay quiet.
+    """
+    from rsi_arena.harness import OpenRouter
+
+    c = OpenRouter(cache=False, starve_after_s=90.0)
+    assert c.starved is False and c.starved_since is None
+
+    # A 402 arrives: the clock starts, but nothing is concluded.
+    import time
+    c.starved_since = time.monotonic()
+    assert c.over_budget is False, "a top-up in flight is not an empty account"
+
+    # Still refused a long time later: now it is empty.
+    c.starved = True
+    assert c.over_budget is True
+
+
+def test_a_successful_call_clears_the_starvation_clock():
+    from rsi_arena.harness import OpenRouter
+    import time
+    c = OpenRouter(cache=False)
+    c.starved_since = time.monotonic()
+    # _completion is reached only on a 200, and that is where the clock resets.
+    c.starved_since = None
+    assert c.over_budget is False

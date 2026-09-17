@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 import random
 import re
 from dataclasses import dataclass, field
@@ -102,7 +103,8 @@ class OpenRouter:
     def __init__(self, api_key: str | None = None, *, base_url: str | None = None,
                  cache_dir: str | os.PathLike | None = ".cache/llm", cache: bool = True,
                  timeout_s: float = 120.0, max_retries: int = 4, concurrency: int = 8,
-                 app_title: str = "RSI Arena", budget_usd: float | None = None) -> None:
+                 app_title: str = "RSI Arena", budget_usd: float | None = None,
+                 starve_after_s: float = 90.0) -> None:
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.base_url = (base_url or os.environ.get("OPENROUTER_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.cache_dir = Path(cache_dir) if (cache and cache_dir) else None
@@ -125,9 +127,15 @@ class OpenRouter:
         #: Total this client may spend before it refuses to call out. None is no
         #: ceiling, which is what every run before today had.
         self.budget_usd = budget_usd
-        #: Set when the provider says the account has no credit. Distinct from
-        #: the ceiling because nobody chose it.
+        #: Set when the provider says the account has no credit *and* has kept
+        #: saying it for long enough that a top-up would have arrived. Distinct
+        #: from the ceiling because nobody chose it.
         self.starved = False
+        #: When the first unanswered 402 arrived, or None once one succeeds.
+        self.starved_since: float | None = None
+        #: How long a 402 has to persist before it counts as empty rather than
+        #: as a top-up in flight.
+        self.starve_after_s = starve_after_s
 
     @property
     def over_budget(self) -> bool:
@@ -224,6 +232,7 @@ class OpenRouter:
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(data))
+        self.starved_since = None          # the top-up landed
         completion = self._completion(data, model, cached=False)
         self.calls += 1
         self.spent_usd += completion.cost_usd
@@ -256,13 +265,26 @@ class OpenRouter:
                 delay *= 2
                 continue
             if resp.status_code == 402:
-                # The account is out, not the generation. Same consequence and a
-                # worse failure mode: our own ceiling refuses instantly and says
-                # so, while a 402 is a per-call error that the runner records as
-                # a provider failure and scores as silence — so a run that has
-                # simply run out of money produces a full set of rollouts that
-                # read as a harness which chose to stay quiet, and every number
-                # computed from them is wrong in a way nothing announces.
+                # Out of credit — which is usually temporary, and the shape of
+                # the funding decides how to treat it.
+                #
+                # This account tops itself up by thirty dollars whenever it falls
+                # below ten, so the balance sits between about ten and forty and
+                # a generation costing fifty *will* cross zero once or twice on
+                # the way through. A 402 there is a few seconds of waiting, not a
+                # verdict. Treating the first one as starvation would abandon a
+                # generation that was going to finish, and abandon it in the worst
+                # way: the runner records a provider error as silence, so what
+                # lands on disk is a full set of rollouts reading as a harness
+                # that chose to stay quiet.
+                #
+                # So wait it out, and only conclude the money is gone when it is
+                # still gone after the top-up has had time to arrive.
+                self.starved_since = self.starved_since or time.monotonic()
+                waited = time.monotonic() - self.starved_since
+                if waited < self.starve_after_s:
+                    await asyncio.sleep(min(15.0, self.starve_after_s - waited))
+                    continue
                 self.starved = True
                 raise GenerationBudgetExceeded(self.spent_usd,
                                                float(self.budget_usd or self.spent_usd))
