@@ -4,13 +4,15 @@
  * `--trace` — every step the harness took to produce it.
  */
 
-import { q } from "../data.js";
+import { q, rpc, ApiError } from "../data.js";
 import { href } from "../routes.js";
 import {
   html, raw, pill, n3, n2, usd, cents, dir, empty, stamp, plural,
 } from "../dom.js";
 import { priceTrack } from "../charts.js";
 import { windowSkill } from "../stats.js";
+import { addActions } from "../actions.js";
+import { VOTER } from "../voter.js";
 
 export async function windowView({ params, signal }) {
   const rid = String(params.id || "");
@@ -18,11 +20,21 @@ export async function windowView({ params, signal }) {
     return { title: "Window", heading: "No such window",
              body: empty("A window id is a number; this address does not carry one.") };
 
-  // Both keyed on the same id and neither needs the other's answer.
-  const [[r], traces] = await Promise.all([
+  // All keyed on the same id and none needs another's answer. The feedback
+  // select is tiny and its failure must not cost the page: flags are a
+  // decoration on the window, not the window.
+  const [[r], traces, flags] = await Promise.all([
     q(`rollouts?id=eq.${encodeURIComponent(rid)}&select=*`, { signal }),
     q(`traces?rollout_id=eq.${encodeURIComponent(rid)}&select=spans`, { signal }),
+    q(`trace_feedback?rollout_id=eq.${encodeURIComponent(rid)}&select=verdict,voter`,
+      { signal }).catch(() => []),
   ]);
+  const tally = { good: 0, bad: 0, unsure: 0 };
+  let mine = null;
+  for (const f of flags) {
+    if (f.verdict in tally) tally[f.verdict] += 1;
+    if (f.voter === VOTER) mine = f.verdict;
+  }
   if (!r) return { title: "Window", heading: "No such window",
                    body: empty(html`Nothing published with id <code>${rid}</code>.`) };
 
@@ -82,6 +94,15 @@ export async function windowView({ params, signal }) {
             <code>--trace</code>, so only the numbers were kept.</p>` : ""}
           ${r.feedback ? html`<div class="box"><div class="k">how it was scored</div>
             <p>${r.feedback}</p></div>` : ""}
+          ${o.driver || o.falsifier ? html`<div class="flag" id="flag-box">
+            <p class="note">Was this reasoning sound? Your read becomes training signal.</p>
+            <div class="btn-row">
+              ${["good", "bad", "unsure"].map(v => html`<button class="btn btn-sm" type="button"
+                data-action="flag" data-verdict="${v}"
+                ${raw(mine === v ? 'aria-pressed="true"' : 'aria-pressed="false"')}>${v}</button>`)}
+            </div>
+            <p class="note" id="flag-tally">${tallyText(tally)}</p>
+          </div>` : ""}
         </div>
       </section>
     </div>
@@ -111,9 +132,47 @@ export async function windowView({ params, signal }) {
   return {
     title: r.ticker,
     heading: html`${r.ticker} <span class="crumb">· ${stamp(r.at)}</span>`,
-    lead: html`Where this contract's mid price went in the five minutes after that instant,
-      and what the harness said it would do.`,
+    lead: html`One moment in one match: the forecaster was asked where this price would be
+      five minutes later. Here is what it said, why, and what actually happened.`,
     crumbs: [["generations", href.runs()], [r.run_id, href.run(r.run_id, r.side)], ["window"]],
     body,
+    ready: root => addActions({
+      flag: el => castFlag(el, root, Number(rid)),
+    }),
   };
+}
+
+function tallyText(t) {
+  const total = t.good + t.bad + t.unsure;
+  return total
+    ? `${total} so far — ${t.good} good · ${t.bad} bad · ${t.unsure} unsure`
+    : "";
+}
+
+/** One verdict per browser per window; a change of mind replaces it. */
+async function castFlag(el, root, rolloutId) {
+  const box = root.querySelector("#flag-box");
+  const buttons = [...box.querySelectorAll("button")];
+  buttons.forEach(b => { b.disabled = true; });
+  try {
+    const out = await rpc("flag_trace", {
+      rollout_id: rolloutId, verdict: el.dataset.verdict, voter: VOTER,
+    });
+    for (const b of buttons)
+      b.setAttribute("aria-pressed", String(b.dataset.verdict === el.dataset.verdict));
+    const tally = { good: 0, bad: 0, unsure: 0, ...(out && out.tally || {}) };
+    box.querySelector("#flag-tally").textContent = tallyText(tally);
+  } catch (err) {
+    // The RPC's messages are written for humans; show them as sent.
+    box.querySelector("#flag-tally").textContent = err instanceof ApiError && err.status === 404
+      ? "flagging is not installed on this database yet"
+      : (err.detail && safeMessage(err.detail)) || err.message;
+  } finally {
+    buttons.forEach(b => { b.disabled = false; });
+  }
+}
+
+/** PostgREST wraps a raised exception's text in JSON; unwrap it, nothing else. */
+function safeMessage(detail) {
+  try { return JSON.parse(detail).message || null; } catch (e) { return null; }
 }

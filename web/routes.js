@@ -1,5 +1,12 @@
 /* Where every link points.
  *
+ * Three top-level views — overview, metrics, about — after the shape of
+ * Xiaomi's MiMo RL page, where the running system is the exhibit and the page
+ * carries its state. Every route the site ever had still resolves: a deep
+ * link into a generation or a window is someone's bookmark, and bookmarks
+ * outrank information architecture. The old pages nest under Metrics rather
+ * than redirect, so the URL a reader saved is the URL they stay on.
+ *
  * Kept apart from the router so views can build an href without importing the
  * router and the router can import the views. Every id here is
  * `encodeURIComponent`-ed on the way in and decoded on the way out — run ids
@@ -9,7 +16,10 @@
 const e = encodeURIComponent;
 
 export const href = {
-  runs: () => "#/",
+  overview: () => "#/",
+  metrics: () => "#/metrics",
+  about: () => "#/about",
+  runs: () => "#/metrics",               // the generations table's home now
   run: (id, side) => `#/generation/${e(id)}${side && side !== "candidate" ? `?side=${e(side)}` : ""}`,
   window: id => `#/window/${e(id)}`,
   lineage: () => "#/lineage",
@@ -22,7 +32,14 @@ export const href = {
 };
 
 export const NAV = [
-  ["Generations", href.runs(), "runs"],
+  ["Overview", href.overview(), "overview"],
+  ["Metrics", href.metrics(), "metrics"],
+  ["About", href.about(), "about"],
+];
+
+/** The Metrics sub-nav: every section that lives under it. */
+export const METRICS_NAV = [
+  ["Generations", href.metrics(), "metrics"],
   ["Live", href.live(), "live"],
   ["Archive", href.archive(), "archive"],
   ["Lineage", href.lineage(), "lineage"],
@@ -30,6 +47,13 @@ export const NAV = [
   ["Votes", href.votes(), "votes"],
   ["Cost", href.cost(), "cost"],
 ];
+
+/** Which top-level nav entry owns a route. */
+export function navOf(name) {
+  if (name === "overview") return "overview";
+  if (name === "about") return "about";
+  return "metrics";
+}
 
 /** `#/compare/<run>/<fixture>?side=x` → { name, params, query }. */
 export function parse(hash) {
@@ -40,7 +64,9 @@ export function parse(hash) {
   const [head, ...rest] = parts;
 
   switch (head) {
-    case undefined:       return { name: "runs", params: {}, query };
+    case undefined:       return { name: "overview", params: {}, query };
+    case "metrics":       return { name: "metrics", params: {}, query };
+    case "about":         return { name: "about", params: {}, query };
     case "generation":    return { name: "run", params: { id: rest[0] }, query };
     case "window":        return { name: "window", params: { id: rest[0] }, query };
     case "lineage":       return { name: "lineage", params: {}, query };

@@ -76,12 +76,9 @@ export async function archiveView({ signal }) {
         </div>
         <figure class="chart">
           <div id="frontier"></div>
-          <figcaption>Scores here are the optimizer's value, not skill: ${SILENCE} is a harness
-            that said nothing, and the scale is affine in the error a forecast removed. The
-            interesting region is the bottom right — a candidate that loses on the average while
-            being the only thing anyone has found that works on some particular match. Selecting
-            from a frontier rather than by the mean is worth about twice as much in GEPA's own
-            ablation, and the reason is those points.</figcaption>
+          <figcaption>Right of the line beat silence on average. The interesting dots are low
+            and to the right of others' left: candidates that lose on average but are the only
+            thing that ever worked on some match.</figcaption>
         </figure>
         <details class="table-view">
           <summary>Every candidate as a table</summary>
@@ -117,12 +114,14 @@ export async function archiveView({ signal }) {
     ${stepping.length ? html`<section class="panel">
       <div class="panel-h"><h2>Kept in spite of the average</h2></div>
       <div class="panel-b prose">
-        <p>${plural(stepping.length, "candidate")} on the frontier score below the best mean
-        (${n2(topMean.mean)}) and are still the only thing anyone has found that works on some
-        instance: ${stepping.map(p => `${p.id} (${n2(p.mean)}, best on ${p.wins})`).join("; ")}.</p>
-        <p class="note">Keeping only the most recent or the best-scoring agent means a poor
-        self-modification makes the next improvement harder, because the stepping stone back to
-        solid ground has been deleted. These are those stones.</p>
+        <p>${plural(stepping.length, "candidate")} lose on average and are still the best thing
+        anyone has found on some match. They stay.</p>
+        <details class="more"><summary>which ones, and why keep losers</summary>
+          <p>${stepping.map(p => `${p.id} (mean ${n2(p.mean)}, best on ${p.wins})`).join("; ")}.
+          Keeping only the best-scoring agent deletes the stepping stones back to solid ground;
+          in GEPA's own ablation, selecting from this frontier is worth about twice selecting
+          the best mean.</p>
+        </details>
       </div></section>` : ""}
 
     <section class="panel">
@@ -157,10 +156,9 @@ export async function archiveView({ signal }) {
   return {
     title: "Archive",
     heading: "Everything the search has ever found",
-    lead: html`${plural(entries.length, "candidate")}, ${front.size} of them on the Pareto
-      frontier over ${plural(best.size, "instance")}. None of this is a result — the gate is the
-      only thing that can promote a harness — and all of it is what the next generation draws its
-      starting point from.`,
+    lead: html`Every harness the search has ever written — ${plural(entries.length, "candidate")},
+      ${front.size} still worth mutating. Nothing here is a result; it is the gene pool the next
+      generation starts from.`,
     body,
     ready: root => archiveFrontier(root.querySelector("#frontier"), points),
   };

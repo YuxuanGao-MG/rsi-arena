@@ -195,6 +195,42 @@ export async function local(path, { signal, ttl = 5 * TTL_MS } = {}) {
   return data;
 }
 
+/**
+ * A JSON endpoint that is not Supabase — today only GitHub's Actions API,
+ * the cross-check for a run that predates the heartbeat.
+ *
+ * Same abort and timeout machinery as everything else, none of the headers:
+ * sending the Supabase key to a third party would be wrong even though the key
+ * is public, and GitHub rate-limits by IP either way. A 403 here is the rate
+ * limit, and the caller degrades rather than retries — 60 requests an hour is
+ * a budget, not a suggestion.
+ */
+export async function external(url, { signal, ttl = 0 } = {}) {
+  const key = `EXT ${url}`;
+  const hit = cache.get(key);
+  if (ttl && hit && Date.now() - hit.at < ttl) return hit.data;
+
+  const link = linked(signal);
+  let res;
+  try {
+    res = await fetch(url, { signal: link.signal,
+                             headers: { Accept: "application/vnd.github+json" } });
+  } catch (err) {
+    if (link.timedOut) throw new ApiError("timeout", "The endpoint did not answer in time.");
+    if (err && err.name === "AbortError") throw new ApiError("aborted", "superseded");
+    throw new ApiError("network", "Could not reach the endpoint.", { detail: String(err) });
+  } finally {
+    link.done();
+  }
+  if (!res.ok) {
+    throw new ApiError("http", `The endpoint refused the request (${res.status}).`,
+                       { status: res.status });
+  }
+  const data = await res.json();
+  if (ttl) cache.set(key, { at: Date.now(), data });
+  return data;
+}
+
 /** A `security definer` function. The only write the anon key can make. */
 export async function rpc(name, args, { signal } = {}) {
   const { rows } = await request(`${base()}/rest/v1/rpc/rsi_${name}`, {

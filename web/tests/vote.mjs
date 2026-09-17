@@ -27,7 +27,7 @@ if (/skill|realised|printed/i.test(body.replace(/skill of both sides/gi, ""))) {
   console.log("note the word 'skill' appears (copy, not data) — checking for numbers instead");
 }
 
-out.ready({ querySelector: () => box });
+out.ready({ querySelector: () => box, addEventListener() {} });
 const el = { dataset: { action: "vote", chose: "candidate" }, textContent: "A" };
 const { resetActions } = await import(`${W}/actions.js`);
 // The delegated listener is installed on import; call the handler the same way it would.
@@ -42,7 +42,7 @@ actions.addActions({ probe: () => { ran = true; } });
 const { addActions } = actions;
 let voteFn = null;
 const spy = map => { voteFn = map.vote || voteFn; };
-out.ready({ querySelector: () => box });          // registers the real one
+out.ready({ querySelector: () => box, addEventListener() {} }); // registers the real one
 // Pull it back out by re-registering a probe and calling through the registry.
 addActions({ _spy: () => {} });
 await (async () => {

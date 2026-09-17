@@ -437,3 +437,118 @@ ul.tree ul.tree { margin:0 0 0 var(--s4); padding-left:var(--s4); border-left:1p
   #theme-label { display:none; }
   .icon-btn::before { content:"\25D0"; }
 }
+
+/* ---------- the live chrome ------------------------------------------------ */
+/* The dot is the whole grammar: filled and pulsing means alive, amber means a
+   heartbeat that stopped, hollow means idle, halved means running with no
+   telemetry. The pulse is the one animation on the site and reduced-motion
+   turns it off wholesale via the global rule. */
+.nav-status {
+  display:inline-flex; align-items:center; gap:var(--s2);
+  padding:var(--s1) var(--s3); border:1px solid var(--line); border-radius:999px;
+  background:var(--panel); font-size:var(--t-xs); font-weight:var(--w-semi);
+  color:var(--soft); white-space:nowrap; font-variant-numeric:tabular-nums;
+}
+.nav-status:hover { text-decoration:none; border-color:var(--edge); color:var(--ink); }
+.status-dot { width:9px; height:9px; border-radius:50%; flex:none;
+              border:2px solid var(--ghost); background:transparent; }
+.status-dot.live { border-color:var(--up); background:var(--up);
+                   animation:beat 2.4s ease-in-out infinite; }
+.status-dot.stale { border-color:var(--warn); background:var(--warn); animation:none; }
+.status-dot.blind { border-color:var(--up); background:transparent;
+                    background-image:linear-gradient(90deg, var(--up) 50%, transparent 50%); }
+.status-dot.idle { border-color:var(--ghost); background:transparent; }
+.status-dot.reconnecting { border-color:var(--faint); background:transparent;
+                           border-style:dashed; animation:none; }
+@keyframes beat { 0%,100% { box-shadow:0 0 0 0 color-mix(in srgb, var(--up) 45%, transparent); }
+                  50% { box-shadow:0 0 0 5px transparent; } }
+@media (max-width:640px) { .nav-status .status-text { max-width:9rem; overflow:hidden;
+                                                      text-overflow:ellipsis; } }
+
+/* ---------- the status hero ------------------------------------------------ */
+.hero-panel { border-top:3px solid var(--brand); }
+.hero-row { display:flex; align-items:center; gap:var(--s3); margin-bottom:var(--s3); }
+.hero-row .status-dot { width:12px; height:12px; }
+.hero-title { margin:0; font-size:var(--t-xl); letter-spacing:-.02em; }
+.hero-cards { margin:var(--s4) 0 0; }
+.phase-rail { display:flex; gap:var(--s1); flex-wrap:wrap; margin:var(--s2) 0; }
+.phase { font-size:var(--t-xxs); font-weight:var(--w-bold); letter-spacing:.08em;
+         text-transform:uppercase; padding:.2rem .55rem; border-radius:5px;
+         background:var(--hair); color:var(--ghost); }
+.phase.past { color:var(--soft); }
+.phase.on { background:var(--brand-soft); color:var(--brand-ink); }
+.reconnect { border-left:2px solid var(--warn); padding-left:var(--s2); }
+
+/* ---------- the metrics sub-nav -------------------------------------------- */
+.subnav { margin:0 0 var(--s4); border-bottom:1px solid var(--line); }
+.subnav ul { list-style:none; display:flex; gap:var(--s1); margin:0; padding:0;
+             overflow-x:auto; scrollbar-width:none; }
+.subnav ul::-webkit-scrollbar { display:none; }
+.subnav a { display:block; padding:var(--s2) var(--s3); font-size:var(--t-sm);
+            font-weight:var(--w-medium); color:var(--faint); white-space:nowrap;
+            border-bottom:2px solid transparent; margin-bottom:-1px; }
+.subnav a:hover { color:var(--ink); text-decoration:none; }
+.subnav a[aria-current="page"] { color:var(--brand-ink); border-bottom-color:var(--brand);
+                                 font-weight:var(--w-semi); }
+
+/* ---------- the foot-stream ------------------------------------------------- */
+footer.foot { border-top:1px solid var(--line); background:var(--panel);
+              margin-top:var(--s7); }
+footer.foot .bar { padding:var(--s3) var(--s5); }
+.foot-stream { display:flex; align-items:baseline; gap:var(--s4); width:100%;
+               min-width:0; font-size:var(--t-xs); }
+.tick-label { flex:none; font-weight:var(--w-bold); letter-spacing:.1em;
+              text-transform:uppercase; font-size:var(--t-xxs); color:var(--faint); }
+.tick-list { list-style:none; display:flex; gap:var(--s5); margin:0; padding:0;
+             overflow-x:auto; scrollbar-width:none; min-width:0; }
+.tick-list::-webkit-scrollbar { display:none; }
+.tick-list li { white-space:nowrap; display:inline-flex; gap:var(--s2); align-items:baseline; }
+.tick-list a { color:var(--soft); }
+.tick-list a:hover { color:var(--brand); }
+
+/* ---------- feedback surfaces ---------------------------------------------- */
+.btn-sm { padding:var(--s1) var(--s3); font-size:var(--t-xs); }
+.flag { margin-top:var(--s3); border-top:1px solid var(--hair); padding-top:var(--s3); }
+.flag .note { margin:0 0 var(--s2); }
+.guess { border-top:1px solid var(--hair); }
+.guess-q { margin:0 0 var(--s2); font-weight:var(--w-semi); font-size:var(--t-sm); }
+.crowd-bar { position:relative; width:8rem; height:8px; border-radius:4px;
+             background:var(--down-soft); overflow:hidden; align-self:center; }
+.crowd-bar i { position:absolute; left:0; top:0; bottom:0; background:var(--up);
+               border-radius:4px; transition:width .5s ease; }
+.note-field { display:grid; gap:var(--s1); margin:var(--s3) 0; max-width:34rem; }
+.note-field textarea { font:inherit; font-size:var(--t-sm); color:var(--ink);
+                       background:var(--raise); border:1px solid var(--edge);
+                       border-radius:var(--r1); padding:var(--s2) var(--s3); resize:vertical; }
+.note-field textarea:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.inline-dot { display:inline-block; vertical-align:middle; margin-right:var(--s1); }
+
+/* Meters glide to their new value; a new live row slides in. Both die under
+   reduced motion via the global rule, and the content lands either way. */
+.meter i { transition:width .6s ease; }
+.budget-meter { margin-top:var(--s3); }
+@keyframes row-in { from { opacity:0; transform:translateY(-4px); } }
+tr.row-in { animation:row-in .4s ease both; }
+
+/* Progressive disclosure: the short version stands alone, the expander is
+   quiet, and both read the same in either theme. */
+details.more { margin-top:var(--s2); }
+details.more > summary { font-size:var(--t-xs); color:var(--brand); cursor:pointer;
+                         list-style:none; display:inline-flex; gap:var(--s1);
+                         align-items:center; font-weight:var(--w-semi); }
+details.more > summary::before { content:"\25B8"; transition:transform var(--fast); }
+details.more[open] > summary::before { transform:rotate(90deg); }
+details.more > summary::-webkit-details-marker { display:none; }
+details.more > p { margin-top:var(--s2); color:var(--soft); font-size:var(--t-sm); }
+
+/* The compare landing's curated doors. */
+a.door { display:block; color:inherit; transition:border-color var(--fast); }
+a.door:hover { text-decoration:none; border-color:var(--brand); }
+.door-title { margin:0 0 var(--s2); font-size:var(--t-lg); }
+.grid-2 + .panel, .grid-2 + section { margin-top:var(--s4); }
+
+.glossary-list { display:grid; grid-template-columns:auto 1fr; gap:var(--s2) var(--s4);
+                 margin:0; font-size:var(--t-sm); }
+.glossary-list dt { font-weight:var(--w-semi); white-space:nowrap; }
+.glossary-list dd { margin:0; color:var(--soft); }
+@media (max-width:560px) { .glossary-list { grid-template-columns:1fr; gap:var(--s1); } }

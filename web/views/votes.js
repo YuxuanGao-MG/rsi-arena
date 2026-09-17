@@ -57,7 +57,8 @@ export async function votesView({ signal }) {
     </div>
 
     ${hasFlag && trusted.length < votes.length ? html`<section class="panel"><div class="panel-b note">
-      ${plural(votes.length - trusted.length, "vote")} were recorded before the database computed
+      ${plural(votes.length - trusted.length, "vote")}
+      ${votes.length - trusted.length === 1 ? "was" : "were"} recorded before the database computed
       the two skills for itself. Those rows carry numbers the browser sent, which is the very
       thing this page is comparing against, so they are excluded from the agreement rate.
     </div></section>` : ""}

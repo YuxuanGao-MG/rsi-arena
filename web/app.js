@@ -8,13 +8,18 @@
  * reader to know any of it was interactive.
  */
 
-import { NAV, parse } from "./routes.js";
+import { NAV, METRICS_NAV, navOf, parse } from "./routes.js";
 import { mount, html, raw, errorPanel, skeleton } from "./dom.js";
 import { clearCharts } from "./charts.js";
 import { invalidate } from "./data.js";
 import { resetActions } from "./actions.js";
+import { startStatus, onStatus, setOverviewVisible } from "./status.js";
+import { startTicker } from "./ticker.js";
+import { startClock, tickAll } from "./clock.js";
 
-import { runsView } from "./views/runs.js";
+import { overviewView } from "./views/overview.js";
+import { metricsView } from "./views/metrics.js";
+import { aboutView } from "./views/about.js";
 import { runView } from "./views/run.js";
 import { windowView } from "./views/window.js";
 import { lineageView } from "./views/lineage.js";
@@ -25,7 +30,8 @@ import { costView } from "./views/cost.js";
 import { archiveView } from "./views/archive.js";
 
 const VIEWS = {
-  runs: runsView, run: runView, window: windowView, lineage: lineageView,
+  overview: overviewView, metrics: metricsView, about: aboutView,
+  run: runView, window: windowView, lineage: lineageView,
   compare: compareView, votes: votesView, live: liveView, cost: costView,
   archive: archiveView,
 };
@@ -33,6 +39,7 @@ const VIEWS = {
 const viewEl = document.getElementById("view");
 const announceEl = document.getElementById("announce");
 const navEl = document.getElementById("nav");
+const navStatusEl = document.getElementById("nav-status");
 
 let inflight = null;      // the running route's AbortController
 let lastName = null;
@@ -44,6 +51,32 @@ let slowTimer = 0;        // says so out loud when a fetch is taking its time
 function paintNav(active) {
   mount(navEl, NAV.map(([label, to, name]) => html`
     <li><a href="${raw(to)}" ${raw(name === active ? 'aria-current="page"' : "")}>${label}</a></li>`));
+}
+
+/* The MiMo signature: the run's state lives in the chrome, always visible,
+ * and its connection states are part of the honesty — a failed poll says
+ * "reconnecting", never a dot that quietly stopped meaning anything. */
+function paintNavStatus(s) {
+  if (!navStatusEl) return;
+  const collecting = s.collection && s.collection.running;
+  const dot = s.kind === "idle" && collecting ? "live"
+    : { live: "live", "running-blind": "blind", stale: "stale",
+        idle: "idle", loading: "idle" }[s.kind] || "idle";
+  const text =
+    s.reconnecting ? "reconnecting…"
+    : s.kind === "live" ? `${s.run} · ${s.phase}` +
+        (s.spentUsd != null
+          ? ` · $${s.spentUsd}${s.budgetUsd ? ` of $${s.budgetUsd}` : ""}` : "")
+    : s.kind === "running-blind" ? "running · no heartbeat"
+    : s.kind === "stale" ? `stale · ${s.run}`
+    : s.kind === "loading" ? "…"
+    : collecting ? "live collection running"
+    : "idle";
+  mount(navStatusEl, html`
+    <span class="status-dot ${raw(dot)} ${raw(s.reconnecting ? "reconnecting" : "")}"
+          aria-hidden="true"></span>
+    <span class="status-text">${text}</span>`);
+  navStatusEl.setAttribute("aria-label", `Run status: ${text}`);
 }
 
 function announce(text) {
@@ -80,8 +113,14 @@ document.getElementById("theme").addEventListener("click", () => {
 
 /* ---------- the route ------------------------------------------------------ */
 
-function paint({ title, heading, lead, crumbs, body, ready }) {
+function paint({ title, heading, lead, crumbs, body, ready, routeName }) {
+  const inMetrics = routeName && navOf(routeName) === "metrics";
+  const subnav = inMetrics ? html`<nav class="subnav" aria-label="Metrics sections"><ul>
+      ${METRICS_NAV.map(([label, to, name]) => html`<li>
+        <a href="${raw(to)}" ${raw(name === routeName ? 'aria-current="page"' : "")}>${label}</a>
+      </li>`)}</ul></nav>` : "";
   const head = html`
+    ${subnav}
     ${crumbs && crumbs.length ? html`<nav class="crumbs" aria-label="Breadcrumb"><ol>
       ${crumbs.map(([label, to]) => html`<li>${to ? html`<a href="${raw(to)}">${label}</a>` : label}</li>`)}
     </ol></nav>` : ""}
@@ -95,6 +134,7 @@ function paint({ title, heading, lead, crumbs, body, ready }) {
   enhance(viewEl);
   document.title = `${title} · rsi-arena`;
   if (ready) ready(viewEl);
+  try { tickAll(viewEl); } catch (e) { /* stub DOM */ }
 
   const h1 = document.getElementById("page-title");
   if (!firstPaint && h1) h1.focus({ preventScroll: true });
@@ -134,9 +174,15 @@ async function route({ fresh = false } = {}) {
   inflight = new AbortController();
   const { signal } = inflight;
 
+  // Whatever the old view subscribed to — the overview's status feed — is let
+  // go before the new one paints, and the GitHub poll budget goes back to
+  // sleep unless the next route is the overview.
+  try { viewEl.dispatchEvent(new Event("view-teardown")); } catch (e) { /* stub DOM */ }
+  setOverviewVisible(r.name === "overview");
+
   clearCharts();
   resetActions({ retry: () => route({ fresh: true }) });
-  paintNav(r.name === "run" ? "runs" : r.name);
+  paintNav(navOf(r.name));
 
   if (fresh) invalidate();
   viewEl.setAttribute("aria-busy", "true");
@@ -162,14 +208,14 @@ async function route({ fresh = false } = {}) {
       title: "Not found", heading: "No such page",
       body: html`<div class="panel"><div class="panel-b prose">
         <p>The address <code>${location.hash}</code> does not match a page here.</p>
-        <p><a href="#/">Start at the generations</a>.</p></div></div>`,
+        <p><a href="#/">Start at the overview</a>.</p></div></div>`,
     });
   }
 
   try {
     const out = await view({ ...r, signal, reload: () => route({ fresh: true }) });
     if (signal.aborted) return;                 // a newer route already owns the page
-    paint(out);
+    paint({ ...out, routeName: r.name });
   } catch (err) {
     if (signal.aborted || err.kind === "aborted") return;
     // An ApiError has already been classified and its detail already logged.
@@ -185,4 +231,8 @@ async function route({ fresh = false } = {}) {
 
 addEventListener("hashchange", () => route());
 paintTheme();
+onStatus(paintNavStatus);
+startStatus();
+startTicker(document.getElementById("foot-stream"));
+startClock();
 route();

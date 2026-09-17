@@ -115,7 +115,10 @@ def csp(page: bytes) -> str:
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "font-src 'self'",
-        f"connect-src 'self' {origin}".strip(),
+        # api.github.com is the cross-check for a run that predates the
+        # heartbeat: the overview asks Actions whether a workflow is executing
+        # when rsi.progress has nothing to say.
+        f"connect-src 'self' {origin} https://api.github.com".strip(),
         "base-uri 'none'",
         "form-action 'none'",
         "frame-ancestors 'none'",

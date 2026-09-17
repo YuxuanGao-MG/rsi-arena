@@ -43,6 +43,12 @@
     <a class="brand" href="#/"><span class="dot" aria-hidden="true"></span> rsi-arena</a>
     <nav class="main" aria-label="Sections"><ul id="nav"></ul></nav>
     <div class="spacer"></div>
+    <!-- The run's state lives in the chrome, MiMo-style: always visible,
+         honest about its connection, painted by status.js. -->
+    <a id="nav-status" class="nav-status" href="#/" aria-label="Run status">
+      <span class="status-dot idle" aria-hidden="true"></span>
+      <span class="status-text">…</span>
+    </a>
     <button class="icon-btn" id="theme" type="button" aria-pressed="false">
       <span id="theme-label">Theme</span>
     </button>
@@ -62,6 +68,12 @@
   </noscript>
   <div id="view"><div class="msg">Loading…</div></div>
 </main>
+
+<footer class="foot">
+  <div class="bar">
+    <div id="foot-stream" class="foot-stream" aria-label="Latest events"></div>
+  </div>
+</footer>
 
 <div id="announce" class="visually-hidden" role="status" aria-live="polite"></div>
 

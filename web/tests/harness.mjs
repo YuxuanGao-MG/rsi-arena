@@ -4,7 +4,22 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 import { readFileSync } from "node:fs";
 
 const FX = JSON.parse(readFileSync(join(HERE, "fixtures.json"), "utf8"));
-export const state = { failNext: null, calls: [] };
+export const state = {
+  failNext: null, calls: [],
+  // Overridable per test: the four status states are progress-row shapes, and
+  // the GitHub cross-check is a stub whose 403 path must be walkable.
+  progress: null,            // array overrides FX.progress
+  github: null,              // object overrides the default completed run
+  gh403: false,              // simulate the rate limit
+};
+export const isoAgo = s => new Date(Date.now() - s * 1000).toISOString();
+
+// The RPC stubs are stateful on purpose: "switch sides and the count stays 1"
+// is only testable against a store that remembers the first cast. They share
+// the arrays the table reads serve, so a cast shows up in the next select.
+FX.trace_feedback = FX.trace_feedback || [];
+FX.guesses = FX.guesses || [];
+export const rpcState = { fail: null };  // set to a message to make every RPC 400
 
 function el(tag = "div") {
   const node = {
@@ -38,8 +53,8 @@ globalThis.RSI = { url: "https://example.supabase.co", key: "anon-key",
 
 class FilterError extends Error {}
 
-function rows(table, params) {
-  let out = [...(FX[table] || [])];
+function rowsFrom(data, params) {
+  let out = [...(data || [])];
   for (const [key, raw] of params) {
     if (["select", "order", "limit", "offset"].includes(key)) continue;
     const [op, ...rest] = raw.split(".");
@@ -71,19 +86,58 @@ function rows(table, params) {
 globalThis.fetch = async (url, opts = {}) => {
   state.calls.push(url);
   if (state.failNext) { const f = state.failNext; state.failNext = null; return f(url, opts); }
+  if (String(url).startsWith("https://api.github.com/")) {
+    if (state.gh403)
+      return { ok: false, status: 403, headers: hdr("application/json"),
+               json: async () => ({ message: "API rate limit exceeded" }),
+               text: async () => '{"message":"API rate limit exceeded"}' };
+    return json(state.github ?? { workflow_runs: [
+      { id: 35180102504, status: "completed", conclusion: "success" }] });
+  }
   if (url === "/archive.json")
     return json(JSON.parse(readFileSync("runs/archive.json", "utf8")));
   const u = new URL(url);
   if (u.pathname.startsWith("/rest/v1/rpc/")) {
+    if (rpcState.fail)
+      return { ok: false, status: 400, headers: hdr("application/json"),
+               json: async () => ({ message: rpcState.fail }),
+               text: async () => JSON.stringify({ message: rpcState.fail }) };
+    const fn = u.pathname.split("/rpc/")[1];
+    const args = JSON.parse(opts.body || "{}");
+    if (fn === "rsi_flag_trace") {
+      if (!["good", "bad", "unsure"].includes(args.verdict))
+        return { ok: false, status: 400, headers: hdr("application/json"),
+                 text: async () => '{"message":"verdict must be good, bad or unsure"}' };
+      const mine = FX.trace_feedback.find(f =>
+        f.voter === args.voter && f.rollout_id === args.rollout_id);
+      if (mine) mine.verdict = args.verdict;
+      else FX.trace_feedback.push({ id: FX.trace_feedback.length + 1,
+        created: new Date().toISOString(), rollout_id: args.rollout_id,
+        verdict: args.verdict, voter: args.voter });
+      const tally = {};
+      for (const f of FX.trace_feedback)
+        if (f.rollout_id === args.rollout_id) tally[f.verdict] = (tally[f.verdict] || 0) + 1;
+      return json({ stored: true, id: 1, tally });
+    }
+    if (fn === "rsi_cast_guess") {
+      const mine = FX.guesses.find(g => g.voter === args.voter);
+      if (mine) { mine.guess = args.guess; mine.created = new Date().toISOString(); }
+      else FX.guesses.push({ id: FX.guesses.length + 1,
+        created: new Date().toISOString(), guess: args.guess, voter: args.voter });
+      return json({ stored: true, crowd: {
+        yes: FX.guesses.filter(g => g.guess).length,
+        no: FX.guesses.filter(g => !g.guess).length } });
+    }
     return json({ stored: true, already_voted: false, vote_id: 9,
                   baseline_skill: 0.043, candidate_skill: 0.041, windows: 34, quiet: 8 });
   }
   const table = u.pathname.replace("/rest/v1/rsi_", "");
-  if (!FX[table]) return { ok: false, status: 404, headers: hdr("application/json"),
-                           text: async () => '{"code":"PGRST205"}' };
+  const source = table === "progress" && state.progress ? { progress: state.progress } : FX;
+  if (!source[table]) return { ok: false, status: 404, headers: hdr("application/json"),
+                               text: async () => '{"code":"PGRST205"}' };
   let all;
   try {
-    all = rows(table, u.searchParams);
+    all = rowsFrom(source[table], u.searchParams);
   } catch (e) {
     if (e instanceof FilterError)
       return { ok: false, status: 400, headers: hdr("application/json"),

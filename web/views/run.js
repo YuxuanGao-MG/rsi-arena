@@ -15,6 +15,7 @@ import {
 } from "../dom.js";
 import { predictedVsRealised, skillHistogram } from "../charts.js";
 import { pooled, pooledOnMoves, windowSkill, refused, runStatus } from "../stats.js";
+import { genName, rewriteLabel, pointsText } from "../labels.js";
 
 const NARROW = "id,fixture,ticker,at,mid_now,realised,predicted,half_width," +
                "err,naive_error,skill,echoed,unmeasurable,cost_usd,ok,scored";
@@ -110,26 +111,26 @@ export async function runView({ params, query, signal }) {
     </div>
 
     ${refusals.length ? html`<section class="panel warnband"><div class="panel-b prose">
-      <p class="eyebrow warn">not all of these windows are forecasts</p>
       <p>${refusals.length} of ${everything.length} windows here are budget-exhaustion
-      refusals, not forecasts: the generation's money ran out and every later call was refused
-      before the model was asked. They are stored with the mid echoed back, so pooled naively
-      they would score as ${plural(refusals.length, "confident echo", "confident echoes")} —
-      every number on this page excludes them.</p>
+      refusals, not forecasts. Every number on this page excludes them.</p>
+      <details class="more"><summary>what a refusal is</summary>
+        <p>The generation's money ran out mid-run, so every later call was refused before the
+        model was asked. Refusals are stored looking like "no change" forecasts — pooled
+        naively they would score as confident echoes of the market, flattering a harness that
+        never spoke.</p>
+      </details>
     </div></section>` : ""}
 
     ${power(run, all)}
 
     ${drift ? html`<section class="panel"><div class="panel-b prose">
-      <p class="eyebrow">two numbers for one generation</p>
-      <p>The gate recorded ${n3(published.statistic)} here. The same windows recompute to
-      ${n3(mine.skill)} on today's formula.</p>
-      <p class="note">Nothing was re-scored: the metric changed after this run — early versions
-      divided by an unfloored benchmark, and for a while a per-window skill of
-      <code>1 - error/benchmark</code> paid a full point for saying nothing on a market that did
-      not move. The published figure is what the gate read on the day and is the one that decided
-      the verdict; the recomputed figure is the one that can be compared with another
-      generation.</p>
+      <p>Two numbers, one generation: the gate recorded ${n3(published.statistic)} on the day;
+      the same windows recompute to ${n3(mine.skill)} on today's formula.</p>
+      <details class="more"><summary>why they differ</summary>
+        <p>Nothing was re-scored — the metric changed after this run. The published figure is
+        what decided the verdict; the recomputed one is what can be compared across
+        generations, and it is the one this site plots.</p>
+      </details>
     </div></section>` : ""}
 
     ${audit(run)}
@@ -151,9 +152,9 @@ export async function runView({ params, query, signal }) {
         ${provenance(run)}
         <nav class="btn-row" aria-label="Which harness">
           <a class="btn" href="${raw(href.run(id, "baseline"))}"
-             ${raw(side === "baseline" ? 'aria-current="page"' : "")}>incumbent</a>
+             ${raw(side === "baseline" ? 'aria-current="page"' : "")}>the original harness</a>
           <a class="btn" href="${raw(href.run(id, "candidate"))}"
-             ${raw(side === "candidate" ? 'aria-current="page"' : "")}>candidate</a>
+             ${raw(side === "candidate" ? 'aria-current="page"' : "")}>the rewrite</a>
         </nav>
       </div>
     </section>
@@ -210,11 +211,14 @@ export async function runView({ params, query, signal }) {
 
   return {
     title: id,
-    heading: html`${id} <span class="crumb">· ${side === "baseline" ? "incumbent" : "candidate"}</span>`,
-    lead: html`Held out on ${plural(new Set(all.map(r => r.fixture)).size, "match")},
-      ${plural(all.length, "window")} scored${refusals.length
-        ? html`, ${plural(refusals.length, "refusal")} excluded` : ""}.
-      Everything on this page is held-out only.`,
+    heading: side === "candidate"
+      ? html`Did ${genName(id)}'s rewrite forecast better than what it replaced?`
+      : html`How the original harness did in ${genName(id)}`,
+    lead: html`${side === "candidate" ? "The rewrite" : "It"}
+      ${pointsText(mine.skill)} across ${plural(all.length, "scored moment")}
+      on ${plural(new Set(all.map(r => r.fixture)).size, "match", "matches")} it had never
+      seen${refusals.length ? html` (${plural(refusals.length, "refusal")} excluded)` : ""}.
+      <span class="crumb mono">${id} · ${side}</span>`,
     crumbs: [["generations", href.runs()], [id]],
     body,
     ready: root => {
@@ -249,16 +253,18 @@ function power(run, rows) {
   if (!h.detectable) return "";
   return html`<section class="panel ${raw(h.underpowered ? "warnband" : "")}">
     <div class="panel-b prose">
-      <p class="eyebrow ${raw(h.underpowered ? "warn" : "")}">${h.underpowered
-        ? "this test could not have seen it" : "what this test could resolve"}</p>
-      <p>On ${plural(groups, "held-out fixture")} the smallest difference this bootstrap can
-      separate from noise is ${n3(h.detectable)}${h.se ? html` (a standard error of
-        ${h.se.toFixed(4)})` : ""}. The difference it measured was ${n3(h.diff)}.
       ${h.underpowered
-        ? html`That is inside the noise floor, so this generation's rejection is a fact about the
-            number of matches it was judged on and not about the rewrite. More fixtures, not a
-            better candidate, is what would change it.`
-        : html`The measurement was large enough to be visible to the test that judged it.`}</p>
+        ? html`<p>Too close to call — literally. On ${plural(groups, "match", "matches")} this
+            test cannot see a difference smaller than ${n3(h.detectable)}, and it measured
+            ${n3(h.diff)}.</p>
+            <details class="more"><summary>what that means</summary>
+              <p>The rejection is a fact about the number of matches, not about the rewrite:
+              no candidate this size could have been visible to the test judging it
+              ${h.se ? html`(standard error ${h.se.toFixed(4)})` : ""}. More matches, not a
+              better rewrite, is what would change it.</p>
+            </details>`
+        : html`<p>The measurement (${n3(h.diff)}) was large enough for this test to see —
+            its floor on ${plural(groups, "match", "matches")} is ${n3(h.detectable)}.</p>`}
     </div></section>`;
 }
 

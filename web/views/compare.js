@@ -16,13 +16,9 @@ import {
 import { addActions } from "../actions.js";
 import { groupBy } from "../stats.js";
 
-const VOTER = (() => {
-  try {
-    let v = localStorage.getItem("rsi_voter");
-    if (!v) { v = Math.random().toString(36).slice(2, 12); localStorage.setItem("rsi_voter", v); }
-    return v;
-  } catch (e) { return "no-storage"; }         // private mode still gets to vote
-})();
+import { VOTER } from "../voter.js";
+import { genName, fateOf, rewriteLabel, incumbentLabel } from "../labels.js";
+import { runStatus } from "../stats.js";
 
 export async function compareView(ctx) {
   if (!ctx.params.runId) return pickGeneration(ctx);
@@ -33,43 +29,78 @@ export async function compareView(ctx) {
 /* ---------- pick a generation --------------------------------------------- */
 
 async function pickGeneration({ signal }) {
-  const runs = await qAll("runs?select=id,created,accepted,candidate_fp,incumbent_fp&order=created.desc",
-                          { signal, pageSize: 200, max: 2000 });
+  const runs = await qAll(
+    "runs?select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm&order=created.desc",
+    { signal, pageSize: 200, max: 2000 });
   if (!runs.length)
     return { title: "Compare", heading: "Nothing to compare", body: empty("No generation has been published.") };
 
+  // Curated doors, so the first click is a judgement call rather than a
+  // taxonomy lesson. A real rewrite, measured, closest call first.
+  const real = runs.filter(r => runStatus(r) === "complete"
+    && r.candidate_fp && r.candidate_fp !== r.incumbent_fp
+    && r.decision?.holdout?.diff != null
+    // A rewrite that forecast identically to its parent got "close" the way a
+    // photocopy gets close; the door is for rewrites that actually disagreed.
+    && !(r.decision.holdout.diff === 0 && r.decision.holdout.low === 0
+         && r.decision.holdout.high === 0));
+  const closest = [...real].sort((a, b) =>
+    Math.abs(a.decision.holdout.diff) - Math.abs(b.decision.holdout.diff))[0];
+  const boldest = [...real].sort((a, b) =>
+    Math.abs(b.decision.holdout.diff) - Math.abs(a.decision.holdout.diff))[0];
+  const doors = [];
+  if (closest) doors.push({
+    run: closest, title: "The rewrite that got closest",
+    why: `${genName(closest.id)}'s rewrite came within a hair of its parent — read both and
+          see if you can tell them apart.` });
+  if (boldest && boldest !== closest) doors.push({
+    run: boldest, title: "The boldest rewrite",
+    why: `${genName(boldest.id)}'s rewrite changed the most — and ${
+          boldest.decision.holdout.diff > 0 ? "still could not prove it helped"
+                                            : "made things worse"}.` });
+
   return {
     title: "Compare",
-    heading: "Which set of judgements would you rather have had?",
-    lead: html`Two harnesses, one match, every window they were both scored on. One is the
-      incumbent and one is a rewrite; a coin decides which sits on the left, and which way it
-      landed is stored with your vote.`,
+    heading: "Read two forecasters. Say which you'd rather have had.",
+    lead: html`Each rewrite is shown beside the harness it tried to replace, on one full match.
+      A coin decides which side sits left, so you judge the words, not the label.`,
     body: html`
-      <section class="panel"><div class="panel-b prose">
-        <p><strong>Why a whole match rather than one forecast.</strong> A single call is
-        verifiable five minutes later, so asking which reads better mostly measures which reads
-        better — and a harness can argue well for a call that loses. Thirty-four windows show
-        when a harness stays quiet, whether its half-width tracks its uncertainty, and whether
-        its reasons change with the situation or are one argument with the numbers swapped.
-        Those are visible to a reader and invisible in a single row.</p>
-        <p class="note">The number worth watching is not who wins. It is how often a reader and
-        the arithmetic disagree — because a harness that reads well and scores badly is the thing
-        most likely to fool the rewriter, which is judging text too.
-        <a href="${raw(href.votes())}">What the crowd has said so far</a>.</p>
-      </div></section>
+      ${doors.length ? html`<div class="grid-2 even">
+        ${doors.map(d => html`<a class="panel door" href="${raw(href.compare(d.run.id))}">
+          <div class="panel-b">
+            <p class="eyebrow">start here</p>
+            <h2 class="door-title">${d.title}</h2>
+            <p class="note">${d.why}</p>
+            <p class="crumb mono">${d.run.id}</p>
+          </div></a>`)}
+      </div>` : ""}
+
       <section class="panel">
-        <div class="panel-h"><h2>Pick a generation</h2></div>
+        <div class="panel-h"><h2>All generations</h2></div>
         <ul class="rows">${runs.map(r => html`<li>
           <a class="row" href="${raw(href.compare(r.id))}">
             <span class="mark brand-mark" aria-hidden="true"></span>
-            <span><span class="name">${r.id}</span>
+            <span><span class="name">${incumbentLabel(r, runs)} vs ${rewriteLabel(r)}</span>
               <span class="why">${r.candidate_fp === r.incumbent_fp
-                ? "the search returned the incumbent, so both columns are the same harness"
-                : "a rewrite against its incumbent"}</span></span>
+                ? "the search returned its own parent — both columns are the same forecaster"
+                : "pick a match, read both, vote"}</span>
+              <span class="why crumb mono">${r.id}</span></span>
             <span class="spark"></span>
             <span class="right crumb">choose a match</span>
           </a></li>`)}</ul>
-      </section>`,
+      </section>
+
+      <section class="panel"><div class="panel-b prose">
+        <p>Why a whole match and not one forecast? One forecast is checkable five minutes later,
+        so "which reads better" mostly measures prose. A whole match shows when each forecaster
+        stays quiet and whether its reasons change with the game.</p>
+        <details class="more"><summary>the full story</summary>
+          <p>A harness can argue well for a call that loses. The number worth watching is not
+          who wins but how often a reader and the arithmetic disagree — a forecaster that reads
+          well and scores badly is exactly the thing most likely to fool the rewriter, which is
+          judging text too. <a href="${raw(href.votes())}">What the crowd has said so far</a>.</p>
+        </details>
+      </div></section>`,
   };
 }
 
@@ -77,6 +108,9 @@ async function pickGeneration({ signal }) {
 
 async function pickFixture({ params, signal }) {
   const runId = params.runId;
+  const [run] = await q(`runs?id=eq.${encodeURIComponent(runId)}` +
+    "&select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm", { signal })
+    .catch(() => []);
   // Narrow on purpose. Counting distinct fixtures used to mean pulling four
   // thousand rollouts with their `output` jsonb, ordered by time and cut at the
   // limit — so the count printed beside the list was of whatever survived the
@@ -98,8 +132,9 @@ async function pickFixture({ params, signal }) {
 
   return {
     title: `${runId} · matches`,
-    heading: "Pick a match",
-    lead: html`${plural(rows.length, "match")}, every one of them read by both harnesses.`,
+    heading: run ? html`${incumbentLabel(run, [])} vs ${rewriteLabel(run)}` : "Pick a match",
+    lead: html`Pick one of ${plural(rows.length, "match")}. You will read both forecasters on
+      every moment of it, then say which you'd rather have had.`,
     crumbs: [["compare", href.compare()], [runId]],
     body: html`<section class="panel">
       <div class="panel-h"><h2>${plural(rows.length, "match")}</h2>
@@ -136,25 +171,33 @@ async function duel({ params, signal }) {
   if (!pairs.length)
     return { title: fixture, heading: "This match has no paired windows",
              crumbs: [["compare", href.compare()], [runId, href.compare(runId)], [fixture]],
-             body: empty("Both harnesses have to have been scored on the same window for a "
-                       + "comparison to mean anything.") };
+             body: empty("We only compare the two on moments both actually forecast — "
+                       + "same match, same minute. This match has none.") };
 
   // A coin decides the left column, and which way it landed is stored with the
   // vote: position bias is real, and a vote nobody can correct for is unusable.
   const flipped = Math.random() < 0.5;
   const L = flipped ? "candidate" : "baseline", R = flipped ? "baseline" : "candidate";
 
+  const voteCount = (await q(
+    `votes?select=id&run_id=eq.${encodeURIComponent(runId)}` +
+    `&fixture=eq.${encodeURIComponent(fixture)}`, { signal, fresh: true })
+    .catch(() => [])).length;
+
   return {
     title: fixture,
     heading: html`<span class="mono">${fixture}</span>`,
-    lead: html`${plural(pairs.length, "window")}, both harnesses on each. Read the pair, then say
-      which set you would rather have had. Neither the scores nor the prices that printed are on
-      this page; they come back with your vote.`,
+    lead: html`One of these is the original harness; the other is a rewrite. A coin picked the
+      columns. Read both — ${plural(pairs.length, "moment", "moments")}, same match, same
+      minutes — then vote. The scores stay hidden until you do.`,
     crumbs: [["compare", href.compare()], [runId, href.compare(runId)], [fixture]],
     body: html`
       <div class="duel">${column(L, flipped ? "B" : "A", pairs)}${column(R, flipped ? "A" : "B", pairs)}</div>
       <section class="panel" id="voteBox"><div class="panel-b">
         <p class="eyebrow">your call</p>
+        <p class="note" id="vote-count" data-count="${voteCount}">${voteCount
+          ? plural(voteCount, "reader has voted", "readers have voted") + " on this match."
+          : "Nobody has voted on this match yet — be the first."}</p>
         <div class="btn-row">
           <button class="btn" type="button" data-action="vote" data-chose="${L}">
             ${flipped ? "B" : "A"} — the left column</button>
@@ -162,12 +205,37 @@ async function duel({ params, signal }) {
             ${flipped ? "A" : "B"} — the right column</button>
           <button class="btn" type="button" data-action="vote" data-chose="neither">neither</button>
         </div>
+        <p class="note-field">
+          <label for="vote-note" class="note">Tell us why, if you like — goes to the team, not
+            published.</label>
+          <textarea id="vote-note" maxlength="280" rows="2"
+            placeholder="optional, 280 characters"></textarea>
+        </p>
         <p class="note">Your vote is stored with the coin flip and with the pooled skill of both
         sides, computed by the database rather than by this page.</p>
       </div></section>`,
-    ready: () => addActions({
-      vote: el => castVote(el, { runId, fixture, left: L }),
-    }),
+    ready: root => {
+      addActions({ vote: el => castVote(el, { runId, fixture, left: L }) });
+      // The count refreshes gently while someone is reading; a vote landing
+      // from another tab shows up without a reload.
+      let timer = 0;
+      const tick = async () => {
+        if (typeof document === "undefined" || !document.hidden) {
+          try {
+            const n = (await q(
+              `votes?select=id&run_id=eq.${encodeURIComponent(runId)}` +
+              `&fixture=eq.${encodeURIComponent(fixture)}`, { fresh: true })).length;
+            const el = root.querySelector("#vote-count");
+            if (el) el.textContent = n
+              ? `${plural(n, "reader has voted", "readers have voted")} on this match.`
+              : "Nobody has voted on this match yet — be the first.";
+          } catch (e) { /* the next cycle retries */ }
+        }
+        timer = setTimeout(tick, 60_000);
+      };
+      timer = setTimeout(tick, 60_000);
+      root.addEventListener("view-teardown", () => clearTimeout(timer), { once: true });
+    },
   };
 }
 
@@ -203,11 +271,13 @@ async function castVote(el, { runId, fixture, left }) {
   const buttons = [...box.querySelectorAll("button")];
   buttons.forEach(b => { b.disabled = true; });
   el.textContent = "recording…";
+  const noteEl = box.querySelector("#vote-note");
+  const note = noteEl && noteEl.value.trim() ? noteEl.value.trim().slice(0, 280) : null;
 
   let answer;
   try {
     answer = await rpc("cast_vote", {
-      run_id: runId, fixture, chose: el.dataset.chose, left_side: left, voter: VOTER, note: null,
+      run_id: runId, fixture, chose: el.dataset.chose, left_side: left, voter: VOTER, note,
     });
     invalidate("votes");
   } catch (err) {
@@ -239,6 +309,7 @@ async function castVote(el, { runId, fixture, left }) {
       ? "Your reading and the score agree."
       : "Your reading and the score disagree — the interesting case. A harness can argue well "
         + "for a call that loses, and the rewriter is judging text too."}</p>
+    ${note ? html`<p class="note">Your note, as sent: “${note}”</p>` : ""}
     <p class="note">${answer && answer.already_voted
       ? "You had already voted on this match, so the earlier vote stands and this one was not stored."
       : "Vote recorded."}

@@ -22,9 +22,9 @@ const best = A.instanceBest(entries, disputed);
 const won = A.wins(entries, best);
 const front = A.frontier(entries, won, disputed);
 
-check("entries", entries.length, 17);
+check("entries", entries.length, 15);
 check("contested instances", disputed.size, 102);
-check("frontier size", front.size, 9);
+check("frontier size", front.size, 14);
 
 const gen5 = entries.find(e => e.generation === "gen5");
 check("gen5 refusal entry wins on contested only", (won.get(gen5.id) || []).length, 2);

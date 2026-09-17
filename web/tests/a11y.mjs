@@ -12,7 +12,9 @@ const { invalidate } = await import(`${W}/data.js`);
 
 const shell = readFileSync(`${W}/index.html`, "utf8");
 const views = {
-  runs: [(await import(`${W}/views/runs.js`)).runsView, { params: {}, query: {} }],
+  overview: [(await import(`${W}/views/overview.js`)).overviewView, { params: {}, query: {} }],
+  metrics: [(await import(`${W}/views/metrics.js`)).metricsView, { params: {}, query: {} }],
+  about: [(await import(`${W}/views/about.js`)).aboutView, { params: {}, query: {} }],
   run: [(await import(`${W}/views/run.js`)).runView, { params: { id: "gen1-floored" }, query: {} }],
   runExhausted: [(await import(`${W}/views/run.js`)).runView,
                  { params: { id: "gen5" }, query: { side: "baseline" } }],

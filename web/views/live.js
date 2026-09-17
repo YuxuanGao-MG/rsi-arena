@@ -11,10 +11,10 @@
  * not a promotion.
  */
 
-import { qAll, ApiError } from "../data.js";
+import { q, qAll, ApiError } from "../data.js";
 import { href } from "../routes.js";
 import {
-  html, raw, stat, pill, n3, price, cents, dir, empty, stamp, plural,
+  html, raw, toHTML, stat, pill, n3, price, cents, dir, empty, stamp, plural,
 } from "../dom.js";
 import { predictedVsRealised } from "../charts.js";
 import { pooled, pooledOnMoves } from "../stats.js";
@@ -117,7 +117,14 @@ export async function liveView({ signal }) {
           <th scope="col" class="n">said</th><th scope="col" class="n">printed</th>
           <th scope="col" class="n">skill</th><th scope="col">why it said so</th>
         </tr></thead>
-        <tbody>${rows.slice(0, 300).map(r => html`<tr>
+        <tbody id="live-rows">${rows.slice(0, 300).map(r => liveRow(r))}</tbody>
+      </table></div>
+    </section>`;
+  return finish(rows, body, { done, moved, pending, leagues, matches });
+}
+
+function liveRow(r, fresh = false) {
+  return html`<tr class="${raw(fresh ? "row-in" : "")}">
           <td class="crumb mono">${stamp(r.at)}</td>
           <th scope="row"><span class="mono ticker">${r.ticker}</span>
             <span class="crumb">${r.league || ""}${r.harness ? ` · ${r.harness}` : ""}</span></th>
@@ -132,10 +139,10 @@ export async function liveView({ signal }) {
             ? html`<span class="${raw(r.ok === false ? "down" : "crumb")}">${r.error_text}</span>`
             : ((r.output && r.output.driver) || "").slice(0, 160)
               || html`<span class="crumb">not recorded</span>`}</td>
-        </tr>`)}</tbody>
-      </table></div>
-    </section>`;
+        </tr>`;
+}
 
+function finish(rows, body, { done }) {
   return {
     title: "Live",
     heading: "The arena against a market it has not read the end of",
@@ -145,8 +152,40 @@ export async function liveView({ signal }) {
     body,
     ready: root => {
       if (done.length >= 4) predictedVsRealised(root.querySelector("#live-scatter"), done);
+      watchForNewRows(root, rows);
     },
   };
+}
+
+/**
+ * During a collection sweep a row lands every half minute; this page should
+ * show it without a reload. Polls the first page while the tab is visible,
+ * prepends anything newer than what is drawn, and stops with the route. New
+ * rows slide in; `prefers-reduced-motion` turns the slide off globally and
+ * the row still appears, because the update is content and the slide is not.
+ */
+function watchForNewRows(root, rows) {
+  let newest = rows.length ? rows[0].at : null;
+  const tbody = root.querySelector("#live-rows");
+  if (!tbody) return;
+  let timer = 0;
+  const tick = async () => {
+    if (typeof document !== "undefined" && document.hidden) return schedule();
+    try {
+      const fresh = await q(
+        `live_forecasts?select=${COLUMNS}&order=at.desc&limit=20`, { fresh: true });
+      const incoming = (fresh || []).map(derive)
+        .filter(r => !newest || new Date(r.at) > new Date(newest));
+      if (incoming.length) {
+        newest = incoming[0].at;
+        tbody.innerHTML = incoming.map(r => toHTML(liveRow(r, true))).join("") + tbody.innerHTML;
+      }
+    } catch (e) { /* the next cycle retries; the table is already honest */ }
+    schedule();
+  };
+  const schedule = () => { timer = setTimeout(tick, 30_000); };
+  schedule();
+  root.addEventListener("view-teardown", () => clearTimeout(timer), { once: true });
 }
 
 function notInstalled() {

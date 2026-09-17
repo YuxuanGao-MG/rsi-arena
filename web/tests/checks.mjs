@@ -127,8 +127,8 @@ check("gen4 is an incomplete record", runStatus(g4run), "incomplete");
 // The front page: exhausted and incomplete runs are gaps, never data points,
 // and never the best-of.
 invalidate();
-const { runsView } = await import(`${W}/views/runs.js`);
-const front = await runsView({ params: {}, query: {}, signal: new AbortController().signal });
+const { metricsView } = await import(`${W}/views/metrics.js`);
+const front = await metricsView({ params: {}, query: {}, signal: new AbortController().signal });
 const frontHTML = toHTML(front.body);
 const bestTile = frontHTML.slice(frontHTML.indexOf("best held-out skill") - 400,
                                  frontHTML.indexOf("best held-out skill"));
@@ -137,9 +137,8 @@ check("front page names the money running out", /ran out of money/.test(frontHTM
 check("gen4 renders as incomplete, never dropped", /incomplete/.test(frontHTML), true);
 const g4row = frontHTML.slice(frontHTML.indexOf('generation/gen4'), frontHTML.indexOf('generation/gen4') + 900);
 check("gen4's row does not say dropped", />dropped</.test(g4row), false);
-const tableSlice = frontHTML.slice(frontHTML.indexOf("<table"), frontHTML.indexOf("</table>"));
-check("no 0.000-to-0.000 interval renders", /\+0\.000 to \+0\.000/.test(tableSlice), false);
-check("the table marks the gaps", (tableSlice.match(/no measurement/g) || []).length, 2);
+check("metrics marks the gaps in its rows",
+      (frontHTML.match(/no measurement/g) || []).length >= 2, true);
 
 // The exhausted run's own page says what its windows are.
 invalidate();
@@ -157,6 +156,156 @@ const g5cand = await runView({ params: { id: "gen5" }, query: {},
                                signal: new AbortController().signal });
 check("the empty candidate side blames the money",
       /money ran out/.test(toHTML(g5cand.body)), true);
+
+// ---------------------------------------------------------------------------
+// The live chrome: four honest states, classified purely, plus the GitHub
+// fallback whose 403 path has to degrade rather than retry.
+
+const { classify, STALE_AFTER_S } = await import(`${W}/status.js`);
+const { isoAgo } = await import("./harness.mjs");
+const now = Date.now();
+
+const liveRow = { run_id: "gen7", phase: "search",
+  detail: { evaluations: 220, spent_usd: 14, budget_usd: 66 },
+  started_at: isoAgo(1800), updated_at: isoAgo(30) };
+const staleRow = { ...liveRow, updated_at: isoAgo(STALE_AFTER_S + 60) };
+const doneRow = { run_id: "gen5", phase: "done",
+  detail: { conclusion: "incomplete", reason: "budget exhausted during the baseline" },
+  started_at: isoAgo(9000), updated_at: isoAgo(7200) };
+const ghRunning = { workflow_runs: [{ id: 35181403396, status: "in_progress",
+                                      run_started_at: isoAgo(600) }] };
+const ghDone = { workflow_runs: [{ id: 35181403396, status: "completed", conclusion: "success" }] };
+
+let st = classify([liveRow], null, now);
+check("live: a fresh non-done row", st.kind, "live");
+check("live carries phase", st.phase, "search");
+check("live carries spend", st.spentUsd, 14);
+st = classify([staleRow], ghRunning, now);
+check("stale: a five-minute-silent row beats a running workflow", st.kind, "stale");
+check("stale keeps the last-seen time", !!st.lastSeen, true);
+st = classify([doneRow], ghRunning, now);
+check("running-blind: GitHub says executing, no heartbeat row", st.kind, "running-blind");
+st = classify([], ghRunning, now);
+check("running-blind with no rows at all", st.kind, "running-blind");
+st = classify([doneRow], ghDone, now);
+check("idle: the newest word is a verdict", st.kind, "idle");
+check("idle carries the conclusion", st.conclusion, "incomplete");
+st = classify([], null, now);
+check("idle with nothing anywhere", st.kind, "idle");
+
+// The overview hero renders each honest state, exported for exactly this.
+const { overviewView, heroFor } = await import(`${W}/views/overview.js`);
+invalidate();
+const ov = await overviewView({ params: {}, query: {}, signal: new AbortController().signal });
+const ovHTML = toHTML(ov.body);
+check("overview renders", ovHTML.length > 2000, true);
+check("overview offers the guess", /Will the next generation be promoted\?/.test(ovHTML), true);
+const ovTable = ovHTML.slice(ovHTML.indexOf("<table"), ovHTML.indexOf("</table>"));
+check("no 0.000-to-0.000 interval renders", /0\.000 to 0\.000/.test(ovTable), false);
+check("the overview table marks the gaps", (ovTable.match(/no measurement/g) || []).length, 2);
+
+const gFake = { runs: FX.runs, statusOf: new Map(FX.runs.map(r => [r.id, "complete"])),
+                level: new Map() };
+for (const [label, snap, want] of [
+  ["live", { kind: "live", run: "gen7", phase: "search", spentUsd: 14, budgetUsd: 66,
+             evaluations: 220, startedAt: isoAgo(1800), updatedAt: isoAgo(30) },
+   /gen7 · search/],
+  ["stale", { kind: "stale", run: "gen6", phase: "holdout", lastSeen: isoAgo(4000), ageS: 4000 },
+   /stopped mid-holdout/],
+  ["running-blind", { kind: "running-blind", ghRun: 35181403396, ghStatus: "in_progress",
+                      startedAt: isoAgo(600) }, /no progress row exists/],
+  ["idle", { kind: "idle", lastRun: "gen5", conclusion: "incomplete",
+             reason: "budget exhausted during the baseline" }, /next generation/],
+]) {
+  const out = toHTML(heroFor(snap, gFake));
+  check(`hero ${label} says the right thing`, want.test(out), true);
+  check(`hero ${label} leaks nothing`, /undefined|NaN|\[object/.test(out), false);
+}
+check("hero live shows a budget meter",
+      /budget-meter/.test(toHTML(heroFor({ kind: "live", run: "g", phase: "search",
+        spentUsd: 14, budgetUsd: 66, startedAt: isoAgo(60), updatedAt: isoAgo(5) }, gFake))), true);
+check("hero idle counts down to both crons",
+      (toHTML(heroFor({ kind: "idle" }, gFake)).match(/data-tick="until"/g) || []).length, 2);
+check("hero reconnecting is labelled",
+      /reconnecting/.test(toHTML(heroFor({ kind: "idle", reconnecting: true }, gFake))), true);
+check("hero shows a running collection",
+      /live collection sweep/.test(toHTML(heroFor({ kind: "idle",
+        collection: { running: true, id: 9, startedAt: isoAgo(120) } }, gFake))), true);
+
+// The countdown arithmetic, against hand-computed instants.
+const { nextLoopRun, nextLiveRun, untilText } = await import(`${W}/clock.js`);
+const wed2am = Date.UTC(2026, 8, 16, 2, 0);        // a Wednesday
+check("loop cron from 02:00 is 03:17 same day",
+      new Date(nextLoopRun(wed2am)).toISOString(), "2026-09-16T03:17:00.000Z");
+check("live cron on a weekday is 19:05",
+      new Date(nextLiveRun(wed2am)).toISOString(), "2026-09-16T19:05:00.000Z");
+check("live cron after Saturday 15:05 is Sunday 01:05",
+      new Date(nextLiveRun(Date.UTC(2026, 8, 19, 16, 0))).toISOString(),
+      "2026-09-20T01:05:00.000Z");
+check("countdown text", untilText(wed2am + 4 * 3600e3 + 12 * 60e3, wed2am), "in 4h 12m");
+
+// The collection rides along on classify.
+const withLive = { workflow_runs: [
+  { id: 1, status: "completed", path: ".github/workflows/loop.yml" },
+  { id: 2, status: "in_progress", path: ".github/workflows/live.yml",
+    run_started_at: isoAgo(300) }] };
+st = classify([doneRow], withLive, now);
+check("idle while collecting stays idle", st.kind, "idle");
+check("but carries the collection", !!(st.collection && st.collection.running), true);
+
+// ---------------------------------------------------------------------------
+// The feedback surfaces, against the stateful RPC stubs.
+
+const { rpc } = await import(`${W}/data.js`);
+const { rpcState } = await import("./harness.mjs");
+const me = "test-voter-1";
+
+// Cast, then read the tally back; switch sides, and the count stays one.
+let fb = await rpc("flag_trace", { rollout_id: 3, verdict: "bad", voter: me });
+check("flag stored", fb.stored, true);
+check("tally counts both voters", (fb.tally.good || 0) + (fb.tally.bad || 0), 2);
+fb = await rpc("flag_trace", { rollout_id: 3, verdict: "good", voter: me });
+check("switching sides keeps one row",
+      (fb.tally.good || 0) + (fb.tally.bad || 0) + (fb.tally.unsure || 0), 2);
+check("and moves the verdict", fb.tally.good, 2);
+
+// The guess: cast, switch, crowd stays the same size.
+fb = await rpc("cast_guess", { guess: true, voter: me });
+const crowdBefore = fb.crowd.yes + fb.crowd.no;
+fb = await rpc("cast_guess", { guess: false, voter: me });
+check("switching a guess replaces it", fb.crowd.yes + fb.crowd.no, crowdBefore);
+
+// The RPC's own error text reaches the caller.
+rpcState.fail = "verdict must be good, bad or unsure";
+let msg = "";
+try { await rpc("flag_trace", { rollout_id: 3, verdict: "bad", voter: me }); }
+catch (e) { try { msg = JSON.parse(e.detail).message; } catch (x) { msg = ""; } }
+rpcState.fail = null;
+check("the RPC's human message survives the error path",
+      msg, "verdict must be good, bad or unsure");
+
+// Guess grading, both outcomes, pure.
+const { build } = await import(`${W}/guess.js`);
+const asProphet = build(FX.guesses, FX.runs, "prophet");
+check("a pre-run 'no' against a rejected run is a hit",
+      !!(asProphet.mine && asProphet.myGrade && asProphet.myGrade.hit), true);
+const asOptimist = build(FX.guesses, FX.runs, "optimist");
+check("a pre-run 'yes' against a rejected run is a miss",
+      !!(asOptimist.myGrade && asOptimist.myGrade.hit === false), true);
+check("the crowd hit rate counts both outcomes",
+      asProphet.graded >= 2 && asProphet.hitRate > 0 && asProphet.hitRate < 1, true);
+check("an open guess after every run stays ungraded",
+      build(FX.guesses, FX.runs, "hopeful").myGrade, null);
+
+// GH 403: the poller marks the API down and stops asking inside the hour.
+const { external } = await import(`${W}/data.js`);
+state.gh403 = true;
+let got403 = false;
+try {
+  await external("https://api.github.com/repos/YuxuanGao-MG/rsi-arena/actions/workflows/loop.yml/runs?per_page=1");
+} catch (e) { got403 = e.status === 403; }
+check("GitHub 403 surfaces as a typed http error", got403, true);
+state.gh403 = false;
 
 console.log(bad ? `\n${bad} check(s) failed` : "\nall checks passed");
 process.exit(bad ? 1 : 0);
