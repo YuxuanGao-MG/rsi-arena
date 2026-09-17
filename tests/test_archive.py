@@ -153,3 +153,30 @@ def test_reads_a_gepa_state_whose_rows_are_dicts(tmp_path):
 
 def test_a_missing_gepa_state_is_not_an_error(tmp_path):
     assert from_gepa_state(tmp_path, "g", ["i0"], lambda c: "x") == []
+
+
+# -- running out of money ------------------------------------------------------
+
+def test_an_account_402_reads_as_exhaustion_not_as_a_quiet_harness():
+    """The consequence is the same; the failure mode is worse.
+
+    Our own ceiling refuses instantly and says so. A 402 is a per-call provider
+    error, which the runner records and scores as silence — so a run that has
+    simply run out of money produces a full set of rollouts that read as a
+    harness which chose to stay quiet, and every number computed from them is
+    wrong in a way nothing announces.
+    """
+    from rsi_arena.harness import OpenRouter
+
+    client = OpenRouter(budget_usd=100.0, cache=False)
+    assert client.over_budget is False
+    client.starved = True
+    assert client.over_budget is True, "a starved account is over budget whatever the ceiling says"
+
+
+def test_a_ceiling_of_none_still_answers_the_question():
+    from rsi_arena.harness import OpenRouter
+    client = OpenRouter(cache=False)
+    assert client.budget_usd is None and client.over_budget is False
+    client.spent_usd = 10_000.0
+    assert client.over_budget is False, "no ceiling means no ceiling"

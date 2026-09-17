@@ -125,6 +125,9 @@ class OpenRouter:
         #: Total this client may spend before it refuses to call out. None is no
         #: ceiling, which is what every run before today had.
         self.budget_usd = budget_usd
+        #: Set when the provider says the account has no credit. Distinct from
+        #: the ceiling because nobody chose it.
+        self.starved = False
 
     @property
     def over_budget(self) -> bool:
@@ -134,6 +137,8 @@ class OpenRouter:
         nothing and refusing one would make an exhausted generation report
         differently on a re-run than it did the first time.
         """
+        if self.starved:
+            return True
         return self.budget_usd is not None and self.spent_usd >= self.budget_usd
 
     def _bind(self) -> None:
@@ -250,6 +255,17 @@ class OpenRouter:
                 await asyncio.sleep(wait + random.random() * 0.5)
                 delay *= 2
                 continue
+            if resp.status_code == 402:
+                # The account is out, not the generation. Same consequence and a
+                # worse failure mode: our own ceiling refuses instantly and says
+                # so, while a 402 is a per-call error that the runner records as
+                # a provider failure and scores as silence — so a run that has
+                # simply run out of money produces a full set of rollouts that
+                # read as a harness which chose to stay quiet, and every number
+                # computed from them is wrong in a way nothing announces.
+                self.starved = True
+                raise GenerationBudgetExceeded(self.spent_usd,
+                                               float(self.budget_usd or self.spent_usd))
             raise LLMError(resp.status_code, resp.text[:500])
         raise LLMError(None, "unreachable")
 
