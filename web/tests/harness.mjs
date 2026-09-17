@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+const HERE = dirname(fileURLToPath(import.meta.url));
 import { readFileSync } from "node:fs";
 
-const FX = JSON.parse(readFileSync("/tmp/rsicheck/fixtures.json", "utf8"));
+const FX = JSON.parse(readFileSync(join(HERE, "fixtures.json"), "utf8"));
 export const state = { failNext: null, calls: [] };
 
 function el(tag = "div") {

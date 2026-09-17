@@ -35,3 +35,11 @@ jobs:
             echo "--- $check"
             node "web/tests/$check.mjs"
           done
+      # They passed on the machine that wrote them because they imported
+      # /tmp/rsicheck/harness.mjs by absolute path and that directory was still
+      # there. Every path is resolved from the test file now; this proves it,
+      # cheaply, on a runner that has never had such a directory.
+      - name: No check may reach outside the repository
+        run: |
+          ! grep -rn "/tmp/\|/Users/\|/home/" web/tests/*.mjs || \
+            { echo "::error::a reader check refers to a path outside the repository"; exit 1; }

@@ -1,6 +1,12 @@
-import { state, root } from "/tmp/rsicheck/harness.mjs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+// Resolved from this file, not from where it happened to be written. These
+// imported absolute paths into /tmp and passed locally for exactly as long as
+// that directory survived, which is the oldest bug there is.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const W = join(HERE, "..");
+import { state, root } from "./harness.mjs";
 import { readFileSync } from "node:fs";
-const W = "/Users/vincent_lancaster/Desktop/OctoMesh/rsi-arena-mine/web";
 const { toHTML } = await import(`${W}/dom.js`);
 const { invalidate } = await import(`${W}/data.js`);
 
