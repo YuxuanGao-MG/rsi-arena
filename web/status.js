@@ -24,8 +24,8 @@ import { q, external, ApiError } from "./data.js";
 /** Mirrors rsi_arena/loop/progress.py:STALE_AFTER_S. */
 export const STALE_AFTER_S = 300;
 
-/** The loop's cron ("17 3 * * *"), stated rather than computed. */
-export const NEXT_SCHEDULED = "03:17 UTC";
+/** The loop's crons, stated for prose; clock.js computes the countdown. */
+export const NEXT_SCHEDULED = "03:17 UTC (retried 05:47)";
 
 // Repo-level rather than per-workflow: one request covers both the loop and
 // the live collector, and 60/hr splits badly in two.

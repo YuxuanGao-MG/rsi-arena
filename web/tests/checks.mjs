@@ -237,6 +237,9 @@ const { nextLoopRun, nextLiveRun, untilText } = await import(`${W}/clock.js`);
 const wed2am = Date.UTC(2026, 8, 16, 2, 0);        // a Wednesday
 check("loop cron from 02:00 is 03:17 same day",
       new Date(nextLoopRun(wed2am)).toISOString(), "2026-09-16T03:17:00.000Z");
+check("after 03:17 the retry at 05:47 is next",
+      new Date(nextLoopRun(Date.UTC(2026, 8, 16, 4, 0))).toISOString(),
+      "2026-09-16T05:47:00.000Z");
 check("live cron on a weekday is 19:05",
       new Date(nextLiveRun(wed2am)).toISOString(), "2026-09-16T19:05:00.000Z");
 check("live cron after Saturday 15:05 is Sunday 01:05",

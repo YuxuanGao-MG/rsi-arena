@@ -18,12 +18,16 @@
 
 import { relative, elapsed } from "./status.js";
 
-/** Next 03:17 UTC — the loop's cron. Pure, for the tests. */
+/** Next chance for a generation: 03:17 UTC, retried 05:47 — one runs per day.
+ * GitHub's scheduler is best-effort, so the loop fires twice and a guard keeps
+ * the second firing from meaning a second generation. Pure, for the tests. */
 export function nextLoopRun(now = Date.now()) {
   const t = new Date(now);
-  const next = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), 3, 17));
-  if (next <= t) next.setUTCDate(next.getUTCDate() + 1);
-  return next.getTime();
+  const candidates = [];
+  for (let d = 0; d < 2; d++)
+    for (const [h, m] of [[3, 17], [5, 47]])
+      candidates.push(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + d, h, m));
+  return Math.min(...candidates.filter(c => c > now));
 }
 
 /** Next live collection: 19:05 UTC Mon–Fri, 15:05 Sat–Sun, 01:05 daily. */

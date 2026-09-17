@@ -246,7 +246,7 @@ export function heroFor(s, g) {
       : html`No run has reported yet.`}</p>
     <div class="cards hero-cards">
       ${stat({ value: raw(`<time data-tick="until" data-target="loop">…</time>`),
-               label: "next generation", note: "daily at 03:17 UTC" })}
+               label: "next generation", note: "daily at 03:17 UTC, retried 05:47" })}
       ${stat({ value: raw(`<time data-tick="until" data-target="live">…</time>`),
                label: "next live collection",
                note: "19:05 weekdays · 15:05 weekends · 01:05 daily, UTC" })}
