@@ -178,6 +178,15 @@ jobs:
         if: github.event_name == 'schedule' || inputs.chain
         run: |
           eval "$(rsi-arena next --runs-dir runs --seed harnesses/horizon-5m.json)"
+          # eval of an empty substitution returns 0, so if `next` dies this step
+          # goes green with empty outputs — and on a schedule the downstream
+          # fallbacks are empty too, which makes Path('') the repository root.
+          # Same shape as the --holdout '' bug, fixed for inputs.* and left
+          # standing here until now.
+          if [ -z "$harness" ] || [ -z "$run_dir" ]; then
+            echo "::error::rsi-arena next produced no chain; refusing to guess where this generation goes"
+            exit 1
+          fi
           echo "harness=$harness"          >> "$GITHUB_OUTPUT"
           echo "run_dir=$run_dir"          >> "$GITHUB_OUTPUT"
           echo "generations=$generations"  >> "$GITHUB_OUTPUT"
