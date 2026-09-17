@@ -15,3 +15,23 @@ jobs:
           cache: pip
       - run: pip install -e ".[dev]"
       - run: pytest -q
+
+  # The reader has its own checks, in node, because the failures they catch are
+  # not the kind pytest can see: the site once showed the best of the worst five
+  # hundred windows under a heading that said "Where it won", and no Python test
+  # could have known. They drive the real router against fixtures built from the
+  # real run directories.
+  reader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check the reader
+        run: |
+          set -o pipefail
+          for check in router checks arch a11y vote; do
+            echo "--- $check"
+            node "web/tests/$check.mjs"
+          done
