@@ -15,13 +15,14 @@ on:
   # lineage is on gen4 or gen5. A schedule that always started from the seed
   # would not be a lineage, only the same experiment repeated.
   schedule:
-    # One a day, not two. Two was chosen when a generation was believed to cost
-    # thirty dollars; it costs about fifty, and the pair of them could not both
-    # finish inside a sane daily cap. A generation that runs to the end and
-    # reports a verdict is worth more than two that run out of money, because a
-    # generation that stops halfway does not produce a weak result - it produces
-    # refusals, which read like a result and are not one.
+    # One generation a day, with two chances to start it. GitHub's scheduler is
+    # documented best-effort and it means it: on 17 September neither this
+    # workflow's 03:17 nor live.yml's 01:05 fired at all. The second cron is the
+    # retry; the once-a-day guard below makes the pair safe, so two firings can
+    # never mean two generations - the day cap is about money, this is about
+    # not running the experiment twice because the scheduler hiccuped once.
     - cron: "17 3 * * *"
+    - cron: "47 5 * * *"
   workflow_dispatch:
     inputs:
       command:
@@ -183,9 +184,44 @@ jobs:
       # Fifteen things that have to hold before a generation is worth paying
       # for, none of which need a key. Every one of them is something that went
       # wrong here and was found after a run rather than before one.
+      # The second cron's safety: a schedule finds a generation already made
+      # today and starts nothing. Reads the manifests in the checkout rather
+      # than asking an API, because the checkout is what the run would chain
+      # from anyway. Manual dispatches skip this on purpose - a person
+      # re-running after a fix knows why they are doing it.
+      - name: One a day means one
+        id: today
+        if: github.event_name == 'schedule'
+        run: |
+          latest=$(python - <<'EOF'
+          import json, pathlib
+          # Only generations that reached a verdict count. A crashed partial
+          # gets committed too (the commit step runs on failure so nothing is
+          # lost), and if it counted, an early crash would block the very retry
+          # this guard exists to make safe.
+          done = []
+          for d in pathlib.Path("runs").glob("*"):
+              m = d / "manifest.json"
+              if not m.exists():
+                  continue
+              j = json.loads(m.read_text())
+              if j.get("decision"):
+                  done.append(j.get("created", ""))
+          print(max(done)[:10] if done else "")
+          EOF
+          )
+          today=$(date -u +%Y-%m-%d)
+          if [ "$latest" = "$today" ]; then
+            echo "made=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=already ran today::a generation dated $today exists; this firing starts nothing"
+            echo "### Skipped - a generation already ran today ($today)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "made=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Where this generation goes
         id: chain
-        if: github.event_name == 'schedule' || inputs.chain
+        if: steps.today.outputs.made != 'true' && (github.event_name == 'schedule' || inputs.chain)
         run: |
           eval "$(rsi-arena next --runs-dir runs --seed harnesses/horizon-5m.json)"
           # eval of an empty substitution returns 0, so if `next` dies this step
@@ -208,7 +244,7 @@ jobs:
       # priced it against answers that split does not own.
       - name: Preflight
         id: preflight
-        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        if: steps.today.outputs.made != 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
           python scripts/preflight.py \
             --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
@@ -241,7 +277,7 @@ jobs:
       # produces refusals that read like a verdict.
       - name: What this generation may spend
         id: ceiling
-        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        if: steps.today.outputs.made != 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         shell: bash
         run: |
           predicted="${{ steps.preflight.outputs.predicted_usd || '0' }}"
@@ -296,7 +332,7 @@ jobs:
           echo "usd=$usd" >> "$GITHUB_OUTPUT"
 
       - name: Optimize
-        if: steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
+        if: steps.today.outputs.made != 'true' && steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
           harness="${{ steps.chain.outputs.harness || inputs.harness }}"
           run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
