@@ -51,12 +51,13 @@ class Settings:
     # twenty cents; until today nothing capped the thousand runs around it, so
     # the real ceiling was `max_metric_calls` times whatever a window happened
     # to cost — and a candidate that grows the context roughly doubles that.
-    # Sized against what the split actually costs. At a hundred held-out matches
-    # and eight windows each, one side of the held-out evaluation is eight
-    # hundred windows at roughly two cents; with the probe and a six-hundred-call
-    # search that is about fifty dollars the first time. Later generations are
-    # cheaper because the incumbent's held-out rollouts are still in the cache
-    # until the held-out set rotates. Sixty is a backstop, not a plan.
+    # Sized against what a generation measurably costs, which is not what it was
+    # estimated to cost. gen5 paid $12.08 for 357 windows that reached the model:
+    # 3.4 cents each, against the 1.3 the docs had claimed since a different task
+    # model. At a hundred held-out matches and four windows each, a cold
+    # generation is about $53 and a warm one - the incumbent's held-out rollouts
+    # still cached - is nearer $35. Sixty is a backstop, and `scripts/preflight.py`
+    # now refuses to run a split the ceiling cannot buy.
     max_generation_usd: float = 60.0
     # Train matches the candidate is scored on. Doubles as the regression
     # check, so the full train set is never re-scored: the gate asks of train

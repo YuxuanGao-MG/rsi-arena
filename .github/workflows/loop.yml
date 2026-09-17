@@ -53,7 +53,15 @@ on:
         default: "60"
       per_fixture:
         description: "windows kept per match; 0 keeps all. Power comes from matches, not windows within one"
-        default: "8"
+        # Four, not eight, and chosen on the science rather than the bill - though
+        # the bill is what prompted the question. What the gate can resolve is set
+        # by the number of *matches*: thirty-four windows of one match share a
+        # scoreline and a five-minute horizon, and a goal moves all of them at
+        # once, so they are closer to one observation than to thirty-four. Halving
+        # the windows within a match costs little resolution; halving the matches
+        # would cost a lot. It also takes a cold generation from $86 to $53, which
+        # is the difference between fitting the ceiling and not.
+        default: "4"
       max_generation_usd:
         description: "backstop on the whole generation; 0 removes it"
         default: "60"
@@ -161,7 +169,7 @@ jobs:
             --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
             --holdout "${{ inputs.holdout || '100' }}" \
             --audit "${{ inputs.audit || '60' }}" \
-            --per-fixture "${{ inputs.per_fixture || '8' }}" \
+            --per-fixture "${{ inputs.per_fixture || '4' }}" \
             --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
 
       # The ceiling, reconciled with what is actually on the key.
@@ -213,7 +221,7 @@ jobs:
                 --holdout "${{ inputs.holdout || '100' }}"
                 --audit "${{ inputs.audit || '60' }}"
                 --generation "${{ steps.chain.outputs.generations || '0' }}"
-                --per-fixture "${{ inputs.per_fixture || '8' }}"
+                --per-fixture "${{ inputs.per_fixture || '4' }}"
                 --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
                 --max-generation-usd "${{ steps.ceiling.outputs.usd }}"
                 --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")

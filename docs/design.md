@@ -47,8 +47,17 @@ monotone by construction rather than by hope.
 same windows scored -1.18%, +1.18%, +1.18%. That is the same order as the effect
 the loop exists to detect, and it belongs beside every gain ever reported.
 
-**Cost is $0.013 a window**, and a candidate that grew the context roughly
-doubled it.
+**Cost is $0.034 a window.** Measured, from gen5: $12.08 for 357 windows that
+reached the model. The figure here said $0.013 for a month, from a run under a
+different task model, and the gap is why a generation was believed to cost $50
+when it costs $86 at eight windows a match. `scripts/preflight.py` now refuses
+to start a split whose ceiling cannot buy it, which is the check that would have
+caught it before two runs died for money rather than for evidence.
+
+At a hundred held-out matches and four windows each: **a cold generation is
+about $53, a warm one about $35** — warm meaning the incumbent's held-out
+rollouts are still cached, which holds until the held-out set rotates. Two a
+day is therefore $70–$106, not the $60 the workflow's own comment claimed.
 
 ### The question set
 

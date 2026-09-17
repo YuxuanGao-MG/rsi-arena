@@ -78,10 +78,20 @@ check("held-out is large enough for the test to mean something", len(hg) >= 40,
 _cap = s.per_fixture or 10 ** 6
 check("windows per match respect --per-fixture", max(groups.values()) <= _cap,
       f"max {max(groups.values())}, cap {s.per_fixture or 'none'}")
-_cost = len(inst) * 0.025
-check("a generation fits its budget", s.max_generation_usd > 0, f"ceiling ${s.max_generation_usd:.0f}")
-check("the question set is not itself the runaway", _cost < 400,
-      f"{len(inst)} windows is about ${_cost:.0f} per full pass")
+# Measured, not assumed: gen5 paid $12.08 for 357 windows that reached the model.
+# The docs said $0.013 a window for a year, which was a different model.
+PER_WINDOW = 0.034
+_probe = min(s.cascade or len(tg), len(tg)) * (s.per_fixture or 8)
+_cold = ((_probe + len(hold)) * 2 + s.max_metric_calls) * PER_WINDOW
+check("a generation has a ceiling", s.max_generation_usd > 0, f"${s.max_generation_usd:.2f}")
+# The one that would have saved two runs: a ceiling below what the split costs is
+# not a budget, it is a guarantee of an incomplete generation. gen5 ran to the
+# end of its money and reported the difference between two sets of refusals as a
+# result.
+check("the ceiling can actually buy this split", s.max_generation_usd >= _cold * 0.9,
+      f"a cold generation is about ${_cold:.0f}; the ceiling is ${s.max_generation_usd:.2f}")
+check("the question set is not itself the runaway", len(inst) * PER_WINDOW < 600,
+      f"{len(inst)} windows is about ${len(inst) * PER_WINDOW:.0f} per full pass")
 moved = sum(1 for i in inst if abs(i.realised - i.mid_now) >= 0.01)
 check("enough windows actually move", moved / len(inst) > 0.4, f"{moved}/{len(inst)} moved >= 1c")
 
