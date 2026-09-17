@@ -23,6 +23,12 @@ on:
     # not running the experiment twice because the scheduler hiccuped once.
     - cron: "17 3 * * *"
     - cron: "47 5 * * *"
+    # Four crons across two workflows were dropped inside thirty hours - not
+    # delayed, never delivered. The likely cause is our own churn: every push
+    # to this file re-registers its schedules, and the file was pushed all
+    # night. A third chance costs nothing when an earlier one succeeded, and
+    # the guard makes any number of chances mean one generation.
+    - cron: "17 9 * * *"
   workflow_dispatch:
     inputs:
       command:
