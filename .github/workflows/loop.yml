@@ -65,6 +65,9 @@ on:
       max_generation_usd:
         description: "backstop on the whole generation; 0 removes it"
         default: "60"
+      max_day_usd:
+        description: "if the key has already spent this much today, start nothing"
+        default: "80"
       trace:
         description: "keep every step each harness took, so the reader can show it"
         type: boolean
@@ -167,19 +170,45 @@ jobs:
         shell: bash
         run: |
           want="${{ inputs.max_generation_usd || '60' }}"
+          cap="${{ inputs.max_day_usd || '80' }}"
+          # /key reports what this key has spent today, this week and this month,
+          # across everything using it. The balance alone is not enough of a
+          # guard: it says what is left, not what has already gone, and one
+          # dispatched run once spent four hours and about two hundred dollars
+          # on an experiment nobody could read while the balance still looked
+          # healthy. This asks both questions.
+          read_key="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d.get('usage_daily') or 0), 4))"
           read_balance="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d['total_credits']) - float(d['total_usage']), 4))"
           left=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
                    https://openrouter.ai/api/v1/credits 2>/dev/null \
                  | python -c "$read_balance" 2>/dev/null || echo unknown)
+          today=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+                    https://openrouter.ai/api/v1/key 2>/dev/null \
+                  | python -c "$read_key" 2>/dev/null || echo unknown)
+
           if [ "$left" = "unknown" ]; then
             echo "::warning title=balance unknown::could not read the OpenRouter balance; using the configured ceiling"
             usd="$want"
           else
             usd=$(python -c "print(round(min(float('$want'), float('$left')/2), 2))")
-            echo "\$$left on the key; this generation may spend \$$usd of a requested \$$want"
+          fi
+
+          # The day's cap is a stop, not a trim. A generation given half of what
+          # it needs produces a set of refusals, which is worse than nothing
+          # because it looks like a result.
+          if [ "$today" != "unknown" ] && python -c "import sys; sys.exit(0 if float('$today') >= float('$cap') else 1)"; then
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=daily cap reached::\$$today spent today, at or over the \$$cap cap; not starting a generation"
+            { echo "### Generation skipped";
+              echo "\$$today has gone on this key today, against a \$$cap daily cap. Nothing was started.";
+              echo "Raise \`max_day_usd\` on a manual run if that is wrong."; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "\$$left on the key, \$$today spent today; this generation may spend \$$usd of a requested \$$want"
+            { echo "### Budget";
+              echo "- balance \$$left, spent today \$$today of a \$$cap cap, ceiling \$$usd"; } >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "usd=$usd" >> "$GITHUB_OUTPUT"
-          { echo "### Budget"; echo "- balance \$$left, ceiling \$$usd"; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Where this generation goes
         id: chain
@@ -196,7 +225,7 @@ jobs:
       # was checked a different split from the one the run would use - and
       # priced it against answers that split does not own.
       - name: Preflight
-        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        if: steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
           python scripts/preflight.py \
             --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
@@ -218,7 +247,7 @@ jobs:
       # reach it. Half the balance, so a second generation in the same day still
       # has something to spend.
       - name: Optimize
-        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        if: steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
           harness="${{ steps.chain.outputs.harness || inputs.harness }}"
           run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
