@@ -36,6 +36,8 @@ globalThis.window = globalThis;
 globalThis.RSI = { url: "https://example.supabase.co", key: "anon-key",
                    credit: { remaining: "12.40", total: "5626", asOf: "2026-09-16" } };
 
+class FilterError extends Error {}
+
 function rows(table, params) {
   let out = [...(FX[table] || [])];
   for (const [key, raw] of params) {
@@ -46,6 +48,14 @@ function rows(table, params) {
     else if (op === "in") {
       const list = value.replace(/^\(|\)$/g, "").split(",").map(s => s.replace(/^"|"$/g, ""));
       out = out.filter(r => list.includes(String(r[key])));
+    } else {
+      // PostgREST answers 400 "failed to parse filter" for an operator it does
+      // not know — including a bare value, which is what `run_id=gen5` is. This
+      // fixture used to shrug and skip the filter, so a query the real backend
+      // rejects passed every check here while every generation page on the live
+      // site was an error. A fixture more lenient than production is a fixture
+      // that certifies broken pages.
+      throw new FilterError(`failed to parse filter (${raw})`);
     }
   }
   const order = params.get("order");
@@ -71,7 +81,15 @@ globalThis.fetch = async (url, opts = {}) => {
   const table = u.pathname.replace("/rest/v1/rsi_", "");
   if (!FX[table]) return { ok: false, status: 404, headers: hdr("application/json"),
                            text: async () => '{"code":"PGRST205"}' };
-  const all = rows(table, u.searchParams);
+  let all;
+  try {
+    all = rows(table, u.searchParams);
+  } catch (e) {
+    if (e instanceof FilterError)
+      return { ok: false, status: 400, headers: hdr("application/json"),
+               text: async () => JSON.stringify({ code: "PGRST100", message: e.message }) };
+    throw e;
+  }
   const range = (opts.headers || {}).Range;
   if (range) {
     const [from, to] = range.split("-").map(Number);

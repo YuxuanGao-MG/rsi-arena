@@ -24,7 +24,12 @@ export async function runView({ params, query, signal }) {
   const side = query.side === "baseline" ? "baseline" : "candidate";
   if (!id) return { title: "Generation", heading: "No generation named", body: empty("Pick one from the list.") };
 
-  const base = `rollouts?run_id=${encodeURIComponent(id)}&side=eq.${side}&split=eq.holdout`;
+  // `eq.` is the operator, not decoration. Without it PostgREST answers 400
+  // "failed to parse filter" — and because the test fixtures accepted the
+  // malformed filter, every generation link on the live site was an error page
+  // while the whole suite stayed green. The fixture server now rejects
+  // operator-less filters the way PostgREST does; see tests/harness.mjs.
+  const base = `rollouts?run_id=eq.${encodeURIComponent(id)}&side=eq.${side}&split=eq.holdout`;
   // The run record and the windows do not depend on one another; serial awaits
   // here used to cost a round trip each.
   const [[run], allRaw] = await Promise.all([
