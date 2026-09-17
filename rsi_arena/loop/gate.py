@@ -106,7 +106,7 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
            candidate_holdout: list[Rollout], incumbent_holdout: list[Rollout],
            max_cost_ratio: float = 2.0, seed: int = 0,
            unchanged: bool = False, min_groups: int = MIN_GROUPS,
-           stopped_early: bool = False) -> Decision:
+           stopped_early: bool = False, exhausted: bool = False) -> Decision:
     """Promote a candidate, or say why not.
 
     ``unchanged`` is for the case the first real run hit: GEPA's best was the
@@ -127,6 +127,19 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         return Decision(accepted=False, holdout=hold, train=train,
                         reasons=["the search returned the incumbent unchanged; "
                                  "nothing was proposed to gate"])
+    if exhausted:
+        # Running out of money and being rejected by the cascade both stop the
+        # run before held-out, and for a while they produced the same sentence.
+        # The first generation it happened to reported "the cascade rejected it
+        # on 20 train matches (+0.136)" — a positive number, in a sentence
+        # claiming rejection, describing neither. The candidate had scored zero
+        # because every call was refused, the incumbent had scored -0.136
+        # because half of its calls were, and the difference between two sets of
+        # refusals is not a measurement of anything. A generation that ran out
+        # of money has no result to report and must not report one.
+        return Decision(accepted=False, holdout=hold, train=train,
+                        reasons=["the generation ran out of money before it could be "
+                                 "judged; the numbers above are refusals, not evidence"])
     if stopped_early:
         # The cascade rejected it on a sample of train, so held-out was never
         # run and there is nothing to draw an interval from. Saying "no

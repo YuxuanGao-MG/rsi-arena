@@ -180,3 +180,57 @@ def test_a_ceiling_of_none_still_answers_the_question():
     assert client.budget_usd is None and client.over_budget is False
     client.spent_usd = 10_000.0
     assert client.over_budget is False, "no ceiling means no ceiling"
+
+
+def test_an_exhausted_client_stops_the_evaluation_immediately():
+    """A refused call is instant; the plan that reaches it is not.
+
+    The tool steps still run, and they are rate-limited reads against the
+    exchange. A generation that exhausted its budget early kept grinding through
+    eight hundred held-out windows at exchange speed, spending nothing and
+    finishing nothing, until the job timeout.
+    """
+    import asyncio
+    from rsi_arena.loop import evaluate
+    from rsi_arena.harness import Harness
+
+    class Spent:
+        over_budget = True
+        calls = 0
+
+        async def complete(self, *a, **k):        # pragma: no cover - must never run
+            raise AssertionError("asked a client that has nothing left")
+
+    class Inst:
+        id = "i0"
+        group = "g"
+
+        def to_dict(self):
+            return {}
+
+    class Task:
+        name = "t"
+        inputs = frozenset({"question", "game"})
+
+        def toolbox(self, i):
+            # Enough for harness.check to pass, so the test reaches the guard
+            # rather than tripping over an unrelated one.
+            from rsi_arena.harness.tools import FunctionTool, Toolbox
+            return Toolbox([FunctionTool(name=n, description=n, fn=lambda **k: {})
+                            for n in ("market_quote", "candlesticks", "previous_trades")])
+
+        def run_inputs(self, i):
+            return {}
+
+        def failed(self, i, why):
+            from rsi_arena.loop import Outcome
+            return Outcome(value=0.5, feedback=why, objectives={}, details={"scored": False})
+
+        def score(self, i, run):                  # pragma: no cover - must never run
+            raise AssertionError("scored a run that was never made")
+
+    rollouts = asyncio.run(evaluate(Task(), Harness.load("harnesses/horizon-5m.json"),
+                                    [Inst(), Inst()], Spent()))
+    assert len(rollouts) == 2
+    assert all(r.run is None for r in rollouts)
+    assert "budget" in rollouts[0].outcome.feedback

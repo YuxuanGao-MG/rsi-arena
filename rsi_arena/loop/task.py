@@ -181,6 +181,18 @@ async def evaluate(task: Task, harness: Harness, instances: list[Instance], llm:
     gate = asyncio.Semaphore(concurrency)
 
     async def one(instance: Instance) -> Rollout:
+        # Once the money is gone, stop doing the work that leads to spending it.
+        #
+        # A refused model call is instant, but the plan that reaches it is not:
+        # the tool steps still run, and they are rate-limited reads against the
+        # exchange. A generation that exhausted its budget early therefore kept
+        # grinding through eight hundred held-out windows at exchange speed,
+        # spending nothing and finishing nothing, until the job timeout. The
+        # outcome is identical either way — silence — so it is worth nothing and
+        # costs forty minutes.
+        if getattr(llm, "over_budget", False):
+            return Rollout(instance=instance, run=None,
+                           outcome=task.failed(instance, "the generation's budget was gone"))
         runner = Runner(llm, task.toolbox(instance))
         async with gate:
             run = await runner.run(harness, **task.run_inputs(instance))

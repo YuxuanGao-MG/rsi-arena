@@ -428,11 +428,11 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     else:
         cand_train = _bench(task, candidate, train, llm, s)
 
-    if llm.over_budget and not stopped_early:
+    exhausted = llm.over_budget
+    if exhausted and not stopped_early:
         log("  not scoring held-out: the generation's budget is already gone, and a "
             "half-paid held-out set is worse than none")
-        stopped_early = True
-    if not stopped_early:
+    if not stopped_early and not exhausted:
         cand_hold = _bench(task, candidate, hold, llm, s)
     gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
     _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train,
@@ -443,7 +443,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                       candidate_holdout=cand_hold, incumbent_holdout=base_hold,
                       max_cost_ratio=s.max_cost_ratio, seed=s.seed,
                       unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint,
-                      stopped_early=stopped_early)
+                      stopped_early=stopped_early, exhausted=exhausted)
     # Keep the losers. Six of the seven candidates a search proposes have been
     # deleted at this line every generation so far, along with the per-instance
     # matrix that says what each of them was uniquely good at — which is the one

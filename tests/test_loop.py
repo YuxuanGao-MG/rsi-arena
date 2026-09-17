@@ -441,3 +441,37 @@ def test_each_component_reflects_on_evidence_it_can_act_on(t0, history):
     assert untried != "none" and "market_shock" in untried, untried
     assert tools_in["tools called, in order"][0] == "market_quote"
     assert "the call sequence" in plan_in and "the call sequence" not in context_in
+
+
+def test_running_out_of_money_does_not_read_as_a_cascade_rejection():
+    """They both stop the run before held-out, and they mean opposite things.
+
+    The first generation it happened to reported "the cascade rejected it on 20
+    train matches (+0.136)" — a positive number, in a sentence claiming
+    rejection, describing neither. The candidate scored zero because every call
+    was refused; the incumbent scored -0.136 because half of its calls were; and
+    the difference between two sets of refusals measures nothing.
+    """
+    from rsi_arena.loop import accept
+
+    class T:
+        def statistic(self, outcomes):
+            return 0.0
+
+    empty: list = []
+    broke = accept(T(), candidate_train=empty, incumbent_train=empty,
+                   candidate_holdout=empty, incumbent_holdout=empty, exhausted=True)
+    assert not broke.accepted
+    assert "ran out of money" in broke.reasons[0]
+    assert "cascade" not in broke.reasons[0]
+
+    cut = accept(T(), candidate_train=empty, incumbent_train=empty,
+                 candidate_holdout=empty, incumbent_holdout=empty, stopped_early=True)
+    assert "cascade" in cut.reasons[0]
+
+    # Exhaustion wins when both are set: the cascade's number was computed from
+    # refusals too, so quoting it would be quoting noise.
+    both = accept(T(), candidate_train=empty, incumbent_train=empty,
+                  candidate_holdout=empty, incumbent_holdout=empty,
+                  stopped_early=True, exhausted=True)
+    assert "ran out of money" in both.reasons[0]
