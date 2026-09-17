@@ -15,13 +15,20 @@ from typing import Any
 from gepa.core.adapter import EvaluationBatch, GEPAAdapter
 
 from ..harness import LLM, Harness, HarnessError, Plan, run_sync
+from .generation import fingerprint_components
 from .task import Instance, Rollout, Task, evaluate
 
 
 class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
-    def __init__(self, task: Task, base: Harness, llm: LLM, *, concurrency: int = 4) -> None:
+    def __init__(self, task: Task, base: Harness, llm: LLM, *, concurrency: int = 4,
+                 memo: Any = None) -> None:
         self.task, self.base, self.llm, self.concurrency = task, base, llm, concurrency
         self.evaluations = 0
+        #: Outcomes already paid for. The search is the largest line in a
+        #: generation and it re-scores: the seed candidate is evaluated in full
+        #: at the start of every search, and the seed is usually a harness some
+        #: earlier generation already measured on these very windows.
+        self.memo = memo
         # Resolved once. The tools prompt needs to know what was *not* called as
         # much as what was, and asking the topic per trajectory would cost the
         # question set each time.
@@ -35,7 +42,19 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
         except HarnessError as exc:
             rollouts = [Rollout(instance=i, run=None, outcome=self.task.failed(i, str(exc))) for i in batch]
         else:
-            rollouts = run_sync(evaluate(self.task, harness, batch, self.llm, concurrency=self.concurrency))
+            # The memo is consulted only when traces are not wanted. A remembered
+            # outcome has no trajectory, and the reflection path needs one — so
+            # the cheap large scoring passes reuse, and the small minibatch that
+            # feeds the rewriter is always run for real.
+            fp = ""
+            if self.memo is not None and not capture_traces:
+                fp = fingerprint_components(candidate, harness.config.model)
+            rollouts = run_sync(evaluate(self.task, harness, batch, self.llm,
+                                         concurrency=self.concurrency,
+                                         memo=None if capture_traces else self.memo,
+                                         fingerprint=fp))
+            if self.memo is not None and fp:
+                self.memo.absorb(fp, rollouts)
         return EvaluationBatch(
             outputs=[_as_dict(r.output) for r in rollouts],
             scores=[r.outcome.value for r in rollouts],

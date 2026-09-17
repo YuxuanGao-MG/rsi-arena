@@ -388,7 +388,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # and unrecoverable from anything else once the run is over.
     (run_dir / "valset.json").write_text(json.dumps([i.id for i in train]))
 
-    adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency)
+    adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency, memo=memo)
     result = gepa.optimize(
         seed_candidate=seed_components, trainset=train, valset=train, adapter=adapter,
         reflection_lm=SyncLLM(llm, s.reflection_model),

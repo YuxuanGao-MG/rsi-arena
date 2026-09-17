@@ -97,3 +97,35 @@ def test_thinning_to_four_reuses_the_answers_bought_at_eight():
 
     for n in range(20, 40):
         assert thin(n, 4) <= thin(n, 8), f"{n} windows: the cheaper split is not a subset"
+
+
+def test_the_search_reuses_scores_but_never_reuses_a_trajectory(t0, history):
+    """The rewriter must read a real run; the scoring passes need not.
+
+    A remembered outcome has no trajectory. The search's large scoring passes
+    are where the money is and they reuse; the small minibatch that feeds the
+    reflection model is always run for real, because reflecting on an absent
+    trace is reflecting on nothing.
+    """
+    from tests.test_loop import BASE, oracle, task
+    from tests.conftest import FakeLLM
+    from rsi_arena.harness import Harness
+    from rsi_arena.loop import Scoreboard, TaskAdapter
+
+    tk = task(history, t0)
+    board = Scoreboard()
+    adapter = TaskAdapter(tk, Harness.load(BASE), FakeLLM(oracle), memo=board)
+    components = adapter.base.to_components()
+    instances = tk.instances()[:3]
+
+    first = adapter.evaluate(instances, components, capture_traces=False)
+    assert len(board) == 3, "a scoring pass is remembered"
+
+    second = adapter.evaluate(instances, components, capture_traces=False)
+    assert board.hits == 3, "and reused"
+    assert second.scores == first.scores
+
+    traced = adapter.evaluate(instances, components, capture_traces=True)
+    assert traced.trajectories is not None
+    assert all(t["tools"] for t in traced.trajectories), \
+        "the reflection path must carry real tool calls, not a remembered score"
