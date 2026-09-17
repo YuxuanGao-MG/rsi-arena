@@ -14,6 +14,8 @@ const shell = readFileSync(`${W}/index.html`, "utf8");
 const views = {
   runs: [(await import(`${W}/views/runs.js`)).runsView, { params: {}, query: {} }],
   run: [(await import(`${W}/views/run.js`)).runView, { params: { id: "gen1-floored" }, query: {} }],
+  runExhausted: [(await import(`${W}/views/run.js`)).runView,
+                 { params: { id: "gen5" }, query: { side: "baseline" } }],
   window: [(await import(`${W}/views/window.js`)).windowView, { params: { id: "3" }, query: {} }],
   lineage: [(await import(`${W}/views/lineage.js`)).lineageView, { params: {}, query: {} }],
   compare: [(await import(`${W}/views/compare.js`)).compareView,

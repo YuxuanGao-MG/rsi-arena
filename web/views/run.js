@@ -14,10 +14,10 @@ import {
   html, raw, stat, pill, n3, usd, price, dir, empty, clock, plural, holdout, skillBar,
 } from "../dom.js";
 import { predictedVsRealised, skillHistogram } from "../charts.js";
-import { pooled, pooledOnMoves, windowSkill } from "../stats.js";
+import { pooled, pooledOnMoves, windowSkill, refused, runStatus } from "../stats.js";
 
 const NARROW = "id,fixture,ticker,at,mid_now,realised,predicted,half_width," +
-               "err,naive_error,skill,echoed,unmeasurable,cost_usd,ok";
+               "err,naive_error,skill,echoed,unmeasurable,cost_usd,ok,scored";
 
 export async function runView({ params, query, signal }) {
   const id = params.id;
@@ -42,11 +42,18 @@ export async function runView({ params, query, signal }) {
              body: empty(html`Nothing published under <code>${id}</code>.`) };
   }
   if (!allRaw.length) {
+    const why = runStatus(run);
     return {
       title: id, heading: id,
       crumbs: [["generations", href.runs()], [id]],
-      body: empty(html`This generation has no held-out windows for the ${side}. It may have
-        been published before the split was recorded, or scored on train only.`),
+      body: empty(why === "exhausted"
+        ? html`The ${side} of this generation has no held-out windows because the money ran out
+            before any were paid for. That is the whole record: nothing was measured here.`
+        : why === "incomplete"
+        ? html`This generation crashed before the ${side} was scored on held-out. An incomplete
+            record, not a rejection.`
+        : html`This generation has no held-out windows for the ${side}. It may have been
+            published before the split was recorded, or scored on train only.`),
     };
   }
 
@@ -55,10 +62,16 @@ export async function runView({ params, query, signal }) {
   // so "worst first" and "best first" are actually worst and best. Ordering by
   // the stored column would put six echoes of the mid, each worth a full point
   // under the metric of the week, at the top of "Where it won".
-  const all = allRaw.map(r => ({ ...r, published_skill: r.skill, skill: windowSkill(r) }));
+  const everything = allRaw.map(r => ({ ...r, published_skill: r.skill, skill: windowSkill(r) }));
+  // A refusal is a window the harness never answered — gen5 stored 715 of them
+  // with `predicted == mid_now`, so left in they rank as confident echoes.
+  // They are counted, said out loud below, and in nothing else on this page.
+  const refusals = everything.filter(refused);
+  const all = everything.filter(r => !refused(r));
   const ranked = [...all].sort((a, b) => (a.skill ?? 0) - (b.skill ?? 0));
   const worst = ranked.slice(0, 12);
   const best = ranked.slice(-6).reverse();
+  const status = runStatus(run);
 
   // The drivers, for those eighteen rows only. `output` is the largest column
   // on the table and there is no reason to drag it across every window to print
@@ -73,26 +86,37 @@ export async function runView({ params, query, signal }) {
   for (const row of [...worst, ...best]) row.output = drivers.get(row.id) || null;
 
   const published = holdout(run, side) || {};
-  const mine = pooled(all);
+  const mine = pooled(everything);
   const moved = pooledOnMoves(all);
-  const cost = all.reduce((a, r) => a + (r.cost_usd || 0), 0);
-  const drift = published.statistic != null && mine.skill != null
-    && Math.abs(published.statistic - mine.skill) > 0.002;
+  const cost = everything.reduce((a, r) => a + (r.cost_usd || 0), 0);
+  // The manifest's statistic pooled the refusals; below a centipoint the two
+  // are the same claim and the panel would be flagging rounding noise.
+  const drift = status === "complete" && published.statistic != null && mine.skill != null
+    && Math.abs(published.statistic - mine.skill) > 0.01;
 
   const body = html`
     <div class="cards">
-      ${stat({ value: n3(published.statistic ?? mine.skill),
-               tone: dir(published.statistic ?? mine.skill),
+      ${stat({ value: n3(mine.skill), tone: dir(mine.skill),
                label: "held-out pooled skill",
-               note: `${plural(published.instances ?? all.length, "window")} · zero is silence` })}
+               note: `${plural(mine.scored, "scored window")} · zero is silence` })}
       ${stat({ value: n3(moved.skill), tone: dir(moved.skill),
                label: "on the windows that moved",
                note: `${moved.instances} of ${all.length} moved a tick or more` })}
-      ${stat({ value: published.echoed ?? all.filter(r => r.echoed).length,
+      ${stat({ value: all.filter(r => r.echoed).length,
                label: "echoed the mid", note: "worth exactly zero, by construction" })}
       ${stat({ value: usd(published.cost_usd ?? cost), label: "cost",
-               note: `${usd((published.cost_usd ?? cost) / all.length)} a window` })}
+               note: mine.scored
+                 ? `${usd((published.cost_usd ?? cost) / mine.scored)} a scored window` : "" })}
     </div>
+
+    ${refusals.length ? html`<section class="panel warnband"><div class="panel-b prose">
+      <p class="eyebrow warn">not all of these windows are forecasts</p>
+      <p>${refusals.length} of ${everything.length} windows here are budget-exhaustion
+      refusals, not forecasts: the generation's money ran out and every later call was refused
+      before the model was asked. They are stored with the mid echoed back, so pooled naively
+      they would score as ${plural(refusals.length, "confident echo", "confident echoes")} —
+      every number on this page excludes them.</p>
+    </div></section>` : ""}
 
     ${power(run, all)}
 
@@ -100,20 +124,24 @@ export async function runView({ params, query, signal }) {
       <p class="eyebrow">two numbers for one generation</p>
       <p>The gate recorded ${n3(published.statistic)} here. The same windows recompute to
       ${n3(mine.skill)} on today's formula.</p>
-      <p class="note">Nothing was re-scored: the metric changed after this run. The earliest runs
-      divided by an unfloored benchmark, and <code>gen1-floored</code> was scored while a
-      per-window skill of <code>1 - error/benchmark</code> still paid a full point for saying
-      nothing on a market that did not move. The published figure is what the gate read on the
-      day and is the one that decided the promotion; the recomputed figure is the one that can be
-      compared with another generation.</p>
+      <p class="note">Nothing was re-scored: the metric changed after this run — early versions
+      divided by an unfloored benchmark, and for a while a per-window skill of
+      <code>1 - error/benchmark</code> paid a full point for saying nothing on a market that did
+      not move. The published figure is what the gate read on the day and is the one that decided
+      the verdict; the recomputed figure is the one that can be compared with another
+      generation.</p>
     </div></section>` : ""}
 
     ${audit(run)}
 
     <section class="panel">
       <div class="panel-h">
-        <h2>${run.accepted ? "Promoted" : "Dropped"}</h2>
-        ${pill(run.accepted ? "kept" : "rejected", run.accepted ? "up" : "down")}
+        <h2>${status === "incomplete" ? "Incomplete record"
+            : status === "exhausted" ? "Ran out of money"
+            : run.accepted ? "Promoted" : "Dropped"}</h2>
+        ${status === "incomplete" ? pill("crashed before a verdict", "warn")
+        : status === "exhausted" ? pill("budget spent mid-run", "warn")
+        : pill(run.accepted ? "kept" : "rejected", run.accepted ? "up" : "down")}
         <span class="spacer"></span>
         <a href="${raw(href.compare(id))}">read both harnesses side by side</a>
       </div>
@@ -184,7 +212,9 @@ export async function runView({ params, query, signal }) {
     title: id,
     heading: html`${id} <span class="crumb">· ${side === "baseline" ? "incumbent" : "candidate"}</span>`,
     lead: html`Held out on ${plural(new Set(all.map(r => r.fixture)).size, "match")},
-      ${plural(all.length, "window")} scored. Everything on this page is held-out only.`,
+      ${plural(all.length, "window")} scored${refusals.length
+        ? html`, ${plural(refusals.length, "refusal")} excluded` : ""}.
+      Everything on this page is held-out only.`,
     crumbs: [["generations", href.runs()], [id]],
     body,
     ready: root => {
@@ -265,7 +295,7 @@ function provenance(run) {
   else if (s.seed)
     bits.push(html`<p>The search started from the incumbent.</p>`);
   if (archive)
-    bits.push(html`<p class="note">${archive.candidates} candidates remembered,
+    bits.push(html`<p class="note">${plural(archive.candidates, "candidate")} remembered,
       ${archive.frontier} on the frontier, across ${plural(archive.generations, "generation")}.</p>`);
   if (llm.spent_usd != null)
     bits.push(html`<p class="note">Spent ${usd(llm.spent_usd)}${llm.budget_usd
@@ -299,7 +329,7 @@ function windowTable(rows, caption) {
         <a class="cell-link" href="${raw(href.window(r.id))}">
           <span class="mono ticker">${r.ticker}</span>
           <span class="crumb mono">${clock(r.at)}
-            ${r.echoed ? pill("echo") : ""}${r.unmeasurable ? pill("quiet", "warn") : ""}</span>
+            ${r.echoed ? pill("echo") : ""} ${r.unmeasurable ? pill("quiet", "warn") : ""}</span>
         </a>
       </th>
       <td class="n">${price(r.mid_now)}</td>

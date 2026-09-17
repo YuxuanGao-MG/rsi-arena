@@ -98,5 +98,65 @@ state.failNext = async () => ({ ok: false, status: 404, headers: { get: () => "a
 const live = await liveView({ params: {}, query: {}, signal: new AbortController().signal });
 check("missing live table explains itself", /not installed/.test(toHTML(live.heading)), true);
 
+// ---------------------------------------------------------------------------
+// A generation that ran out of money is a gap, not a measurement.
+//
+// gen5's candidate never answered a window and 555 of its 800 baseline-holdout
+// rollouts are budget refusals stored with the mid echoed back. Pooled naively
+// they scored the *absence* of a harness as a harness, and the front page
+// briefly showed 0.000 — gen5's refusals — as the best held-out skill on the
+// site.
+
+const { refused, runStatus } = await import(`${W}/stats.js`);
+const g5base = FX.rollouts.filter(r => r.run_id === "gen5" && r.side === "baseline" && r.split === "holdout");
+check("gen5 refusals identified", g5base.filter(refused).length, 555);
+const g5pool = pooled(g5base);
+check("refusals excluded from pooling", g5pool.scored, 245);
+check("refusals counted separately", g5pool.refusals, 555);
+// The refusals echo the mid, so pooling them drags the statistic toward zero;
+// excluded, the 245 real forecasts keep their own (worse) number.
+const g5naive = pooled(g5base.map(r => ({ ...r, ok: true, scored: true })));
+check("pooling refusals would flatter the number",
+      Math.abs(g5naive.skill) < Math.abs(g5pool.skill), true);
+
+const g5run = FX.runs.find(r => r.id === "gen5");
+const g4run = FX.runs.find(r => r.id === "gen4");
+check("gen5 is an exhausted record", runStatus(g5run), "exhausted");
+check("gen4 is an incomplete record", runStatus(g4run), "incomplete");
+
+// The front page: exhausted and incomplete runs are gaps, never data points,
+// and never the best-of.
+invalidate();
+const { runsView } = await import(`${W}/views/runs.js`);
+const front = await runsView({ params: {}, query: {}, signal: new AbortController().signal });
+const frontHTML = toHTML(front.body);
+const bestTile = frontHTML.slice(frontHTML.indexOf("best held-out skill") - 400,
+                                 frontHTML.indexOf("best held-out skill"));
+check("best-of tile is not gen5's 0.000", />\+?0\.000</.test(bestTile), false);
+check("front page names the money running out", /ran out of money/.test(frontHTML), true);
+check("gen4 renders as incomplete, never dropped", /incomplete/.test(frontHTML), true);
+const g4row = frontHTML.slice(frontHTML.indexOf('generation/gen4'), frontHTML.indexOf('generation/gen4') + 900);
+check("gen4's row does not say dropped", />dropped</.test(g4row), false);
+const tableSlice = frontHTML.slice(frontHTML.indexOf("<table"), frontHTML.indexOf("</table>"));
+check("no 0.000-to-0.000 interval renders", /\+0\.000 to \+0\.000/.test(tableSlice), false);
+check("the table marks the gaps", (tableSlice.match(/no measurement/g) || []).length, 2);
+
+// The exhausted run's own page says what its windows are.
+invalidate();
+const { runView } = await import(`${W}/views/run.js`);
+const g5page = await runView({ params: { id: "gen5" }, query: { side: "baseline" },
+                               signal: new AbortController().signal });
+const g5HTML = toHTML(g5page.body);
+check("run page counts the refusals out loud",
+      /555 of 800 windows here are budget-exhaustion\s+refusals/.test(g5HTML), true);
+check("run page heading says it ran out of money", /Ran out of money/.test(g5HTML), true);
+
+// And the candidate side, which has nothing at all, says why.
+invalidate();
+const g5cand = await runView({ params: { id: "gen5" }, query: {},
+                               signal: new AbortController().signal });
+check("the empty candidate side blames the money",
+      /money ran out/.test(toHTML(g5cand.body)), true);
+
 console.log(bad ? `\n${bad} check(s) failed` : "\nall checks passed");
 process.exit(bad ? 1 : 0);

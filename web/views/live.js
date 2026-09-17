@@ -1,4 +1,4 @@
-/* Forecasts on matches being played now.
+/* Forecasts on markets that were still open when the harness was asked.
  *
  * Every other page here is replay: the harness is put back at an instant of a
  * finished match with its tools frozen, and the answer is already in the candle
@@ -68,21 +68,24 @@ export async function liveView({ signal }) {
 
   const body = html`
     <div class="cards">
-      ${stat({ value: n3(all.skill), tone: dir(all.skill), label: "live pooled skill",
-               note: `${plural(done.length, "scored forecast")} · zero is silence` })}
+      ${stat({ value: rows.length, label: "forecasts made",
+               note: `on ${plural(matches, "match")} across ${plural(leagues.length, "league")}` })}
+      ${stat({ value: n3(all.skill), tone: dir(all.skill), label: "pooled skill",
+               note: `over the ${done.length} scored so far · zero is silence` })}
       ${stat({ value: n3(moved.skill), tone: dir(moved.skill), label: "on the ones that moved",
-               note: `${moved.instances} of ${done.length} moved a tick or more` })}
+               note: `${moved.instances} of the ${done.length} scored moved a tick or more` })}
       ${stat({ value: pending.length, label: "waiting on the horizon",
                note: "scored five minutes after the fact, never before" })}
-      ${stat({ value: matches || "—", label: "matches watched",
-               note: `${plural(rows.length, "forecast")} in all` })}
     </div>
 
     <section class="panel"><div class="panel-b prose">
-      <p>These are the same harness on markets that were open when it was asked. The five-minute
-      horizon has to print before anything can be scored, so a forecast sits unscored until it
-      does — and one that never gets a two-sided quote at the horizon stays unscored rather than
-      being counted as a miss.</p>
+      <p>These are the same harness quoted on markets that were still open when it was asked —
+      mostly days before kickoff, where a book barely moves in five minutes and staying quiet is
+      usually the right call. The in-play sweeps run on a schedule (19:05 UTC on weekdays, 15:05
+      on weekends, and 01:05 every day), so forecasts on matches actually being played appear
+      when those crons coincide with a fixture. The five-minute horizon has to print before
+      anything can be scored, and a forecast that never gets a two-sided quote at the horizon
+      stays unscored rather than being counted as a miss.</p>
       <p class="note">Last sweep ${stamp(latest.at)} · ${plural(leagues.length, "league")}
       ${leagues.length ? `(${leagues.join(", ")})` : ""}
       ${failed.length ? html`· ${plural(failed.length, "run")} failed outright` : ""}</p>
@@ -137,8 +140,8 @@ export async function liveView({ signal }) {
     title: "Live",
     heading: "The arena against a market it has not read the end of",
     lead: html`Replay is honest about the past because the tools are frozen at the instant. This
-      is the other test: the same harness on a match being played now, scored when the five-minute
-      horizon prints.`,
+      is the other test: the same harness on open markets — mostly pre-match, in play when the
+      schedule lands on one — scored when the five-minute horizon prints.`,
     body,
     ready: root => {
       if (done.length >= 4) predictedVsRealised(root.querySelector("#live-scatter"), done);

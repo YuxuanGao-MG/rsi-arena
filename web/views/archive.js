@@ -17,7 +17,7 @@ import { ApiError } from "../data.js";
 import { href } from "../routes.js";
 import { html, raw, stat, pill, n2, pct, empty, plural } from "../dom.js";
 import { archiveFrontier } from "../charts.js";
-import { loadArchive, instanceBest, wins, frontier, byFixture, SILENCE } from "../archive.js";
+import { loadArchive, contested, instanceBest, wins, frontier, byFixture, SILENCE } from "../archive.js";
 
 export async function archiveView({ signal }) {
   let entries;
@@ -29,13 +29,20 @@ export async function archiveView({ signal }) {
   }
   if (!entries.length) return notShipped();
 
-  const best = instanceBest(entries);
+  const disputed = contested(entries);
+  const best = instanceBest(entries, disputed);
   const won = wins(entries, best);
-  const front = frontier(entries, won);
+  const front = frontier(entries, won, disputed);
   const generations = [...new Set(entries.map(e => e.generation))];
-  const points = entries.map(e => ({
+  // The seed carries no scores — it predates the archive keeping any — so it
+  // has no mean to plot; it appears in the table, not the scatter.
+  const points = entries.filter(e => e.n > 0).map(e => ({
     id: e.id, generation: e.generation, mean: e.mean ?? 0, n: e.n,
-    wins: (won.get(e.id) || []).length, onFrontier: front.has(e.id), promoted: !!e.promoted,
+    wins: (won.get(e.id) || []).length, onFrontier: front.has(e.id),
+    // `promoted` on an archive entry means "the standing incumbent", which is
+    // the seed today — not a gate acceptance, which has never happened. The
+    // green treatment is reserved for the second claim.
+    seed: !!e.isSeed, flat: !!e.flat,
   })).sort((a, b) => b.wins - a.wins);
 
   const topMean = [...points].sort((a, b) => b.mean - a.mean)[0];
@@ -64,8 +71,8 @@ export async function archiveView({ signal }) {
           <span><i class="dot" style="background:var(--c-cand)"></i> on the frontier</span>
           <span><i class="dot" style="background:transparent;border:2px solid var(--ghost)"></i>
             dominated by something</span>
-          <span><i class="dot" style="background:transparent;border:1.5px solid var(--up)"></i>
-            promoted by the gate</span>
+          <span><i class="dot" style="background:transparent;border:1.5px solid var(--brand)"></i>
+            the seed — the standing incumbent</span>
         </div>
         <figure class="chart">
           <div id="frontier"></div>
@@ -85,7 +92,11 @@ export async function archiveView({ signal }) {
               <th scope="col" class="n">mean</th><th scope="col" class="n">best on</th>
               <th scope="col" class="n">beat silence</th><th scope="col">standing</th>
             </tr></thead>
-            <tbody>${points.map(p => {
+            <tbody>${entries.map(e => ({
+              id: e.id, generation: e.generation, mean: e.mean, n: e.n,
+              wins: (won.get(e.id) || []).length, onFrontier: front.has(e.id),
+              seed: !!e.isSeed, flat: !!e.flat,
+            })).sort((a, b) => b.wins - a.wins).map(p => {
               const e = entries.find(x => x.id === p.id);
               return html`<tr>
                 <th scope="row" class="mono ticker">${p.id}</th>
@@ -94,7 +105,8 @@ export async function archiveView({ signal }) {
                 <td class="n">${p.wins} of ${p.n}</td>
                 <td class="n">${e ? pct(e.beatSilence / Math.max(1, e.n)) : "—"}</td>
                 <td>${p.onFrontier ? pill("frontier", "brand") : pill("dominated")}
-                  ${p.promoted ? pill("promoted", "up") : ""}</td>
+                  ${p.seed ? pill("seed / incumbent", "brand") : ""}
+                  ${p.flat ? pill("flat", "warn") : ""}</td>
               </tr>`;
             })}</tbody>
           </table></div>

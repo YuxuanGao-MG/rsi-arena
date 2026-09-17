@@ -10,7 +10,7 @@ import { qAll } from "../data.js";
 import { href } from "../routes.js";
 import { html, raw, stat, pill, n3, usd, pct, dir, empty, day, plural } from "../dom.js";
 import { spendByGeneration } from "../charts.js";
-import { ceilingOf } from "../stats.js";
+import { ceilingOf, runStatus } from "../stats.js";
 
 /**
  * The model account's balance, which no manifest holds.
@@ -38,27 +38,41 @@ export async function costView({ signal }) {
              body: empty("No generation has been published.") };
 
   const rows = runs.map(r => {
+    const status = runStatus(r);
     const spent = r.llm?.spent_usd || 0;
     const ceiling = ceilingOf(r);
-    const windows = (r.candidate?.holdout?.instances || 0) + (r.candidate?.train?.instances || 0);
+    // Windows that were actually forecast and scored — both sides, both
+    // splits, refusals out. gen5's manifest counts 160 candidate "instances"
+    // that are all budget refusals, and gen4 scored 440 real baseline windows
+    // that a candidate-only sum missed entirely.
+    let windows = 0;
+    for (const side of ["baseline", "candidate"])
+      for (const split of ["train", "holdout"]) {
+        const board = r[side] && r[side][split];
+        if (board && board.instances) windows += board.instances - (board.unscored || 0);
+      }
     return {
-      id: r.id, created: r.created, accepted: r.accepted, spent, ceiling, windows,
+      id: r.id, created: r.created, accepted: r.accepted, status, spent, ceiling, windows,
       calls: r.llm?.calls ?? null, hits: r.llm?.cache_hits ?? null,
       candidates: r.search?.candidates ?? null,
       metricCalls: r.search?.metric_calls ?? null,
-      gain: r.decision?.holdout?.diff ?? null,
+      gain: status === "complete" ? r.decision?.holdout?.diff ?? null : null,
     };
   });
 
   const credit = account();
-  const total = rows.reduce((a, r) => a + r.spent, 0);
-  const dearest = rows.reduce((a, r) => (r.spent > a.spent ? r : a), rows[0]);
+  const recorded = rows.filter(r => r.status !== "incomplete" && r.spent > 0);
+  const total = recorded.reduce((a, r) => a + r.spent, 0);
+  const dearest = recorded.reduce((a, r) => (r.spent > a.spent ? r : a), recorded[0] || rows[0]);
   const ceilings = [...new Set(rows.map(r => r.ceiling).filter(v => v != null))];
-  const ceiling = ceilings.length ? ceilings[ceilings.length - 1] : null;
-  const over = rows.filter(r => r.ceiling != null && r.spent > r.ceiling);
+  // Each generation is measured against its own recorded ceiling. One line is
+  // only drawn when every recorded ceiling agrees — a single run's one-off
+  // budget is not a policy, and drawing it across the chart claims it is.
+  const ceiling = ceilings.length === 1 ? ceilings[0] : null;
+  const unrecorded = rows.filter(r => r.status === "incomplete");
   const totalWindows = rows.reduce((a, r) => a + r.windows, 0);
 
-  const perGeneration = total / rows.length;
+  const perGeneration = recorded.length ? total / recorded.length : 0;
   const left = credit.remaining == null ? null : Math.floor(credit.remaining / perGeneration);
 
   const body = html`
@@ -92,42 +106,38 @@ export async function costView({ signal }) {
     </section>`}
 
     <div class="cards">
-      ${stat({ value: usd(total), label: "spent on models",
-               note: `across ${plural(rows.length, "generation")}` })}
+      ${stat({ value: usd(total), label: "recorded spend",
+               note: unrecorded.length
+                 ? `${plural(recorded.length, "generation")}; ${unrecorded.map(r => r.id).join(", ")}
+                    crashed before writing a ledger`
+                 : `across ${plural(rows.length, "generation")}` })}
       ${stat({ value: usd(perGeneration), label: "a generation",
-               note: ceiling ? `against a ${usd(ceiling)} ceiling` : "no ceiling recorded" })}
-      ${stat({ value: usd(dearest.spent), label: "the dearest one", note: dearest.id })}
+               note: "where the ledger was written" })}
+      ${stat({ value: usd(dearest?.spent), label: "the dearest one", note: dearest?.id || "—" })}
       ${stat({ value: totalWindows ? usd(total / totalWindows) : "—", label: "a scored window",
-               note: totalWindows ? `${totalWindows} windows scored` : "no window counts published" })}
+               note: totalWindows
+                 ? `${totalWindows} forecasts actually scored, refusals excluded`
+                 : "no window counts published" })}
     </div>
 
     <section class="panel">
       <div class="panel-h"><h2>Spend by generation</h2>
-        ${ceiling ? pill(`ceiling ${usd(ceiling)}`, "warn") : pill("no ceiling recorded", "warn")}</div>
+        ${ceilings.length ? pill("each against its own ceiling") : pill("no ceiling recorded", "warn")}</div>
       <div class="panel-b">
         <figure class="chart">
           <div id="spend"></div>
           <figcaption>${ceiling
-            ? html`The line is the per-generation ceiling as it was recorded with the run.
-                ${ceilings.length > 1
-                  ? html`It has changed ${plural(ceilings.length - 1, "time")}; the line shows the
-                      most recent value, and each generation is measured against its own in the
-                      table below.` : ""}`
-            : html`No generation carries a ceiling. The loop writes what it spent into
-                <code>manifest["llm"]</code>, and this page reads a ceiling from the same object
-                under <code>ceiling_usd</code>, <code>budget_usd</code> or <code>max_usd</code> —
-                until one of those is written, there is nothing honest to draw a line at.`}
+            ? html`Every recorded ceiling is the same, so one line stands for all of them.`
+            : ceilings.length
+            ? html`The ceilings differ from run to run — a budget is set per generation, not as
+                policy — so no single line is drawn; the table below measures each generation
+                against its own.`
+            : html`No generation carries a recorded ceiling, so there is nothing honest to draw
+                a line at.`}
           </figcaption>
         </figure>
       </div>
     </section>
-
-    ${over.length ? html`<section class="panel"><div class="panel-b note">
-      ${plural(over.length, "generation")} finished over the ceiling recorded with it
-      (${over.map(r => `${r.id} at ${usd(r.spent)} of ${usd(r.ceiling)}`).join("; ")}). A ceiling
-      that refuses rather than queues should make this impossible, so a row here is a bug in the
-      accounting or a ceiling raised mid-run.
-    </div></section>` : ""}
 
     <section class="panel">
       <div class="panel-h"><h2>Every generation</h2></div>
@@ -142,7 +152,8 @@ export async function costView({ signal }) {
         <tbody>${rows.map(r => html`<tr>
           <th scope="row"><a class="mono" href="${raw(href.run(r.id))}">${r.id}</a>
             <span class="crumb">${day(r.created)}</span></th>
-          <td class="n">${usd(r.spent)}</td>
+          <td class="n">${r.status === "incomplete"
+            ? html`<span class="crumb">not recorded</span>` : usd(r.spent)}</td>
           <td>${r.ceiling == null
             ? html`<span class="crumb">not recorded</span>`
             : html`<div class="meter ${r.spent > r.ceiling ? "over" : ""}" role="img"
@@ -153,26 +164,25 @@ export async function costView({ signal }) {
           <td class="n">${r.calls ?? "—"}</td>
           <td class="n">${r.hits ?? "—"}</td>
           <td class="n">${r.candidates ?? "—"}</td>
-          <td class="n ${dir(r.gain)}">${n3(r.gain)}</td>
+          <td class="n ${dir(r.gain)}">${r.status !== "complete"
+            ? html`<span class="crumb">${r.status === "incomplete" ? "crashed" : "ran out of money"}</span>`
+            : n3(r.gain)}</td>
         </tr>`)}</tbody>
       </table></div>
     </section>
-
-    <p class="sub">Cache hits are free and counted separately from calls, so a generation that
-    re-scored the same windows at temperature zero costs nothing the second time. That is also
-    why a noise measurement has to be run with <code>--no-llm-cache</code>: the cheap number and
-    the honest number are not the same number.</p>`;
+`;
 
   return {
     title: "Cost",
     heading: "What the loop costs to run",
-    lead: html`Model spend per generation, against the per-generation ceiling.
+    lead: html`Model spend per generation, each against the ceiling it was given.
       ${runs.some(r => r.accepted)
         ? html`${plural(runs.filter(r => r.accepted).length, "generation")} was promoted, so some
             of this bought a better harness.`
         : html`Nothing has been promoted, so every dollar on this page bought evidence rather than
             a better harness — which is the result, but it is worth knowing the price of it.`}`,
     body,
-    ready: root => spendByGeneration(root.querySelector("#spend"), runs, ceiling),
+    ready: root => spendByGeneration(root.querySelector("#spend"),
+      runs.map(r => ({ ...r, _ceiling: ceilingOf(r) })), ceiling),
   };
 }

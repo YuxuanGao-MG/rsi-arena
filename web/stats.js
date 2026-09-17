@@ -17,6 +17,18 @@
 export const TICK = 0.01;
 
 /**
+ * A row that is a refusal, not a forecast.
+ *
+ * When gen5 ran out of money mid-baseline, 715 of its rollouts were budget
+ * refusals stored with `predicted == mid_now` — so they carry an `err` and a
+ * `naive_error` that look exactly like a harness that echoed the mid on
+ * purpose. Pooling them scores the *absence* of a harness as a harness, which
+ * is how a generation whose candidate never answered a single held-out window
+ * came to post the best number on the front page.
+ */
+export const refused = r => r.ok === false || r.scored === false;
+
+/**
  * One window's skill on today's formula, from the two errors stored with it.
  *
  * The stored `skill` column is whatever the metric said on the day the run was
@@ -25,16 +37,20 @@ export const TICK = 0.01;
  * column, is six echoes of the mid scoring 1.000. Recomputing from `err` and
  * `naive_error` puts every window on one scale, and the rows where the two
  * disagree are exactly the rows that were misleading.
+ *
+ * Null for a refusal: it has no skill, not zero skill.
  */
 export function windowSkill(r) {
+  if (refused(r)) return null;
   if (r.err == null || r.naive_error == null) return r.skill ?? null;
   return (r.naive_error - r.err) / Math.max(r.naive_error, TICK);
 }
 
 /** The gated statistic: sum the error removed, sum the benchmark, then divide. */
 export function pooled(rows) {
-  let removed = 0, benchmark = 0, scored = 0, quiet = 0;
+  let removed = 0, benchmark = 0, scored = 0, quiet = 0, refusals = 0;
   for (const r of rows) {
+    if (refused(r)) { refusals += 1; continue; }
     if (r.err == null || r.naive_error == null) continue;
     scored += 1;
     if (r.naive_error < 1e-4) quiet += 1;
@@ -43,8 +59,8 @@ export function pooled(rows) {
   }
   return {
     skill: benchmark ? removed / benchmark : null,
-    removed, benchmark, scored, quiet,
-    unscored: rows.length - scored,
+    removed, benchmark, scored, quiet, refusals,
+    unscored: rows.length - scored - refusals,
   };
 }
 
@@ -57,7 +73,7 @@ export function pooled(rows) {
  * number to read beside the pooled one, never instead of it.
  */
 export function pooledOnMoves(rows) {
-  const moved = rows.filter(r => (r.naive_error ?? 0) >= TICK);
+  const moved = rows.filter(r => !refused(r) && (r.naive_error ?? 0) >= TICK);
   return { ...pooled(moved), instances: moved.length };
 }
 
@@ -117,7 +133,27 @@ export function metricGap(run, side, recomputed) {
   const published = run[side] && run[side].holdout && run[side].holdout.statistic;
   const here = recomputed && recomputed[side] && recomputed[side].skill;
   if (typeof published !== "number" || typeof here !== "number") return null;
-  return { published, here, gap: here - published, differs: Math.abs(here - published) > 0.002 };
+  // A centipoint is the noise band of the recompute itself (rounding in the
+  // stored err columns); below it the two numbers are the same claim. The
+  // drift worth a paragraph is gen1-floored's incumbent, +0.043 published
+  // against -0.011 recomputed — forty times this threshold.
+  return { published, here, gap: here - published, side,
+           differs: Math.abs(here - published) > 0.01 };
+}
+
+/**
+ * Whether a run's record can carry a verdict at all.
+ *
+ * "exhausted" ran out of money: whatever it published past that point is
+ * refusals scored as silence, not evidence, and nothing from it belongs in a
+ * best-of. "incomplete" crashed before a verdict existed: rendering it as
+ * "dropped" would claim a rejection nobody made.
+ */
+export function runStatus(run) {
+  const llm = run.llm || {};
+  if (llm.incomplete || run.decision?.incomplete) return "incomplete";
+  if (llm.exhausted) return "exhausted";
+  return "complete";
 }
 
 /** The best number anywhere in these runs, or null when there is not one yet. */

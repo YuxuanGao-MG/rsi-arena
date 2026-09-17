@@ -42,7 +42,14 @@ export function mount(el, node) {
 
 export const n3 = v => v == null || Number.isNaN(v) ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(3);
 export const n2 = v => v == null || Number.isNaN(v) ? "—" : Number(v).toFixed(2);
-export const usd = v => v == null ? "—" : "$" + Number(v).toFixed(Number(v) < 1 ? 3 : 2);
+// Two decimals, except that sub-dollar amounts keep a third so a cost per
+// window is not rendered as $0.00 — and zero is $0.00, never $0.000, because
+// three decimals on an exact zero reads as measured precision it does not have.
+export const usd = v => {
+  if (v == null) return "—";
+  const n = Number(v);
+  return "$" + n.toFixed(n !== 0 && Math.abs(n) < 1 ? 3 : 2);
+};
 export const cents = v => v == null ? "—" : (v > 0 ? "+" : "") + Number(v).toFixed(1) + "c";
 export const pct = v => v == null ? "—" : Math.round(Number(v) * 100) + "%";
 export const price = v => v == null ? "—" : Number(v).toFixed(3);
@@ -51,7 +58,14 @@ export const sgn = v => html`<span class="${dir(v)}">${n3(v)}</span>`;
 export const clock = t => String(t || "").slice(11, 16);
 export const day = t => String(t || "").slice(0, 10);
 export const stamp = t => String(t || "").replace("T", " ").slice(0, 16);
-export const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
+/** English's regulars and the handful of irregulars this site actually uses. */
+const PLURALS = { child: "children", match: "matches", "held-out match": "held-out matches" };
+export const plural = (n, one, many) => {
+  if (n === 1) return `${n} ${one}`;
+  const word = many || PLURALS[one]
+    || (/(ch|sh|s|x|z)$/.test(one) ? one + "es" : one + "s");
+  return `${n} ${word}`;
+};
 
 /** Held-out pooled skill, as the gate computes it, or null. */
 export const holdout = (run, side) => (run && run[side] && run[side].holdout) || null;

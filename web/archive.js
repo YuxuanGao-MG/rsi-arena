@@ -3,8 +3,8 @@
  * Deliberately not in Supabase and deliberately not the lineage. `rsi.runs`
  * records what was *promoted*, which is a claim about held-out evidence that
  * only the gate may make. This records what was *found*, which is cheaper,
- * larger, and carries no claim at all — three generations of it were sitting in
- * each run's `gepa` directory as pickled GEPA state, never read by anything.
+ * larger, and carries no claim at all — generations of it were sitting in each
+ * run's `gepa` directory as pickled GEPA state, never read by anything.
  * Conflating the two is how an archive turns into a leaderboard and stops
  * preserving the losers that make it worth having.
  *
@@ -28,16 +28,43 @@ export async function loadArchive({ signal } = {}) {
     e.n = values.length;
     e.mean = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
     e.beatSilence = values.filter(v => v > SILENCE).length;
+    // Every score identical separates nothing: silence across a whole valset
+    // looks like this, and so does a harness refused identically everywhere.
+    e.flat = values.length >= 4
+      && new Set(values.map(v => Math.round(v * 1e9))).size === 1;
+    // The seed is marked `promoted` because it is the standing incumbent, not
+    // because the gate ever accepted anything. Two different claims, and the
+    // green treatment belongs only to the second, which has never been made.
+    e.isSeed = e.generation === "seed"
+      || /harness this generation started from/.test(e.note || "");
   }
   return entries;
 }
 
-/** The best score anyone has recorded on each instance. */
-export function instanceBest(entries) {
+/**
+ * Instances more than one candidate has actually been scored on.
+ *
+ * An instance only one candidate has seen cannot rank candidates — there is
+ * nobody to be better *than*. Counting it anyway is how gen5's refused harness
+ * came to own the archive: scored an identical 0.5 on all 2,600 windows of its
+ * own split, none of which any earlier candidate had seen, it was trivially
+ * instance-best on 2,586 of them.
+ */
+export function contested(entries) {
+  const seen = new Map();
+  for (const e of entries)
+    for (const instance of Object.keys(e.scores || {}))
+      seen.set(instance, (seen.get(instance) || 0) + 1);
+  return new Set([...seen].filter(([, n]) => n > 1).map(([i]) => i));
+}
+
+/** The best score anyone has recorded on each contested instance. */
+export function instanceBest(entries, disputed = contested(entries)) {
   const best = new Map();
   for (const e of entries)
     for (const [instance, score] of Object.entries(e.scores || {}))
-      if (!best.has(instance) || score > best.get(instance)) best.set(instance, score);
+      if (disputed.has(instance) && (!best.has(instance) || score > best.get(instance)))
+        best.set(instance, score);
   return best;
 }
 
@@ -52,7 +79,7 @@ export function wins(entries, best = instanceBest(entries)) {
   for (const e of entries) {
     const mine = [];
     for (const [instance, score] of Object.entries(e.scores || {}))
-      if (score >= best.get(instance)) mine.push(instance);
+      if (best.has(instance) && score >= best.get(instance)) mine.push(instance);
     out.set(e.id, mine);
   }
   return out;
@@ -76,9 +103,16 @@ export function dominates(a, b) {
   return better;
 }
 
-/** Candidates that are best at something and dominated by nothing. */
-export function frontier(entries, won = wins(entries)) {
-  const contenders = entries.filter(e => (won.get(e.id) || []).length);
+/** Candidates that are best at something and dominated by nothing.
+ *
+ * Never compared is not the same as compared and beaten: a candidate whose
+ * whole valset rotated away shares no contested instance with anything, has
+ * won nothing, and has been beaten by nothing — it stays, so the frontier does
+ * not empty every time the split moves.
+ */
+export function frontier(entries, won = wins(entries), disputed = contested(entries)) {
+  const contenders = entries.filter(e => (won.get(e.id) || []).length
+    || !Object.keys(e.scores || {}).some(i => disputed.has(i)));
   const keep = new Set();
   for (const e of contenders)
     if (!contenders.some(other => other.id !== e.id && dominates(other, e))) keep.add(e.id);

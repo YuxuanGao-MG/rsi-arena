@@ -410,3 +410,30 @@ ul.tree ul.tree { margin:0 0 0 var(--s4); padding-left:var(--s4); border-left:1p
 .legend i.wash { width:12px; height:12px; border-radius:3px; background:var(--c-cand); opacity:.35; }
 .provenance { margin:0 0 var(--s3); }
 .provenance p { margin:0 0 var(--s2); font-size:var(--t-sm); }
+
+.row .mark.warn-mark { background:var(--warn); }
+.glossary { margin-top:var(--s3); border-top:1px solid var(--hair); padding-top:var(--s3); }
+.glossary > summary { font-size:var(--t-xs); color:var(--faint); cursor:pointer; list-style:none;
+                      display:inline-flex; gap:var(--s2); align-items:center; }
+.glossary > summary::before { content:"\25B8"; transition:transform var(--fast); }
+.glossary[open] > summary::before { transform:rotate(90deg); }
+.glossary > summary::-webkit-details-marker { display:none; }
+.glossary dl { margin:var(--s3) 0 0; display:grid; grid-template-columns:auto 1fr;
+               gap:var(--s2) var(--s4); font-size:var(--t-sm); }
+.glossary dt { font-weight:var(--w-semi); white-space:nowrap; }
+.glossary dd { margin:0; color:var(--soft); }
+@media (max-width:560px) { .glossary dl { grid-template-columns:1fr; gap:var(--s1); }
+                           .glossary dd { margin-bottom:var(--s2); } }
+
+/* At phone widths the header used to wrap to three rows and stay stuck,
+   spending a third of the viewport on chrome. The nav scrolls sideways
+   instead: one row, everything reachable, nothing lost. */
+@media (max-width:640px) {
+  .bar { flex-wrap:nowrap; gap:var(--s3); }
+  nav.main { flex:1; min-width:0; overflow-x:auto; -webkit-overflow-scrolling:touch;
+             scrollbar-width:none; }
+  nav.main::-webkit-scrollbar { display:none; }
+  nav.main ul { flex-wrap:nowrap; }
+  #theme-label { display:none; }
+  .icon-btn::before { content:"\25D0"; }
+}

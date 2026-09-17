@@ -139,6 +139,29 @@ export function generationSkill(el, points) {
     const marks = points.map((p, i) => {
       const x = cx(i);
       const parts = [];
+      if (p.gap) {
+        // An exhausted or crashed generation is a hole in the record, and a
+        // hole drawn as a data point on the silence line reads as "the latest
+        // rewrite broke even". It gets a labelled gap instead: no dots, no
+        // band, the reason in the slot.
+        const mid = m.t + plotH / 2;
+        parts.push(`<line x1="${x}" x2="${x}" y1="${m.t + 8}" y2="${m.t + plotH - 8}"
+          stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="2 5" stroke-linecap="round"/>`);
+        parts.push(`<text x="${x}" y="${(mid - 4).toFixed(1)}" text-anchor="middle"
+          font-size="11" font-weight="600" fill="var(--warn)">no</text>`);
+        parts.push(`<text x="${x}" y="${(mid + 10).toFixed(1)}" text-anchor="middle"
+          font-size="11" font-weight="600" fill="var(--warn)">measurement</text>`);
+        const label = esc(p.id.length > 13 ? p.id.slice(0, 12) + "\u2026" : p.id);
+        parts.push(`<text x="${x}" y="${m.t + plotH + 22}" text-anchor="middle"
+          font-size="11" fill="var(--soft)">${label}</text>`);
+        parts.push(`<text x="${x}" y="${m.t + plotH + 38}" text-anchor="middle" font-size="10"
+          fill="var(--warn)">${esc(p.gap)}</text>`);
+        const tip = `${p.id}: ${p.gap} — no held-out measurement exists for this generation`;
+        parts.push(`<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
+          <rect x="${(x - band / 2).toFixed(1)}" y="${m.t}" width="${band.toFixed(1)}"
+                height="${plotH}" fill="transparent"/></g>`);
+        return parts.join("");
+      }
       if (p.inc != null && p.low != null && p.high != null) {
         const top = y(p.inc + p.high), bottom = y(p.inc + p.low);
         parts.push(`<rect x="${(x - 11).toFixed(1)}" y="${top.toFixed(1)}" width="22"
@@ -414,11 +437,12 @@ export function spendByGeneration(el, runs, ceiling) {
 
     const bars = runs.map((r, i) => {
       const spent = r.llm?.spent_usd || 0;
+      const own = r._ceiling ?? ceiling;         // each run against its own, when it has one
       const cx = m.l + band * (i + 0.5);
       const h = Math.max(2, plotH - (y(spent) - m.t));
-      const over = ceiling && spent > ceiling;
+      const over = own && spent > own;
       const tip = `${r.id}: $${spent.toFixed(2)}` +
-        (ceiling ? ` of a $${ceiling.toFixed(2)} ceiling` : " (no ceiling recorded)");
+        (own ? ` of a $${own.toFixed(2)} ceiling` : " (no ceiling recorded)");
       return `<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
         <rect x="${(cx - band / 2).toFixed(1)}" y="${m.t}" width="${band.toFixed(1)}"
               height="${plotH}" fill="transparent"/>
@@ -481,14 +505,15 @@ export function archiveFrontier(el, points, { silence = 0.5 } = {}) {
 
     const dots = points.map(p => {
       const tip = `${p.id} (${p.generation}): mean ${p.mean.toFixed(3)}, best on ` +
-        `${p.wins} of ${p.n} instances` + (p.onFrontier ? ", on the frontier" : ", dominated");
+        `${p.wins} of ${p.n} instances` + (p.seed ? " — the seed, the standing incumbent"
+          : p.onFrontier ? ", on the frontier" : ", dominated");
       return `<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
         <circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="13" fill="transparent"/>
         <circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="6"
           fill="${p.onFrontier ? "var(--c-cand)" : "none"}"
           stroke="${p.onFrontier ? "var(--panel)" : "var(--ghost)"}" stroke-width="2"/>
-        ${p.promoted ? `<circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="10"
-          fill="none" stroke="var(--up)" stroke-width="1.5"/>` : ""}
+        ${p.seed ? `<circle cx="${x(p.mean).toFixed(1)}" cy="${y(p.wins).toFixed(1)}" r="10"
+          fill="none" stroke="var(--brand)" stroke-width="1.5"/>` : ""}
       </g>`;
     }).join("");
 

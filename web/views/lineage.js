@@ -14,11 +14,19 @@
  * repeat and says so.
  */
 
-import { qAll } from "../data.js";
+import { qAll, qs } from "../data.js";
 import { href } from "../routes.js";
 import { html, raw, pill, n3, n2, dir, empty, day, plural } from "../dom.js";
-import { loadArchive, wins, frontier, tree } from "../archive.js";
+import { loadArchive, contested, instanceBest, wins, frontier, tree } from "../archive.js";
+import { recompute, runStatus } from "../stats.js";
 import { sparkline } from "../charts.js";
+
+/**
+ * `manifest["parent"]` is a run *directory* — "runs/gen4" — while `id` is the
+ * directory's name. Matched raw, every child of gen4 was an orphan and the
+ * chain gen1-floored → gen4 → gen5 drew as three roots.
+ */
+const parentId = r => (r.parent || "").replace(/^runs\//, "") || null;
 
 const COLUMNS = "id,created,parent,accepted,reasons,incumbent_fp,candidate_fp," +
                 "baseline,candidate,decision,search";
@@ -30,6 +38,18 @@ export async function lineageView({ signal }) {
     // state, not a failure of this page.
     loadArchive({ signal }).catch(() => null),
   ]);
+  // The published held-out figures are on whatever metric ran that week; one
+  // click away, the front page shows the recomputed levels. Two pages one
+  // click apart quoting different numbers for the same run is how a reader
+  // stops trusting both, so this page recomputes the same way.
+  let level = new Map();
+  if (runs.length && runs.length <= 24) {
+    const windows = await qAll(
+      `rollouts?select=run_id,side,err,naive_error,ok,scored` +
+      `&split=eq.holdout&run_id=${qs.inList(runs.map(r => r.id))}`,
+      { signal, max: 24_000 }).catch(() => []);
+    level = recompute(windows);
+  }
   if (!runs.length && !entries) {
     return { title: "Lineage", heading: "Nothing to draw yet",
              body: empty("No generation has been published and no archive is deployed.") };
@@ -37,7 +57,7 @@ export async function lineageView({ signal }) {
 
   const kept = runs.filter(r => r.accepted).length;
   const { byId, children, roots, orphans } = promotions(runs);
-  const selfish = runs.filter(r => r.parent === r.id);
+  const selfish = runs.filter(r => parentId(r) === r.id);
   const seen = new Set();
   const draw = list => html`<ul class="tree">${list.map(r => {
     if (seen.has(r.id))
@@ -45,7 +65,7 @@ export async function lineageView({ signal }) {
         Drawn once, above.</p></li>`;
     seen.add(r.id);
     const kids = children.get(r.id) || [];
-    return html`<li>${node(r, byId)}${kids.length ? draw(kids) : ""}</li>`;
+    return html`<li>${node(r, byId, level.get(r.id))}${kids.length ? draw(kids) : ""}</li>`;
   })}</ul>`;
 
   return {
@@ -65,7 +85,7 @@ export async function lineageView({ signal }) {
 
       ${orphans.length ? html`<section class="panel"><div class="panel-b note">
         ${plural(orphans.length, "generation")} below name a parent that is not in the database
-        (${orphans.map(r => r.parent).join(", ")}). They are drawn at the top level rather than
+        (${orphans.map(r => parentId(r)).join(", ")}). They are drawn at the top level rather than
         dropped, because a missing parent is a publishing gap, not a missing run.
       </div></section>` : ""}
       ${selfish.length ? html`<section class="panel"><div class="panel-b note">
@@ -88,7 +108,8 @@ function promotions(runs) {
   const children = new Map();
   const roots = [];
   for (const r of runs) {
-    const parent = r.parent && r.parent !== r.id && byId.has(r.parent) ? r.parent : null;
+    const pid = parentId(r);
+    const parent = pid && pid !== r.id && byId.has(pid) ? pid : null;
     if (parent) {
       if (!children.has(parent)) children.set(parent, []);
       children.get(parent).push(r);
@@ -97,34 +118,51 @@ function promotions(runs) {
     }
   }
   return { byId, children, roots,
-           orphans: roots.filter(r => r.parent && r.parent !== r.id && !byId.has(r.parent)) };
+           orphans: roots.filter(r => parentId(r) && parentId(r) !== r.id && !byId.has(parentId(r))) };
 }
 
-function node(r, byId) {
+function node(r, byId, level) {
   const d = r.decision?.holdout?.diff;
-  const missingParent = r.parent && r.parent !== r.id && !byId.has(r.parent);
+  const pid = parentId(r);
+  const missingParent = pid && pid !== r.id && !byId.has(pid);
+  const status = runStatus(r);
+  const inc = level?.baseline?.skill ?? r.baseline?.holdout?.statistic;
+  const cand = level?.candidate?.skill ?? r.candidate?.holdout?.statistic;
+  const restated = level?.baseline?.skill != null
+    && r.baseline?.holdout?.statistic != null
+    && Math.abs(level.baseline.skill - r.baseline.holdout.statistic) > 0.01;
+  const verdict = status === "incomplete" ? pill("incomplete", "warn")
+    : status === "exhausted" ? pill("ran out of money", "warn")
+    : pill(r.accepted ? "kept" : "dropped", r.accepted ? "up" : "down");
   return html`<a class="row card-row" href="${raw(href.run(r.id))}" data-ok="${r.accepted ? 1 : 0}">
-    <span class="mark" aria-hidden="true"></span>
+    <span class="mark ${raw(status !== "complete" ? "warn-mark" : "")}" aria-hidden="true"></span>
     <span>
       <span class="name">${r.id}
-        ${pill(r.accepted ? "kept" : "dropped", r.accepted ? "up" : "down")}
-        ${r.decision?.holdout?.underpowered ? pill("underpowered", "warn") : ""}
-        ${r.candidate_fp === r.incumbent_fp ? pill("unchanged") : ""}
+        ${verdict}
+        ${status === "complete" && r.decision?.holdout?.underpowered ? pill("underpowered", "warn") : ""}
+        ${r.candidate_fp && r.candidate_fp === r.incumbent_fp ? pill("unchanged") : ""}
         ${missingParent ? pill("parent not published", "warn") : ""}</span>
-      <span class="why mono">held out ${n3(r.baseline?.holdout?.statistic)} →
-        ${n3(r.candidate?.holdout?.statistic)} · ${(r.search?.candidates) ?? "?"} candidates
+      <span class="why mono">${status === "complete"
+        ? html`held out ${n3(inc)} → ${n3(cand)}${restated
+            ? html` (published ${n3(r.baseline?.holdout?.statistic)} →
+                ${n3(r.candidate?.holdout?.statistic)} on the metric of the day)` : ""}
+            · ${plural(r.search?.candidates ?? 0, "candidate")}`
+        : html`no held-out measurement`}
         · ${day(r.created)}</span>
       <span class="why">${(r.reasons || [])[0] || ""}</span>
     </span>
     <span class="spark"></span>
-    <span class="right"><span class="delta ${dir(d)}">${n3(d)}</span></span>
+    <span class="right">${status === "complete"
+      ? html`<span class="delta ${dir(d)}">${n3(d)}</span>`
+      : html`<span class="crumb">—</span>`}</span>
   </a>`;
 }
 
 /** The lineage the search walked: every candidate, and what it was mutated from. */
 function candidateTree(entries) {
-  const won = wins(entries);
-  const front = frontier(entries, won);
+  const disputed = contested(entries);
+  const won = wins(entries, instanceBest(entries, disputed));
+  const front = frontier(entries, won, disputed);
   const { byId, children, roots, orphans } = tree(entries);
   const seen = new Set();
 
@@ -139,8 +177,9 @@ function candidateTree(entries) {
         <span class="mark" aria-hidden="true"></span>
         <span>
           <span class="name mono ticker">${e.id}
-            ${front.has(e.id) ? pill("frontier", "brand") : pill("dominated")}
-            ${e.promoted ? pill("promoted", "up") : ""}
+            ${e.isSeed ? pill("seed / incumbent", "brand")
+              : front.has(e.id) ? pill("frontier", "brand") : pill("dominated")}
+            ${e.flat ? pill("flat", "warn") : ""}
             ${e.parent && !byId.has(e.parent) ? pill("parent not archived", "warn") : ""}</span>
           <span class="why">${e.generation} · mean ${n2(e.mean)} · best on
             ${mine.length} of ${e.n} instances${e.discovered_after_calls

@@ -45,6 +45,7 @@ globalThis.setTimeout = ((real) => (fn, ms) => (ms >= 1000 ? 0 : real(fn, ms)))(
 await import(`${W}/app.js`);
 
 const routes = ["#/", "#/generation/gen1-floored", "#/generation/gen1-floored?side=baseline",
+                "#/generation/gen5?side=baseline", "#/generation/gen4",
                 "#/window/3", "#/lineage", "#/archive", "#/compare",
                 "#/compare/gen1-floored", "#/compare/gen1-floored/401878780",
                 "#/votes", "#/live", "#/cost", "#/nonsense"];
