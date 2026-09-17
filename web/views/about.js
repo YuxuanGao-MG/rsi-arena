@@ -78,6 +78,8 @@ export async function aboutView() {
           it was judging.</dd>
         <dt>frontier</dt><dd>Candidates best at something and dominated by nothing — the pool
           the next generation samples its parent from.</dd>
+        <dt>fingerprint</dt><dd>A short id computed from a harness's prompt, plan, tools and
+          model. Identical harnesses carry identical fingerprints, whatever they are named.</dd>
         <dt>refusal</dt><dd>A window the harness never answered because the budget was already
           spent. Counted, shown, and excluded from every statistic.</dd>
       </dl>

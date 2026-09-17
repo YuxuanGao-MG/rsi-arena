@@ -76,9 +76,9 @@ export async function archiveView({ signal }) {
         </div>
         <figure class="chart">
           <div id="frontier"></div>
-          <figcaption>Right of the line beat silence on average. The interesting dots are low
-            and to the right of others' left: candidates that lose on average but are the only
-            thing that ever worked on some match.</figcaption>
+          <figcaption>Right of the line beat silence on average. The dots worth studying are
+            the ones that lose on average and still sit high — the only thing that ever worked
+            on some particular match.</figcaption>
         </figure>
         <details class="table-view">
           <summary>Every candidate as a table</summary>

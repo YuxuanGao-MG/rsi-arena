@@ -31,7 +31,43 @@ const views = {
 let bad = 0;
 const fail = (view, msg) => { bad++; console.log(`  FAIL ${view}: ${msg}`); };
 
-// The shell.
+// The shell — parsed, not just grepped. A botched favicon edit once left an
+// unencoded copy of the SVG after the data URI closed; the parser terminated
+// <head> early, two <circle> elements landed in the body, and a stray '">'
+// rendered as visible text on every route. Regex greps for the presence of
+// tags saw nothing wrong; only checking what is BETWEEN the tags does.
+{
+  const headMatch = shell.match(/<head>([\s\S]*?)<\/head>/);
+  if (!headMatch) fail("shell", "no parseable <head>");
+  else {
+    const head = headMatch[1];
+    if (!/<link rel="stylesheet" href="app.css">/.test(head))
+      fail("shell", "stylesheet link not inside <head> — head terminated early");
+    // Strip element contents that legitimately hold text, then every tag;
+    // anything left is stray text a broken tag spilled into the document.
+    const text = head
+      .replace(/<script[\s\S]*?<\/script>/g, "")
+      .replace(/<title[\s\S]*?<\/title>/g, "")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<[^<>]*>/g, "")
+      .trim();
+    if (text) fail("shell", `stray text in <head>: ${JSON.stringify(text.slice(0, 60))}`);
+    // No attribute value may contain a raw angle bracket: a tag that fails
+    // this check is two tags to the parser.
+    for (const tag of head.match(/<(link|meta)\b[^>]*>/g) || [])
+      if (/[<]/.test(tag.slice(1))) fail("shell", `malformed tag: ${tag.slice(0, 60)}`);
+  }
+  const bodyMatch = shell.match(/<body>([\s\S]*?)Skip to content/);
+  if (!bodyMatch) fail("shell", "no skip link at the top of <body>");
+  else {
+    const beforeSkip = bodyMatch[1]
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<[^<>]*>/g, "")
+      .trim();
+    if (beforeSkip) fail("shell",
+      `visible text before the skip link: ${JSON.stringify(beforeSkip.slice(0, 60))}`);
+  }
+}
 if (!/lang="en"/.test(shell)) fail("shell", "no lang");
 if (!/<noscript>/.test(shell)) fail("shell", "no noscript");
 if (!/name="theme-color"/.test(shell)) fail("shell", "no theme-color");

@@ -47,14 +47,14 @@ export async function metricsView({ signal }) {
 
     ${g.exhausted.length || g.incomplete.length ? html`<section class="panel warnband">
       <div class="panel-b prose">
-      <p>${[...g.exhausted.map(r => `${genName(r.id)} ran out of money`),
-            ...g.incomplete.map(r => `${genName(r.id)} crashed`)].join("; ")} — those runs
+      <p>${[...g.exhausted.map(r => `${genName(r.id, g.runs)} ran out of money`),
+            ...g.incomplete.map(r => `${genName(r.id, g.runs)} crashed`)].join("; ")} — those runs
       measured nothing, so they appear as gaps, not results.</p>
       <details class="more"><summary>why a gap and not a zero</summary>
         <p>A run that stopped mid-way records refusals — forecasts that never happened, stored
         as "no change". Scored, they would look like a harness that broke even. Excluded and
         labelled, they look like what they are.
-        ${g.exhausted.map(r => html`${genName(r.id)} spent ${usd(r.llm.spent_usd)}${
+        ${g.exhausted.map(r => html`${genName(r.id, g.runs)} spent ${usd(r.llm.spent_usd)}${
           r.llm.budget_usd ? html` of ${usd(r.llm.budget_usd)}` : ""}. `)}
         <a href="${raw(href.cost())}">What the loop costs</a>.</p>
       </details>
@@ -75,7 +75,7 @@ export async function metricsView({ signal }) {
     <section class="panel">
       <div class="panel-h"><h2>Every generation</h2><span class="pill">newest first</span></div>
       <ul class="rows">${g.runs.map(r => row(r, g.byRunSide.get(`${r.id}|candidate`) || [],
-                                            g.level.get(r.id), g.statusOf.get(r.id)))}</ul>
+                                            g.level.get(r.id), g.statusOf.get(r.id), g.runs))}</ul>
     </section>
 
     <p class="sub">Skill is measured against no change. Predicting the price stays put is free
@@ -92,7 +92,7 @@ export async function metricsView({ signal }) {
   };
 }
 
-function row(r, windows, level, status) {
+function row(r, windows, level, status, runs) {
   const hold = r.decision?.holdout || {};
   const skills = windows.map(windowSkill).filter(v => v != null);
   const inc = level?.baseline?.skill ?? r.baseline?.holdout?.statistic;
@@ -104,7 +104,7 @@ function row(r, windows, level, status) {
     <a class="row" href="${raw(href.run(r.id))}" data-ok="${r.accepted ? 1 : 0}">
       <span class="mark ${raw(status !== "complete" ? "warn-mark" : "")}" aria-hidden="true"></span>
       <span>
-        <span class="name">${genName(r.id)}
+        <span class="name">${genName(r.id, runs)}
           ${verdict}
           ${status === "complete" && hold.underpowered ? pill("underpowered", "warn") : ""}
           ${status === "complete" && hold.usable === false ? pill("no interval", "warn") : ""}

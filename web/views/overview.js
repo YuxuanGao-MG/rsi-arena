@@ -186,8 +186,8 @@ export function heroFor(s, g) {
                  note: s.budgetUsd ? `of a ${usd(s.budgetUsd)} ceiling` : "" })}
         ${stat({ value: s.evaluations ?? "—", label: "evaluations",
                  note: "windows the search has paid for" })}
-        ${stat({ value: raw(`<time data-tick="rel" datetime="${s.updatedAt}">${
-                   relative(s.updatedAt)}</time>`), label: "last heartbeat" })}
+        ${stat({ value: html`<time data-tick="rel" datetime="${s.updatedAt}">${
+                   relative(s.updatedAt)}</time>`, label: "last heartbeat" })}
       </div>
       ${over != null ? html`<div class="meter budget-meter" role="img"
           aria-label="${over}% of the budget spent">
@@ -245,9 +245,9 @@ export function heroFor(s, g) {
           ${verdict || "no verdict recorded"}${s.reason ? html`, ${s.reason}` : ""}.`
       : html`No run has reported yet.`}</p>
     <div class="cards hero-cards">
-      ${stat({ value: raw(`<time data-tick="until" data-target="loop">…</time>`),
+      ${stat({ value: html`<time data-tick="until" data-target="loop">…</time>`,
                label: "next generation", note: "daily at 03:17 UTC, retried 05:47" })}
-      ${stat({ value: raw(`<time data-tick="until" data-target="live">…</time>`),
+      ${stat({ value: html`<time data-tick="until" data-target="live">…</time>`,
                label: "next live collection",
                note: "19:05 weekdays · 15:05 weekends · 01:05 daily, UTC" })}
     </div>

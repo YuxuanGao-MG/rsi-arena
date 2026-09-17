@@ -79,8 +79,9 @@ export async function lineageView({ signal }) {
       <section class="panel"><div class="panel-b">
         <p class="eyebrow">the seed</p>
         <p class="mono ticker">${(runs[0] && runs[0].incumbent_fp) || "not recorded"}</p>
-        <p class="note">A fingerprint covers the components and the model — what the loop can
-        rewrite — so a generation that changed nothing carries the same one.</p>
+        <p class="note">Every harness gets a fingerprint — a short id computed from its prompt,
+        plan, tools and model — so two generations that produced identical harnesses carry
+        identical ids, and "changed nothing" is checkable rather than claimed.</p>
       </div></section>
 
       ${orphans.length ? html`<section class="panel"><div class="panel-b note">

@@ -146,9 +146,9 @@ function finish(rows, body, { done }) {
   return {
     title: "Live",
     heading: "The arena against a market it has not read the end of",
-    lead: html`Replay is honest about the past because the tools are frozen at the instant. This
-      is the other test: the same harness on open markets — mostly pre-match, in play when the
-      schedule lands on one — scored when the five-minute horizon prints.`,
+    lead: html`Everywhere else on this site, the forecaster is tested on matches that already
+      ended. Here it forecasts markets that are still open — mostly before kickoff, in play when
+      the schedule lands on one — and waits five minutes to find out.`,
     body,
     ready: root => {
       if (done.length >= 4) predictedVsRealised(root.querySelector("#live-scatter"), done);

@@ -27,6 +27,11 @@ let lastGood = null;
 export function startTicker(target) {
   if (!target || el) return;
   el = target;
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refresh();       // catch up the moment eyes return
+    });
+  }
   refresh();
 }
 
@@ -82,6 +87,13 @@ function render(events, { fallback = false } = {}) {
 }
 
 async function refresh() {
+  // A background tab does not need three selects every ninety seconds; the
+  // visibilitychange handler refreshes the moment it is looked at again.
+  if (typeof document !== "undefined" && document.hidden) {
+    clearTimeout(timer);
+    timer = setTimeout(refresh, REFRESH_MS);
+    return;
+  }
   try {
     const events = await gather();
     if (events.length) {

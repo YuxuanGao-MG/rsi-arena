@@ -8,25 +8,32 @@
  * shown except the aggregate yes/no split and the crowd's hit rate.
  */
 
-import { q, rpc, ApiError } from "./data.js";
+import { q, qAll, rpc, ApiError } from "./data.js";
 import { html, raw, toHTML, pct, pill, plural } from "./dom.js";
 import { runStatus } from "./stats.js";
 import { VOTER } from "./voter.js";
 
 export async function loadGuess({ signal, runs }) {
-  const guesses = await q("guesses?select=created,guess,voter&order=created.desc",
-                          { signal, fresh: true }).catch(() => null);
-  return build(guesses, runs);
+  // qAll, not q: a single page cuts off at PostgREST's row limit, and a voter
+  // past row one thousand would be told they never guessed. "Mine" is fetched
+  // by its own filter as well, so it cannot fall off any page at all.
+  const [guesses, mineRows] = await Promise.all([
+    qAll("guesses?select=created,guess,voter&order=created.desc",
+         { signal, fresh: true, max: 50_000 }).catch(() => null),
+    q(`guesses?select=created,guess,voter&voter=eq.${encodeURIComponent(VOTER)}`,
+      { signal, fresh: true }).catch(() => []),
+  ]);
+  return build(guesses, runs, VOTER, mineRows && mineRows[0]);
 }
 
 /** Pure, for the tests: guesses + runs (+ who is asking) → the widget's state. */
-export function build(guesses, runs, voter = VOTER) {
+export function build(guesses, runs, voter = VOTER, mineExact = undefined) {
   if (guesses == null) return { available: false };
   const crowd = { yes: 0, no: 0 };
-  let mine = null;
+  let mine = mineExact ?? null;
   for (const g of guesses) {
     (g.guess ? crowd.yes += 1 : crowd.no += 1);
-    if (g.voter === voter) mine = g;
+    if (mineExact === undefined && g.voter === voter) mine = g;
   }
   // Runs oldest-first by created, with only the measured ones able to grade.
   const measured = [...(runs || [])]

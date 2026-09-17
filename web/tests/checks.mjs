@@ -135,8 +135,10 @@ const bestTile = frontHTML.slice(frontHTML.indexOf("best held-out skill") - 400,
 check("best-of tile is not gen5's 0.000", />\+?0\.000</.test(bestTile), false);
 check("front page names the money running out", /ran out of money/.test(frontHTML), true);
 check("gen4 renders as incomplete, never dropped", /incomplete/.test(frontHTML), true);
-const g4row = frontHTML.slice(frontHTML.indexOf('generation/gen4'), frontHTML.indexOf('generation/gen4') + 900);
+const g4start = frontHTML.indexOf('generation/gen4');
+const g4row = frontHTML.slice(g4start, frontHTML.indexOf("</li>", g4start));
 check("gen4's row does not say dropped", />dropped</.test(g4row), false);
+check("gen4's row says incomplete", /incomplete/.test(g4row), true);
 check("metrics marks the gaps in its rows",
       (frontHTML.match(/no measurement/g) || []).length >= 2, true);
 

@@ -53,7 +53,8 @@ export async function votesView({ signal }) {
       ${stat({ value: votes.filter(v => v.chose === "neither").length, label: "chose neither",
                note: "a real answer, and kept as one" })}
       ${stat({ value: votes.filter(v => v.left_side === "candidate").length,
-               label: "rewrite shown left", note: "the coin, for the bias correction" })}
+               label: "rewrite shown left",
+               note: "recorded so a lean toward the left column can be corrected for" })}
     </div>
 
     ${hasFlag && trusted.length < votes.length ? html`<section class="panel"><div class="panel-b note">

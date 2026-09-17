@@ -19,7 +19,7 @@
  * hold every state without faking clocks globally.
  */
 
-import { q, external, ApiError } from "./data.js";
+import { q, external, serverNow, ApiError } from "./data.js";
 
 /** Mirrors rsi_arena/loop/progress.py:STALE_AFTER_S. */
 export const STALE_AFTER_S = 300;
@@ -44,8 +44,11 @@ function ghRuns(github) {
 
 const executing = r => r && (r.status === "in_progress" || r.status === "queued");
 
-/** Pure: progress rows + optional GitHub payload + a clock → one state. */
-export function classify(rows, github, now = Date.now()) {
+/** Pure: progress rows + optional GitHub payload + a clock → one state.
+ * The default clock is the database's, not this machine's: staleness compares
+ * our now with the row's updated_at, and a fast local clock would call every
+ * live run dead. */
+export function classify(rows, github, now = serverNow()) {
   const sorted = [...(rows || [])].sort((a, b) =>
     new Date(b.updated_at) - new Date(a.updated_at));
   const newest = sorted[0];
@@ -57,7 +60,7 @@ export function classify(rows, github, now = Date.now()) {
     : null;
 
   if (newest && newest.phase !== "done") {
-    const age = (now - new Date(newest.updated_at).getTime()) / 1000;
+    const age = Math.max(0, (now - new Date(newest.updated_at).getTime()) / 1000);
     const detail = newest.detail || {};
     if (age <= STALE_AFTER_S) {
       return { kind: "live", run: newest.run_id, phase: newest.phase,

@@ -53,10 +53,60 @@ globalThis.RSI = { url: "https://example.supabase.co", key: "anon-key",
 
 class FilterError extends Error {}
 
-function rowsFrom(data, params) {
+// The columns each public view actually has, transcribed from the migrations
+// (007 is why votes has no `note`: the page promised notes are not published,
+// and the view now keeps the promise). A select naming a column that is not
+// here is a 400 in production — the exact class of query that once turned
+// every generation page into an error while the whole suite stayed green,
+// because the fixture happily served columns that do not exist.
+const SCHEMA = {
+  runs: ["id", "topic", "created", "parent", "incumbent", "incumbent_fp",
+         "candidate_fp", "accepted", "reasons", "baseline", "candidate",
+         "decision", "search", "llm", "split", "audit"],
+  rollouts: ["id", "run_id", "side", "split", "fixture", "ticker", "at",
+             "mid_now", "realised", "predicted", "half_width", "err",
+             "naive_error", "skill", "echoed", "unmeasurable", "scored",
+             "cost_usd", "ok", "error_text", "output", "game", "feedback"],
+  traces: ["rollout_id", "spans"],
+  votes: ["id", "created", "run_id", "fixture", "chose", "left_side",
+          "baseline_skill", "candidate_skill", "voter", "server_computed"],
+  live_forecasts: ["at", "league", "game_id", "ticker", "mid_now", "realised",
+                   "harness", "output", "game", "spans", "skill", "scored",
+                   "ok", "error_text"],
+  progress: ["run_id", "phase", "detail", "started_at", "updated_at"],
+  trace_feedback: ["id", "created", "rollout_id", "verdict", "voter"],
+  guesses: ["id", "created", "guess", "voter"],
+};
+
+// The three RPCs' argument names, from their SQL signatures. PostgREST
+// resolves a function by name AND named-argument set, so a wrong set is the
+// same 404 PGRST202 a missing function gets — the stub used to answer
+// success to any name with any body, which certifies typos.
+const RPCS = {
+  rsi_cast_vote: { required: ["run_id", "fixture", "chose", "left_side"],
+                   optional: ["voter", "note"] },
+  rsi_flag_trace: { required: ["rollout_id", "verdict", "voter"], optional: [] },
+  rsi_cast_guess: { required: ["guess", "voter"], optional: [] },
+};
+
+function checkSelect(table, params) {
+  const select = params.get("select");
+  if (!select || select === "*") return null;
+  const known = SCHEMA[table] || [];
+  for (const col of select.split(",").map(c => c.trim()))
+    if (col !== "*" && !known.includes(col)) return col;
+  return null;
+}
+
+function rowsFrom(table, data, params) {
+  const unknown = checkSelect(table, params);
+  if (unknown !== null)
+    throw new FilterError(`column ${table}.${unknown} does not exist`);
   let out = [...(data || [])];
   for (const [key, raw] of params) {
     if (["select", "order", "limit", "offset"].includes(key)) continue;
+    if (SCHEMA[table] && !SCHEMA[table].includes(key))
+      throw new FilterError(`column ${table}.${key} does not exist`);
     const [op, ...rest] = raw.split(".");
     const value = decodeURIComponent(rest.join("."));
     if (op === "eq") out = out.filter(r => String(r[key]) === value);
@@ -76,7 +126,15 @@ function rowsFrom(data, params) {
   const order = params.get("order");
   if (order) {
     const [col, how = "asc"] = order.split(".");
-    out.sort((a, b) => ((a[col] ?? -Infinity) - (b[col] ?? -Infinity)) * (how.startsWith("desc") ? -1 : 1));
+    const sign = how.startsWith("desc") ? -1 : 1;
+    out.sort((a, b) => {
+      const x = a[col], y = b[col];
+      if (typeof x === "number" && typeof y === "number") return (x - y) * sign;
+      // Timestamps and ids sort as strings, the way PostgREST's text
+      // collation does; numeric subtraction on them is NaN, and a NaN
+      // comparator is a sort that silently does nothing.
+      return String(x ?? "").localeCompare(String(y ?? "")) * sign;
+    });
   }
   const limit = Number(params.get("limit") || 0);
   if (limit) out = out.slice(0, limit);
@@ -104,6 +162,15 @@ globalThis.fetch = async (url, opts = {}) => {
                text: async () => JSON.stringify({ message: rpcState.fail }) };
     const fn = u.pathname.split("/rpc/")[1];
     const args = JSON.parse(opts.body || "{}");
+    const sig = RPCS[fn];
+    const badArgs = sig && (sig.required.some(k => !(k in args))
+      || Object.keys(args).some(k => !sig.required.includes(k) && !sig.optional.includes(k)));
+    if (!sig || badArgs)
+      return { ok: false, status: 404, headers: hdr("application/json"),
+               json: async () => ({ code: "PGRST202",
+                 message: `Could not find the function public.${fn}(${Object.keys(args).sort().join(", ")})` }),
+               text: async () => JSON.stringify({ code: "PGRST202",
+                 message: `Could not find the function public.${fn}(${Object.keys(args).sort().join(", ")})` }) };
     if (fn === "rsi_flag_trace") {
       if (!["good", "bad", "unsure"].includes(args.verdict))
         return { ok: false, status: 400, headers: hdr("application/json"),
@@ -137,7 +204,7 @@ globalThis.fetch = async (url, opts = {}) => {
                                text: async () => '{"code":"PGRST205"}' };
   let all;
   try {
-    all = rowsFrom(source[table], u.searchParams);
+    all = rowsFrom(table, source[table], u.searchParams);
   } catch (e) {
     if (e instanceof FilterError)
       return { ok: false, status: 400, headers: hdr("application/json"),

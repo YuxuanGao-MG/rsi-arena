@@ -13,11 +13,22 @@
 
 import { runStatus } from "./stats.js";
 
-/** "gen5" → "generation 5"; anything unrecognised stays itself. */
-export function genName(runId) {
-  const m = /^gen(\d+)([-\w]*)$/.exec(String(runId || ""));
-  if (!m) return String(runId || "");
-  return `generation ${m[1]}${m[2] ? ` (${m[2].replace(/^-/, "")})` : ""}`;
+/**
+ * "generation N" by creation order, given the runs to order by.
+ *
+ * Not parsed out of the id: the first three run directories are gen1,
+ * gen1-1k and gen1-floored — three experiments the reader would meet as
+ * "generation 1" three times, with internal suffixes leaking into prose.
+ * Creation order is the story a person actually follows, and the internal id
+ * stays in small mono wherever the name appears.
+ */
+export function genName(runId, runs) {
+  const ordered = [...(runs || [])]
+    .filter(r => r.created)
+    .sort((a, b) => new Date(a.created) - new Date(b.created));
+  const n = ordered.findIndex(r => r.id === runId);
+  if (n >= 0) return `generation ${n + 1}`;
+  return String(runId || "");
 }
 
 /** One word (or three) of fate, for pinning to a name. */
@@ -33,7 +44,8 @@ export function fateOf(run) {
 }
 
 /** "generation 5's rewrite (ran out of money)". */
-export const rewriteLabel = run => `${genName(run.id)}'s rewrite (${fateOf(run)})`;
+export const rewriteLabel = (run, runs) =>
+  `${genName(run.id, runs)}'s rewrite (${fateOf(run)})`;
 
 /** What the rewrite was up against — the original until something survives. */
 export function incumbentLabel(run, allRuns = []) {

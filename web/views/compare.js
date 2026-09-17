@@ -8,7 +8,7 @@
  * browser then posted as the record of what the arithmetic said.
  */
 
-import { q, qAll, rpc, invalidate, ApiError } from "../data.js";
+import { q, qAll, rpc, count, invalidate, ApiError } from "../data.js";
 import { href } from "../routes.js";
 import {
   html, raw, mount, pill, n3, dir, empty, clock, cents, price, plural, stat,
@@ -51,11 +51,11 @@ async function pickGeneration({ signal }) {
   const doors = [];
   if (closest) doors.push({
     run: closest, title: "The rewrite that got closest",
-    why: `${genName(closest.id)}'s rewrite came within a hair of its parent — read both and
-          see if you can tell them apart.` });
+    why: `${genName(closest.id, runs)}'s rewrite came within a hair of its parent — read both
+          and see if you can tell them apart.` });
   if (boldest && boldest !== closest) doors.push({
     run: boldest, title: "The boldest rewrite",
-    why: `${genName(boldest.id)}'s rewrite changed the most — and ${
+    why: `${genName(boldest.id, runs)}'s rewrite changed the most — and ${
           boldest.decision.holdout.diff > 0 ? "still could not prove it helped"
                                             : "made things worse"}.` });
 
@@ -77,17 +77,32 @@ async function pickGeneration({ signal }) {
 
       <section class="panel">
         <div class="panel-h"><h2>All generations</h2></div>
-        <ul class="rows">${runs.map(r => html`<li>
+        <ul class="rows">${runs.map(r => {
+          // An exhausted or crashed run has no rewrite to read: gen5's
+          // candidate never answered a window, and every vote on it is now
+          // refused by the database. A door that opens onto a refusal is
+          // worse than a wall that says why it is a wall.
+          if (runStatus(r) !== "complete") return html`<li>
+            <div class="row row-disabled">
+              <span class="mark warn-mark" aria-hidden="true"></span>
+              <span><span class="name">${incumbentLabel(r, runs)} vs ${rewriteLabel(r, runs)}</span>
+                <span class="why">nothing to compare — the rewrite never ran</span>
+                <span class="why crumb mono">${r.id}</span></span>
+              <span class="spark"></span>
+              <span class="right crumb">no vote possible</span>
+            </div></li>`;
+          return html`<li>
           <a class="row" href="${raw(href.compare(r.id))}">
             <span class="mark brand-mark" aria-hidden="true"></span>
-            <span><span class="name">${incumbentLabel(r, runs)} vs ${rewriteLabel(r)}</span>
+            <span><span class="name">${incumbentLabel(r, runs)} vs ${rewriteLabel(r, runs)}</span>
               <span class="why">${r.candidate_fp === r.incumbent_fp
                 ? "the search returned its own parent — both columns are the same forecaster"
                 : "pick a match, read both, vote"}</span>
               <span class="why crumb mono">${r.id}</span></span>
             <span class="spark"></span>
             <span class="right crumb">choose a match</span>
-          </a></li>`)}</ul>
+          </a></li>`;
+        })}</ul>
       </section>
 
       <section class="panel"><div class="panel-b prose">
@@ -108,9 +123,12 @@ async function pickGeneration({ signal }) {
 
 async function pickFixture({ params, signal }) {
   const runId = params.runId;
-  const [run] = await q(`runs?id=eq.${encodeURIComponent(runId)}` +
-    "&select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm", { signal })
-    .catch(() => []);
+  const [[run], allRuns] = await Promise.all([
+    q(`runs?id=eq.${encodeURIComponent(runId)}` +
+      "&select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm", { signal })
+      .catch(() => []),
+    q("runs?select=id,created&order=created.asc", { signal }).catch(() => []),
+  ]);
   // Narrow on purpose. Counting distinct fixtures used to mean pulling four
   // thousand rollouts with their `output` jsonb, ordered by time and cut at the
   // limit — so the count printed beside the list was of whatever survived the
@@ -132,7 +150,8 @@ async function pickFixture({ params, signal }) {
 
   return {
     title: `${runId} · matches`,
-    heading: run ? html`${incumbentLabel(run, [])} vs ${rewriteLabel(run)}` : "Pick a match",
+    heading: run ? html`${incumbentLabel(run, allRuns)} vs ${rewriteLabel(run, allRuns)}`
+                 : "Pick a match",
     lead: html`Pick one of ${plural(rows.length, "match")}. You will read both forecasters on
       every moment of it, then say which you'd rather have had.`,
     crumbs: [["compare", href.compare()], [runId]],
@@ -179,10 +198,9 @@ async function duel({ params, signal }) {
   const flipped = Math.random() < 0.5;
   const L = flipped ? "candidate" : "baseline", R = flipped ? "baseline" : "candidate";
 
-  const voteCount = (await q(
+  const voteCount = await count(
     `votes?select=id&run_id=eq.${encodeURIComponent(runId)}` +
-    `&fixture=eq.${encodeURIComponent(fixture)}`, { signal, fresh: true })
-    .catch(() => [])).length;
+    `&fixture=eq.${encodeURIComponent(fixture)}`, { signal }).catch(() => 0);
 
   return {
     title: fixture,
@@ -222,9 +240,9 @@ async function duel({ params, signal }) {
       const tick = async () => {
         if (typeof document === "undefined" || !document.hidden) {
           try {
-            const n = (await q(
+            const n = await count(
               `votes?select=id&run_id=eq.${encodeURIComponent(runId)}` +
-              `&fixture=eq.${encodeURIComponent(fixture)}`, { fresh: true })).length;
+              `&fixture=eq.${encodeURIComponent(fixture)}`, {});
             const el = root.querySelector("#vote-count");
             if (el) el.textContent = n
               ? `${plural(n, "reader has voted", "readers have voted")} on this match.`
@@ -282,12 +300,16 @@ async function castVote(el, { runId, fixture, left }) {
     invalidate("votes");
   } catch (err) {
     const missing = err instanceof ApiError && err.status === 404;
+    // The RPC writes its refusals for humans — "no paired scored windows for
+    // <fixture> on <run>" — and that sentence is better than any paraphrase.
+    let said = null;
+    try { said = JSON.parse(err.detail).message; } catch (e) { /* not the RPC's shape */ }
     return mount(box, html`<div class="panel-b">
       <p class="eyebrow">not recorded</p>
       <p class="prose">${missing
         ? html`This database does not have the vote function installed, so nothing was stored.
             Someone has to run <code>supabase/migrations/002_votes_rpc.sql</code> against it.`
-        : err.message}</p>
+        : said || err.message}</p>
       <p class="note">Saying so is the point: the page this replaces swallowed the failure in an
       empty <code>catch</code> and showed the same thank-you either way.</p>
       <button class="btn" type="button" data-action="retry">Reload the page</button>

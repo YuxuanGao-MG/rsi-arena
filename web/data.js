@@ -22,6 +22,14 @@ const PAGE = 1000;              // PostgREST's own default max is 1000 rows
 
 const cache = new Map();        // key -> { at, data }
 
+// The difference between this machine's clock and the database's, estimated
+// from response Date headers. A client five minutes fast would otherwise mark
+// every live run stale — "the run died" is a serious accusation to make on
+// the strength of a wrong wristwatch. HTTP dates have one-second resolution,
+// so half a second is added as the expected midpoint.
+let skewMs = 0;
+export const serverNow = () => Date.now() + skewMs;
+
 export class ApiError extends Error {
   /** @param kind config|network|timeout|aborted|http|parse|notfound */
   constructor(kind, message, { status = 0, detail = "" } = {}) {
@@ -97,6 +105,11 @@ async function request(url, { signal, headers = {}, method = "GET", body } = {})
     link.done();
   }
 
+  const stamped = res.headers.get("date");
+  if (stamped) {
+    const t = new Date(stamped).getTime();
+    if (Number.isFinite(t)) skewMs = t + 500 - Date.now();
+  }
   const type = res.headers.get("content-type") || "";
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
@@ -237,6 +250,21 @@ export async function rpc(name, args, { signal } = {}) {
     signal, method: "POST", body: JSON.stringify(args),
   });
   return rows;
+}
+
+/**
+ * How many rows match, without fetching them.
+ *
+ * The compare page used to count votes by pulling rows through the default
+ * limit — accurate up to a thousand and silently wrong after. One row plus
+ * `Prefer: count=exact` gets the total from the Content-Range header instead.
+ */
+export async function count(path, { signal } = {}) {
+  const { range } = await request(`${base()}/rest/v1/rsi_${path}`, {
+    signal, headers: { "Range-Unit": "items", Range: "0-0", Prefer: "count=exact" },
+  });
+  const total = (range || "").split("/")[1];
+  return total && total !== "*" ? Number(total) : 0;
 }
 
 /** Forget what is cached — after a write, or on an explicit retry. */

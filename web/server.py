@@ -195,6 +195,10 @@ def load() -> dict[str, Asset]:
     for path in sorted(HERE.rglob("*")):
         if not path.is_file() or path.name == "index.html":
             continue
+        # The checks and their fixtures live beside the code they check; they
+        # are not part of the site, and rglob would happily publish them.
+        if "tests" in path.relative_to(HERE).parts:
+            continue
         kind = TYPES.get(path.suffix)
         if kind is None:
             continue

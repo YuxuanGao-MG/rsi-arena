@@ -33,9 +33,10 @@ export async function runView({ params, query, signal }) {
   const base = `rollouts?run_id=eq.${encodeURIComponent(id)}&side=eq.${side}&split=eq.holdout`;
   // The run record and the windows do not depend on one another; serial awaits
   // here used to cost a round trip each.
-  const [[run], allRaw] = await Promise.all([
+  const [[run], allRaw, allRuns] = await Promise.all([
     q(`runs?id=eq.${encodeURIComponent(id)}&select=*`, { signal }),
     qAll(`${base}&select=${NARROW}&order=skill.asc`, { signal, max: 8000 }),
+    q("runs?select=id,created&order=created.asc", { signal }).catch(() => []),
   ]);
 
   if (!run) {
@@ -212,8 +213,8 @@ export async function runView({ params, query, signal }) {
   return {
     title: id,
     heading: side === "candidate"
-      ? html`Did ${genName(id)}'s rewrite forecast better than what it replaced?`
-      : html`How the original harness did in ${genName(id)}`,
+      ? html`Did ${genName(id, allRuns)}'s rewrite forecast better than what it replaced?`
+      : html`How the original harness did in ${genName(id, allRuns)}`,
     lead: html`${side === "candidate" ? "The rewrite" : "It"}
       ${pointsText(mine.skill)} across ${plural(all.length, "scored moment")}
       on ${plural(new Set(all.map(r => r.fixture)).size, "match", "matches")} it had never
@@ -294,10 +295,10 @@ function provenance(run) {
   const archive = s.archive_after || s.archive;
   const bits = [];
   if (s.seed && s.seed_is_incumbent === false)
-    bits.push(html`<p>The search started from archived candidate <code>${s.seed}</code> rather
-      than from the incumbent — the frontier is sampled in proportion to how much of the instance
-      space a candidate uniquely owns, so a stepping stone that lost on average can still be the
-      thing worth mutating. <a href="${raw(href.archive())}">The archive</a>.</p>`);
+    bits.push(html`<p>The search started from an earlier candidate
+      (<code>${s.seed}</code>) instead of the current harness — kept around because it was the
+      best anyone had found on some matches, even though it lost on average.
+      <a href="${raw(href.archive())}">The archive it came from</a>.</p>`);
   else if (s.seed)
     bits.push(html`<p>The search started from the incumbent.</p>`);
   if (archive)
