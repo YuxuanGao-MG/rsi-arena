@@ -19,6 +19,10 @@
   --bg:#f6f7f5; --panel:#fff; --raise:#fbfcfa;
   --ink:#14181b; --soft:#4e575d; --faint:#5d666c; --ghost:#667075;
   --line:#e2e6e2; --hair:#eef1ee;
+  /* The edge of something you can press. --line is a hairline between panels at
+     1.26:1, which is right for a panel and not enough for a control: 1.4.11
+     wants 3:1 on the boundary that tells you a button is a button. */
+  --edge:#828b90;
   --brand:#0f6f68; --brand-soft:#dcecea; --brand-ink:#0b524d;
   /* Every one of these clears 4.5:1 on --bg, --panel and --raise. The values
    * they replaced (--ghost #a8b1b6 at 2.3:1, --faint #828c92 at 3.3:1) were
@@ -61,7 +65,7 @@
   :root:not([data-theme="light"]) {
     --bg:#0d1114; --panel:#141a1e; --raise:#182026;
     --ink:#e8edeb; --soft:#9ba7ad; --faint:#8a969c; --ghost:#7f8b91;
-    --line:#242c32; --hair:#1b2227;
+    --line:#242c32; --hair:#1b2227; --edge:#606a70;
     --brand:#4cbcb1; --brand-soft:#123331; --brand-ink:#7fd4cb;
     --up:#7cc493; --up-soft:#14301f; --down:#e0897f; --down-soft:#331b18;
     --warn:#dcae63; --warn-soft:#2e2411;
@@ -76,7 +80,7 @@
 :root[data-theme="dark"] {
   --bg:#0d1114; --panel:#141a1e; --raise:#182026;
   --ink:#e8edeb; --soft:#9ba7ad; --faint:#8a969c; --ghost:#7f8b91;
-  --line:#242c32; --hair:#1b2227;
+  --line:#242c32; --hair:#1b2227; --edge:#606a70;
   --brand:#4cbcb1; --brand-soft:#123331; --brand-ink:#7fd4cb;
   --up:#7cc493; --up-soft:#14301f; --down:#e0897f; --down-soft:#331b18;
   --warn:#dcae63; --warn-soft:#2e2411;
@@ -155,7 +159,7 @@ nav.main a[aria-current="page"] { background:var(--brand-soft); color:var(--bran
 
 .icon-btn {
   display:inline-flex; align-items:center; gap:var(--s2); background:var(--panel);
-  border:1px solid var(--line); border-radius:var(--r1); padding:var(--s2) var(--s3);
+  border:1px solid var(--edge); border-radius:var(--r1); padding:var(--s2) var(--s3);
   font-size:var(--t-xs); font-weight:var(--w-semi); color:var(--soft);
 }
 .icon-btn:hover { color:var(--ink); border-color:var(--ghost); }
@@ -354,7 +358,7 @@ details.span pre { margin:0; padding:var(--s3); border-top:1px solid var(--hair)
 
 .btn-row { display:flex; gap:var(--s2); flex-wrap:wrap; }
 .btn {
-  padding:var(--s2) var(--s4); border-radius:8px; border:1px solid var(--line);
+  padding:var(--s2) var(--s4); border-radius:8px; border:1px solid var(--edge);
   background:var(--panel); color:var(--ink); font-weight:var(--w-semi);
   font-size:var(--t-sm); transition:border-color var(--fast), color var(--fast);
 }

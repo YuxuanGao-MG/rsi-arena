@@ -161,3 +161,29 @@ def test_asking_for_a_time_past_the_window_gets_the_window(t0, history):
                                       when=(t0 - timedelta(minutes=20)).isoformat())
     if behind.ok:
         assert behind.data["clamped"] is False
+
+
+def test_a_match_that_has_not_kicked_off_is_not_in_progress(t0):
+    """score_at clamps the minute at zero, and that read as a kickoff.
+
+    A harness asked about Brentford against Chelsea two days early was told
+    "in_progress, period 1, clock 0'" and wrote "Kickoff just happened, 0-0"
+    into its driver. The replay benchmark could not see it — `windows` starts
+    five minutes after kickoff — and live collection sees little else, because
+    most open markets are pre-match.
+    """
+    from datetime import timedelta
+    from rsi_arena.kalshi.replay import MatchTimeline
+
+    line = MatchTimeline(game_id="g", league="EPL", home="Brentford", away="Chelsea",
+                         kickoff=t0, events=[])
+
+    before = line.state_at(t0 - timedelta(days=2))
+    assert before["status"] == "scheduled"
+    assert before["minutes_to_kickoff"] == 2 * 24 * 60
+    # Absent, not zero. A key that says 0' is read as a fact.
+    assert "clock" not in before and "period" not in before
+    assert before["home_score"] is None and before["away_score"] is None
+
+    during = line.state_at(t0 + timedelta(minutes=10))
+    assert during["status"] == "in_progress" and during["clock"] == "10'"

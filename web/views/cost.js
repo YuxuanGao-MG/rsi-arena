@@ -12,6 +12,23 @@ import { html, raw, stat, pill, n3, usd, pct, dir, empty, day, plural } from "..
 import { spendByGeneration } from "../charts.js";
 import { ceilingOf } from "../stats.js";
 
+/**
+ * The model account's balance, which no manifest holds.
+ *
+ * Injected by the server from the environment, because the only place this
+ * number exists is the OpenRouter dashboard. Unset is the normal state and
+ * shows nothing at all — a balance nobody has updated is worse than no balance,
+ * so it carries the date it was set and says so when it has none.
+ */
+function account() {
+  const c = (window.RSI && window.RSI.credit) || {};
+  const num = v => {
+    const n = Number(String(v || "").replace(/[^0-9.\-]/g, ""));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  return { remaining: num(c.remaining), total: num(c.total), asOf: (c.asOf || "").trim() || null };
+}
+
 export async function costView({ signal }) {
   const runs = await qAll(
     "runs?select=id,created,accepted,baseline,candidate,decision,search,llm&order=created.asc",
@@ -33,6 +50,7 @@ export async function costView({ signal }) {
     };
   });
 
+  const credit = account();
   const total = rows.reduce((a, r) => a + r.spent, 0);
   const dearest = rows.reduce((a, r) => (r.spent > a.spent ? r : a), rows[0]);
   const ceilings = [...new Set(rows.map(r => r.ceiling).filter(v => v != null))];
@@ -40,11 +58,43 @@ export async function costView({ signal }) {
   const over = rows.filter(r => r.ceiling != null && r.spent > r.ceiling);
   const totalWindows = rows.reduce((a, r) => a + r.windows, 0);
 
+  const perGeneration = total / rows.length;
+  const left = credit.remaining == null ? null : Math.floor(credit.remaining / perGeneration);
+
   const body = html`
+    ${credit.remaining == null ? "" : html`<section class="panel ${raw(
+        left != null && left < 1 ? "warnband" : "")}">
+      <div class="panel-h"><h2>What is left to spend</h2>
+        ${credit.asOf ? pill(`as of ${credit.asOf}`) : pill("not dated", "warn")}</div>
+      <div class="panel-b">
+        <div class="cards">
+          ${stat({ value: usd(credit.remaining), hero: true, label: "credit remaining",
+                   tone: left != null && left < 1 ? "down" : "",
+                   note: credit.total ? `of ${usd(credit.total)} bought` : "on the model account" })}
+          ${stat({ value: left == null ? "—" : left, label: "generations that buys",
+                   note: `at ${usd(perGeneration)} a generation so far` })}
+          ${stat({ value: usd(total), label: "spent so far",
+                   note: credit.total ? pct(total / credit.total) + " of the account" : "on models" })}
+        </div>
+        ${credit.total ? html`<div class="meter ${raw(left != null && left < 1 ? "over" : "")}"
+          role="img" aria-label="${pct(1 - credit.remaining / credit.total)} of the account spent">
+          <i style="width:${raw(Math.min(100, Math.round((1 - credit.remaining / credit.total) * 100)))}%"></i>
+        </div>` : ""}
+        <p class="prose">${left != null && left < 1
+          ? html`There is not enough left for another generation at the rate the last ones ran.
+              The loop stops when this reaches zero, and nothing on this site changes after that
+              until the account is topped up.`
+          : html`Generations stop when this reaches zero. It is the one number here that is not
+              in any manifest — a generation records what it spent, and nothing records what
+              there is left to spend — so it is set on the service by hand and is only as current
+              as the date beside it.`}</p>
+      </div>
+    </section>`}
+
     <div class="cards">
       ${stat({ value: usd(total), label: "spent on models",
                note: `across ${plural(rows.length, "generation")}` })}
-      ${stat({ value: usd(total / rows.length), label: "a generation",
+      ${stat({ value: usd(perGeneration), label: "a generation",
                note: ceiling ? `against a ${usd(ceiling)} ceiling` : "no ceiling recorded" })}
       ${stat({ value: usd(dearest.spent), label: "the dearest one", note: dearest.id })}
       ${stat({ value: totalWindows ? usd(total / totalWindows) : "—", label: "a scored window",
@@ -116,9 +166,12 @@ export async function costView({ signal }) {
   return {
     title: "Cost",
     heading: "What the loop costs to run",
-    lead: html`Model spend per generation, against the per-generation ceiling. Nothing here has
-      been promoted yet, so every dollar on this page bought evidence rather than a better
-      harness — which is the result, but it is worth knowing the price of it.`,
+    lead: html`Model spend per generation, against the per-generation ceiling.
+      ${runs.some(r => r.accepted)
+        ? html`${plural(runs.filter(r => r.accepted).length, "generation")} was promoted, so some
+            of this bought a better harness.`
+        : html`Nothing has been promoted, so every dollar on this page bought evidence rather than
+            a better harness — which is the result, but it is worth knowing the price of it.`}`,
     body,
     ready: root => spendByGeneration(root.querySelector("#spend"), runs, ceiling),
   };

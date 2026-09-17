@@ -78,9 +78,30 @@ class MatchTimeline:
         return self.score_at(self.kickoff + timedelta(days=1))[:2]
 
     def state_at(self, when: datetime) -> dict[str, Any]:
-        """What a game-state tool would have said, had it been asked then."""
+        """What a game-state tool would have said, had it been asked then.
+
+        Three states, not two. ``score_at`` clamps the minute at zero, so before
+        kickoff this used to report a match in progress at 0' — and a harness
+        asked about Brentford against Chelsea two days early was told "kickoff
+        just happened, 0-0" and reasoned from it, in those words, in a driver it
+        wrote down. The replay benchmark never saw it because ``windows`` starts
+        five minutes after kickoff; live collection sees almost nothing else,
+        because most open markets are pre-match.
+        """
         home, away, minute = self.score_at(when)
         elapsed = (when - self.kickoff).total_seconds()
+        if elapsed < 0:
+            # No clock and no period, because there is no clock and no period.
+            # A key that is absent is read as absent; a key that says 0' is read
+            # as a fact.
+            return {
+                "game_id": self.game_id, "league": self.league,
+                "status": "scheduled", "home": self.home, "away": self.away,
+                "home_score": None, "away_score": None,
+                "minutes_to_kickoff": int(-elapsed // 60),
+                "kickoff": self.kickoff.isoformat(),
+                "recent_events": [],
+            }
         recent = [e for e in self.events if e.seconds <= elapsed and elapsed - e.seconds <= 600]
         return {
             "game_id": self.game_id, "league": self.league,

@@ -91,6 +91,8 @@ function paint({ title, heading, lead, crumbs, body, ready }) {
   clearTimeout(slowTimer);
   mount(viewEl, html`<div class="fade">${head}${body}</div>`);
   viewEl.classList.remove("stale");
+  viewEl.removeAttribute("aria-busy");
+  enhance(viewEl);
   document.title = `${title} · rsi-arena`;
   if (ready) ready(viewEl);
 
@@ -98,6 +100,32 @@ function paint({ title, heading, lead, crumbs, body, ready }) {
   if (!firstPaint && h1) h1.focus({ preventScroll: true });
   announce(`${title} loaded`);
   firstPaint = false;
+}
+
+/**
+ * The two things a keyboard cannot reach unless something says so.
+ *
+ * A region that scrolls has to be focusable or there is no way to scroll it
+ * without a mouse — that is every wide table on this site, and every trace step
+ * whose output is taller than its box. Done here rather than in each view
+ * because there are thirty of them and one of them would always be forgotten.
+ */
+function enhance(root) {
+  for (const box of root.querySelectorAll(".scroll")) {
+    if (box.hasAttribute("tabindex")) continue;
+    const caption = box.querySelector("caption");
+    const heading = box.closest("section")?.querySelector("h2");
+    box.tabIndex = 0;
+    box.setAttribute("role", "region");
+    box.setAttribute("aria-label",
+      (caption?.textContent || heading?.textContent || "Table").trim().slice(0, 120));
+  }
+  for (const pre of root.querySelectorAll("details.span pre")) {
+    if (pre.hasAttribute("tabindex")) continue;
+    pre.tabIndex = 0;
+    pre.setAttribute("role", "region");
+    pre.setAttribute("aria-label", "Step detail");
+  }
 }
 
 async function route({ fresh = false } = {}) {
@@ -111,6 +139,7 @@ async function route({ fresh = false } = {}) {
   paintNav(r.name === "run" ? "runs" : r.name);
 
   if (fresh) invalidate();
+  viewEl.setAttribute("aria-busy", "true");
   if (r.name === lastName && viewEl.firstChild) viewEl.classList.add("stale");
   else mount(viewEl, skeleton(4));
   lastName = r.name;
