@@ -1,0 +1,209 @@
+{
+  "name": "kalshi-horizon-5m+gen7",
+  "description": "Predicts this contract's mid price 5 minutes ahead.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote\nyou would actually stand behind. Two cents means you would buy two under your number\nand sell two over it, and you would honour both sides. Ten cents means you barely\nknow. Quote what you would trade, not what is safe \u2014 but a width you cannot defend\nwill be paid for, because the trade goes on at your price and settles at the\nmarket's.\n\nDomain facts:\n\n**Recent events can be stale.** The game state shows what happened minutes ago, not\nwhat is happening now. A goal scored at 46' may still show as the most recent event\nat 50', 60', or 85'. The market absorbs news in seconds. If candlesticks show the\nprice already moved sharply and has since stabilized, the event is priced in. Do not\nforecast another move in the same direction unless you see evidence the market is\nstill adjusting.\n\n**Time decay is real but slow.** A team defending a one-goal lead loses roughly 0.5-2\ncents per five minutes as the clock runs down in quiet play. Not 5 cents, not 10\ncents. If you forecast -1 cent from pure time decay, you are being aggressive. Be\nmore conservative.\n\n**Late equalisers happen.** When a team is trailing late and pressing hard, the\nprobability of an equaliser in the next five minutes is not zero \u2014 it is often 10-20%.\nIf the market is pricing the leading team at 75-80%, that is already accounting for\nrealistic comeback odds. Do not forecast further drift toward 85-90% unless the game\nis truly dead. Wide quotes (3-5 cents half-width) are appropriate when an equaliser\nwould move the price 30+ cents and the game is still live.\n\n**Zero is the right answer more often than you think.** Most five-minute windows in a\nfootball match see no goals, no cards, and no significant price movement. Copying the\ncurrent mid (predicting zero change) is not a failure \u2014 it is often correct and earns\nskill when the market stays flat. Only forecast movement when you have a concrete\nreason: a fresh event still being absorbed, time decay in a situation where it\nmatters, or a thin book visibly drifting.\n\n**Check for evidence before calling a move.** If candlesticks show the mid has been\nflat for 10+ minutes, recent trades are small and balanced, and nothing has happened\nin the game, the correct forecast is zero cents, not \"maybe -1 from time decay\". Only\nforecast decay when you can see it already happening in the data, or when the\nsituation is so clear (e.g., defending a lead in the 89th minute) that the market\nmust move.",
+  "config": {
+    "model": "anthropic/claude-opus-5",
+    "temperature": null,
+    "max_tokens": null,
+    "max_usd": 0.2,
+    "max_calls": 200
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.3,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 30
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "plays",
+        "output_key": "plays",
+        "skip_if": null,
+        "tool": "recent_plays",
+        "args": {
+          "game": "{{game}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "velocity",
+        "output_key": "velocity",
+        "skip_if": null,
+        "tool": "price_velocity",
+        "args": {
+          "ticker": "{{question}}",
+          "bars": "{{path}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "time_left",
+        "output_key": "time_left",
+        "skip_if": null,
+        "tool": "settlement_countdown",
+        "args": {
+          "game": "{{game}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "goal_timing",
+        "output_key": "goal_timing",
+        "skip_if": null,
+        "tool": "minutes_since_goal",
+        "args": {
+          "game": "{{game}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "diagnose",
+        "output_key": "diagnosis",
+        "skip_if": null,
+        "prompt": "Game: {{game}}\nQuote: {{quote}}\nRecent plays: {{plays}}\nLast 18 minutes candlesticks: {{path}}\nTape: {{tape}}\nPrice velocity: {{velocity}}\nTime to settlement: {{time_left}}\nGoal timing: {{goal_timing}}\n\nDiagnose what will move the price in the next 5 minutes.\n\n1. RECENT EVENT ABSORPTION:\n   - Is there a goal/card in the last 1-4 minutes from {{plays}} or {{goal_timing}}?\n   - If yes: Look at the last 3-5 bars in {{path}}. Is mid still moving in the same direction (up if favorite scored, down if underdog scored)? Calculate cents moved so far vs. typical 10-25c total range.\n   - Estimate: if it moved 8c already and typical is 15c, maybe 4-7c more to go in same direction.\n   - If the last 2 bars are flat after a 3-bar run, absorption is complete.\n\n2. PRICE VELOCITY:\n   - {{velocity}} shows cents/minute drift over last 3, 5, 10 bars.\n   - If velocity is >0.3c/min sustained over 5+ bars, that momentum often continues 2-4 more minutes.\n   - If velocity is near zero (<0.1c/min), no momentum to project.\n\n3. TIME DECAY:\n   - From {{time_left}}: if a team is ahead with <20 minutes left, the market drifts toward 1.00 for the winner.\n   - Decay rate: ~0.3-0.8 cents per 5 minutes for a 1-goal lead with 15-25 min left. Faster as time runs out.\n   - If score is level or game just started, time decay is negligible.\n\n4. TAPE FLOW:\n   - Last 10 trades in {{tape}}: all one-sided (all taker=yes or all taker=no)?\n   - If yes and mid hasn't moved yet, that flow may push mid 1-2c in that direction.\n   - If balanced or mid already moved, flow is absorbed.\n\nOutput your assessment:",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 0,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "active_driver": {
+              "type": "string",
+              "enum": [
+                "event_absorption",
+                "time_decay",
+                "tape_momentum",
+                "none"
+              ],
+              "description": "Primary force that will move price in next 5min"
+            },
+            "event_absorption_remaining_cents": {
+              "type": "number",
+              "description": "If absorbing a goal/card, estimated cents still to move (0 if done or no event)"
+            },
+            "time_decay_cents_per_5min": {
+              "type": "number",
+              "description": "Expected drift from clock running down (negative if favorite fading, positive if favorite winning)"
+            },
+            "tape_momentum_cents": {
+              "type": "number",
+              "description": "Expected move from one-sided tape flow not yet priced (0 if balanced)"
+            },
+            "price_velocity_3bar": {
+              "type": "number",
+              "description": "Cents per minute over last 3 bars from velocity tool"
+            },
+            "confidence_level": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ],
+              "description": "How clear the signal is"
+            }
+          },
+          "required": [
+            "active_driver",
+            "event_absorption_remaining_cents",
+            "time_decay_cents_per_5min",
+            "tape_momentum_cents",
+            "price_velocity_3bar",
+            "confidence_level"
+          ]
+        }
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "prediction",
+        "skip_if": null,
+        "prompt": "Ticker: {{question}}\nCurrent mid: {{quote.mid}}\n\nDiagnosis:\n- Active driver: {{diagnosis.active_driver}}\n- Event absorption remaining: {{diagnosis.event_absorption_remaining_cents}}c\n- Time decay: {{diagnosis.time_decay_cents_per_5min}}c per 5min\n- Tape momentum: {{diagnosis.tape_momentum_cents}}c\n- Price velocity (3-bar): {{diagnosis.price_velocity_3bar}}c/min\n- Confidence: {{diagnosis.confidence_level}}\n\nForecast the 5-minute move:\n\n1. Sum the components:\n   - If active_driver is \"event_absorption\": main component is event_absorption_remaining_cents, but decay over 5 minutes (assume half remains after 5min)\n   - If active_driver is \"time_decay\": main component is time_decay_cents_per_5min\n   - If active_driver is \"tape_momentum\": main component is tape_momentum_cents\n   - If active_driver is \"none\": delta should be near 0, but still add any small time_decay\n\n2. If price_velocity_3bar is strong (>0.4c/min) and pointing same direction as your forecast, increase magnitude by 1-2c. If opposite, reduce magnitude.\n\n3. Half-width:\n   - High confidence + clear driver: 1.5-2c\n   - Medium confidence: 2.5-3c\n   - Low confidence or \"none\" driver: 3-4c\n   - Very thin book (spread >2c): add 1c to half-width\n\n4. Delta_cents is the CHANGE from current mid, not a price level. Negative means down.\n\n5. Be willing to forecast small non-zero moves (0.3-1.5c) when there's real time decay or residual momentum, not just \"0\" because nothing dramatic is happening.\n\nReturn your forecast:",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 0,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "delta_cents": {
+              "type": "number",
+              "description": "Cents the mid will MOVE over next 5 minutes. Negative for down, 0 for flat."
+            },
+            "half_width_cents": {
+              "type": "number",
+              "description": "Half-width of two-sided market you'd stand behind, in cents."
+            },
+            "confidence": {
+              "type": "number",
+              "description": "0-1 probability this forecast is within half_width of realized price."
+            },
+            "driver": {
+              "type": "string",
+              "description": "One sentence: what will move it (or why it won't move)."
+            },
+            "falsifier": {
+              "type": "string",
+              "description": "What would prove this forecast wrong before 5min is up."
+            }
+          },
+          "required": [
+            "delta_cents",
+            "half_width_cents",
+            "confidence",
+            "driver",
+            "falsifier"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
