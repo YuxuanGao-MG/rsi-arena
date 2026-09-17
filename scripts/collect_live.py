@@ -321,10 +321,14 @@ async def main() -> int:
             for league, game, ticker in targets[:args.max_contracts]:
                 if llm.over_budget:
                     break
+                # Counted on the attempt, not the forecast. A market with no
+                # two-sided quote is skipped before any model call, and counting
+                # only what came back would put the same unquotable pair at the
+                # front of every sweep for the rest of the invocation.
+                forecasts_on[ticker] += 1
                 row = await one(harness, llm, league, game, ticker, hist)
                 if row.get("skipped"):
                     continue
-                forecasts_on[ticker] += 1
                 kind = (row.get("run") or {}).get("error_kind")
                 provider_failures = provider_failures + 1 if kind == "provider" else 0
                 pending.append(row)
