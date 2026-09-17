@@ -164,6 +164,35 @@ jobs:
             --per-fixture "${{ inputs.per_fixture || '8' }}" \
             --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
 
+      # The ceiling, reconciled with what is actually on the key.
+      #
+      # A configured ceiling of sixty dollars against a balance of thirty is not
+      # a ceiling, it is a promise the account cannot keep: the generation would
+      # run until the provider started answering 402, and a 402 is a per-call
+      # error the runner scores as silence — a full set of rollouts reading as a
+      # harness that chose to stay quiet. The client now treats the first 402 as
+      # exhaustion, so that failure is at least honest, but it is better not to
+      # reach it. Half the balance, so a second generation in the same day still
+      # has something to spend.
+      - name: What this generation may spend
+        id: ceiling
+        shell: bash
+        run: |
+          want="${{ inputs.max_generation_usd || '60' }}"
+          read_balance="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d['total_credits']) - float(d['total_usage']), 4))"
+          left=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+                   https://openrouter.ai/api/v1/credits 2>/dev/null \
+                 | python -c "$read_balance" 2>/dev/null || echo unknown)
+          if [ "$left" = "unknown" ]; then
+            echo "::warning title=balance unknown::could not read the OpenRouter balance; using the configured ceiling"
+            usd="$want"
+          else
+            usd=$(python -c "print(round(min(float('$want'), float('$left')/2), 2))")
+            echo "\$$left on the key; this generation may spend \$$usd of a requested \$$want"
+          fi
+          echo "usd=$usd" >> "$GITHUB_OUTPUT"
+          { echo "### Budget"; echo "- balance \$$left, ceiling \$$usd"; } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Where this generation goes
         id: chain
         if: github.event_name == 'schedule' || inputs.chain
@@ -186,7 +215,7 @@ jobs:
                 --generation "${{ steps.chain.outputs.generations || '0' }}"
                 --per-fixture "${{ inputs.per_fixture || '8' }}"
                 --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
-                --max-generation-usd "${{ inputs.max_generation_usd || '60' }}"
+                --max-generation-usd "${{ steps.ceiling.outputs.usd }}"
                 --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")
           [ "${{ inputs.trace || 'true' }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
