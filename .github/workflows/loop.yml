@@ -393,9 +393,18 @@ jobs:
           if [ -z "$bucket" ]; then
             echo "::notice::AWS key is set but TRACE_BUCKET is not; skipping"
           elif [ -d "$run_dir" ]; then
-            aws s3 sync "$run_dir" "s3://$bucket/rsi-arena/$(basename "$run_dir")/" --only-show-errors \
-              && echo "- trajectories synced to s3://$bucket/rsi-arena/$(basename "$run_dir")/" >> "$GITHUB_STEP_SUMMARY" \
-              || echo "::warning::S3 sync failed; the artifact below still has everything"
+            # cp --recursive, not sync. sync lists the bucket to diff against
+            # it, and the first real attempt died on exactly that: AccessDenied
+            # on s3:ListBucket, because the IAM policy named a different bucket
+            # than TRACE_BUCKET does. A run directory is immutable and uploaded
+            # exactly once, so there is nothing to diff - and with cp the policy
+            # can drop ListBucket entirely and become write-only, which is the
+            # tighter shape anyway: a leaked key could add trajectories but
+            # never read or enumerate them.
+            aws s3 cp "$run_dir" "s3://$bucket/rsi-arena/$(basename "$run_dir")/" \
+                --recursive --only-show-errors \
+              && echo "- trajectories uploaded to s3://$bucket/rsi-arena/$(basename "$run_dir")/" >> "$GITHUB_STEP_SUMMARY" \
+              || echo "::warning::S3 upload failed; the artifact below still has everything"
           fi
 
       - name: Commit results
