@@ -50,10 +50,18 @@ class Rollout:
     instance: Instance
     run: Run | None
     outcome: Outcome
+    #: What this answer cost when it was genuinely paid for, if it is being
+    #: remembered rather than bought. Without it a memoised incumbent reports
+    #: zero, and the gate's "a candidate may cost at most twice the incumbent"
+    #: check silently disables itself, because it is guarded on the incumbent's
+    #: cost being above zero.
+    remembered_cost: float | None = None
 
     @property
     def cost_usd(self) -> float:
-        return self.run.cost_usd if self.run is not None else 0.0
+        if self.run is not None:
+            return self.run.cost_usd
+        return self.remembered_cost or 0.0
 
     @property
     def output(self) -> Any:
@@ -170,7 +178,7 @@ def probe_sample(groups: set[str], n: int, seed: int = 0) -> set[str]:
 
 
 async def evaluate(task: Task, harness: Harness, instances: list[Instance], llm: LLM, *,
-                   concurrency: int = 4) -> list[Rollout]:
+                   concurrency: int = 4, memo: Any = None, fingerprint: str = "") -> list[Rollout]:
     """One run per instance. A harness that cannot run at all fails every instance, with the reason."""
     if not instances:
         return []
@@ -181,6 +189,19 @@ async def evaluate(task: Task, harness: Harness, instances: list[Instance], llm:
     gate = asyncio.Semaphore(concurrency)
 
     async def one(instance: Instance) -> Rollout:
+        # An answer already bought is not bought again.
+        #
+        # The incumbent has been the same harness for five generations, the
+        # question set is built once and committed, and a window's realised price
+        # was fixed the moment the candle printed — so its score is a pure
+        # function that was costing three and a half cents a time, four hundred
+        # and eighty times a generation.
+        if memo is not None and fingerprint:
+            known = memo.get(fingerprint, instance)
+            if known is not None:
+                return Rollout(instance=instance, run=None, outcome=known,
+                               remembered_cost=memo.cost_of(fingerprint, instance))
+
         # Once the money is gone, stop doing the work that leads to spending it.
         #
         # A refused model call is instant, but the plan that reaches it is not:

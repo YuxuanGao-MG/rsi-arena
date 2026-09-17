@@ -162,26 +162,6 @@ jobs:
       # Fifteen things that have to hold before a generation is worth paying
       # for, none of which need a key. Every one of them is something that went
       # wrong here and was found after a run rather than before one.
-      - name: Preflight
-        if: github.event_name == 'schedule' || inputs.command == 'optimize'
-        run: |
-          python scripts/preflight.py \
-            --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
-            --holdout "${{ inputs.holdout || '100' }}" \
-            --audit "${{ inputs.audit || '60' }}" \
-            --per-fixture "${{ inputs.per_fixture || '4' }}" \
-            --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
-
-      # The ceiling, reconciled with what is actually on the key.
-      #
-      # A configured ceiling of sixty dollars against a balance of thirty is not
-      # a ceiling, it is a promise the account cannot keep: the generation would
-      # run until the provider started answering 402, and a 402 is a per-call
-      # error the runner scores as silence — a full set of rollouts reading as a
-      # harness that chose to stay quiet. The client now treats the first 402 as
-      # exhaustion, so that failure is at least honest, but it is better not to
-      # reach it. Half the balance, so a second generation in the same day still
-      # has something to spend.
       - name: What this generation may spend
         id: ceiling
         shell: bash
@@ -211,6 +191,32 @@ jobs:
           echo "generations=$generations"  >> "$GITHUB_OUTPUT"
           echo "continuing from ${harness} into ${run_dir} (generation $((generations + 1)))"
 
+      # After the chain, not before it: the held-out set rotates on the
+      # generation number, so a preflight that did not know which generation it
+      # was checked a different split from the one the run would use - and
+      # priced it against answers that split does not own.
+      - name: Preflight
+        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        run: |
+          python scripts/preflight.py \
+            --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
+            --holdout "${{ inputs.holdout || '100' }}" \
+            --audit "${{ inputs.audit || '60' }}" \
+            --per-fixture "${{ inputs.per_fixture || '4' }}" \
+            --max-metric-calls "${{ inputs.max_metric_calls || '600' }}" \
+            --generation "${{ steps.chain.outputs.generations || '0' }}" \
+            --max-generation-usd "${{ steps.ceiling.outputs.usd }}"
+
+      # The ceiling, reconciled with what is actually on the key.
+      #
+      # A configured ceiling of sixty dollars against a balance of thirty is not
+      # a ceiling, it is a promise the account cannot keep: the generation would
+      # run until the provider started answering 402, and a 402 is a per-call
+      # error the runner scores as silence — a full set of rollouts reading as a
+      # harness that chose to stay quiet. The client now treats the first 402 as
+      # exhaustion, so that failure is at least honest, but it is better not to
+      # reach it. Half the balance, so a second generation in the same day still
+      # has something to spend.
       - name: Optimize
         if: github.event_name == 'schedule' || inputs.command == 'optimize'
         run: |

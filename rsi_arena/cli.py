@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .harness import Harness, OpenRouter, SyncLLM
-from .loop import (ARCHIVE, Archive, Entry, Generation, Rollout, Settings, TaskAdapter, accept,
+from .loop import (ARCHIVE, SCOREBOARD, Archive, Entry, Generation, Scoreboard, Rollout, Settings, TaskAdapter, accept,
                    evaluate, from_gepa_state, lineage, probe_sample, reflection_templates,
                    render_lineage, split_by_group, summarise, three_way_split)
 from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
@@ -95,8 +95,13 @@ def _llm(s: Settings) -> OpenRouter:
                       budget_usd=s.max_generation_usd or None)
 
 
-def _bench(task, harness, instances, llm, s: Settings) -> list[Rollout]:
-    return asyncio.run(evaluate(task, harness, instances, llm, concurrency=s.concurrency))
+def _bench(task, harness, instances, llm, s: Settings, *, memo=None,
+           fingerprint: str = "") -> list[Rollout]:
+    rollouts = asyncio.run(evaluate(task, harness, instances, llm, concurrency=s.concurrency,
+                                    memo=memo, fingerprint=fingerprint))
+    if memo is not None and fingerprint:
+        memo.absorb(fingerprint, rollouts)
+    return rollouts
 
 
 def _closing(llm: OpenRouter):
@@ -306,7 +311,16 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     log(f"baseline: {incumbent.name} ({gen.incumbent_fingerprint})")
     log(f"  scoring {len(probe)} probe windows over {len(probe_groups)} matches "
         f"and {len(hold)} held-out windows")
-    base_train, base_hold = _bench(task, incumbent, probe, llm, s), _bench(task, incumbent, hold, llm, s)
+    memo = Scoreboard.load(Path("runs") / SCOREBOARD) if s.reuse_scores else None
+    if memo is not None:
+        log(f"  {len(memo)} answers already paid for are on file")
+    base_train = _bench(task, incumbent, probe, llm, s,
+                        memo=memo, fingerprint=gen.incumbent_fingerprint)
+    base_hold = _bench(task, incumbent, hold, llm, s,
+                       memo=memo, fingerprint=gen.incumbent_fingerprint)
+    if memo is not None:
+        log(f"  reused {memo.hits} of {len(probe) + len(hold)}, saving about "
+            f"${memo.hits * 0.034:.0f}")
     gen.baseline = {"train": summarise(task, base_train), "holdout": summarise(task, base_hold)}
     _dump_rollouts(run_dir / "rollouts" / "baseline.train.json", base_train,
                    trace=args.trace)
@@ -416,7 +430,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         # candidate got worse, and twenty matches answer that as well as a
         # hundred and forty at a fifteenth of the price. Held-out is the half
         # that needs power, and held-out is scored in full.
-        cand_train = _bench(task, candidate, probe, llm, s)
+        cand_train = _bench(task, candidate, probe, llm, s,
+                            memo=memo, fingerprint=gen.candidate_fingerprint)
         gap = (task.statistic([r.outcome for r in cand_train])
                - task.statistic([r.outcome for r in base_train]))
         log(f"  cascade: {len(probe)} windows over {len(probe_groups)} matches, "
@@ -426,14 +441,16 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                 f"held-out would only confirm it")
             stopped_early = True
     else:
-        cand_train = _bench(task, candidate, train, llm, s)
+        cand_train = _bench(task, candidate, train, llm, s,
+                            memo=memo, fingerprint=gen.candidate_fingerprint)
 
     exhausted = llm.over_budget
     if exhausted and not stopped_early:
         log("  not scoring held-out: the generation's budget is already gone, and a "
             "half-paid held-out set is worse than none")
     if not stopped_early and not exhausted:
-        cand_hold = _bench(task, candidate, hold, llm, s)
+        cand_hold = _bench(task, candidate, hold, llm, s,
+                           memo=memo, fingerprint=gen.candidate_fingerprint)
     gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
     _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train,
                    trace=args.trace)
@@ -460,6 +477,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                           generation=str(parent or "seed"), promoted=True,
                           note="the harness this generation started from"))
     archive.save(Path("runs") / ARCHIVE)
+    if memo is not None:
+        memo.save(Path("runs") / SCOREBOARD)
+        gen.llm["reused"] = memo.summary()
     gen.search["archive_after"] = archive.summary()
     log(f"archive: {len(archive)} candidates, {len(archive.frontier())} on the frontier, "
         f"{gen.search['archive_after']['instances']} instances remembered")

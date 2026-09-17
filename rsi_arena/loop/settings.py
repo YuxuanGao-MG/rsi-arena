@@ -35,6 +35,10 @@ class Settings:
     reflection_model: str = "anthropic/claude-opus-5"
     cache_dir: str = ".cache"
     llm_cache: bool = True
+    # Reuse an outcome already paid for rather than buying it again. The
+    # incumbent is the same harness on the same windows every generation until
+    # something is promoted, which was nearly a third of the bill.
+    reuse_scores: bool = True
     concurrency: int = 4
     # Window evaluations GEPA may spend searching. At a minibatch of eight this
     # is about sixty reflection rounds — enough to try a dozen rewrites and keep

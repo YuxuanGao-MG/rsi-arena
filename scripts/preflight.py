@@ -82,14 +82,24 @@ check("windows per match respect --per-fixture", max(groups.values()) <= _cap,
 # The docs said $0.013 a window for a year, which was a different model.
 PER_WINDOW = 0.034
 _probe = min(s.cascade or len(tg), len(tg)) * (s.per_fixture or 8)
+# Priced against what is already owned. The incumbent's half of a generation is
+# the same harness on the same windows every time until something is promoted,
+# and `runs/scoreboard.json` remembers what that already cost.
+from rsi_arena.loop import SCOREBOARD, Scoreboard
+from rsi_arena.loop.generation import fingerprint
+_board = Scoreboard.load(Path(s.run_dir).parent / SCOREBOARD) if s.reuse_scores else Scoreboard()
+_inc = fingerprint(h)
+_owned = sum(1 for w in hold if _board.get(_inc, w) is not None) if len(_board) else 0
 _cold = ((_probe + len(hold)) * 2 + s.max_metric_calls) * PER_WINDOW
+_next = _cold - _owned * PER_WINDOW
 check("a generation has a ceiling", s.max_generation_usd > 0, f"${s.max_generation_usd:.2f}")
 # The one that would have saved two runs: a ceiling below what the split costs is
 # not a budget, it is a guarantee of an incomplete generation. gen5 ran to the
 # end of its money and reported the difference between two sets of refusals as a
 # result.
-check("the ceiling can actually buy this split", s.max_generation_usd >= _cold * 0.9,
-      f"a cold generation is about ${_cold:.0f}; the ceiling is ${s.max_generation_usd:.2f}")
+check("the ceiling can actually buy this split", s.max_generation_usd >= _next * 0.9,
+      f"about ${_next:.0f} to run ({len(_board)} answers on file save ${_owned * PER_WINDOW:.0f} "
+      f"of a ${_cold:.0f} cold generation); the ceiling is ${s.max_generation_usd:.2f}")
 check("the question set is not itself the runaway", len(inst) * PER_WINDOW < 600,
       f"{len(inst)} windows is about ${len(inst) * PER_WINDOW:.0f} per full pass")
 moved = sum(1 for i in inst if abs(i.realised - i.mid_now) >= 0.01)
