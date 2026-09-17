@@ -385,11 +385,6 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         log(f"  searching from archive candidate {seed_entry.id} "
             f"(found in {seed_entry.generation}), not the incumbent")
 
-    # The valset in the order GEPA sees it, so its per-instance score matrix can
-    # be read back afterwards. Positional against `prog_candidate_val_subscores`
-    # and unrecoverable from anything else once the run is over.
-    (run_dir / "valset.json").write_text(json.dumps([i.id for i in valset]))
-
     # What the search scores candidates on, which is not the whole train split.
     #
     # GEPA evaluates the seed across the entire valset before it first checks
@@ -408,6 +403,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             f"{s.max_metric_calls} calls. The seed evaluation alone would spend all of it "
             f"and no rewrite would ever be proposed.")
         return 1
+    # The valset in the order GEPA sees it, so its per-instance score matrix can
+    # be read back afterwards. Positional against `prog_candidate_val_subscores`
+    # and unrecoverable from anything else once the run is over.
+    (run_dir / "valset.json").write_text(json.dumps([i.id for i in valset]))
     gen.search["valset"] = len(valset)
     log(f"  search: {len(valset)} valset instances, {s.max_metric_calls} calls "
         f"({s.max_metric_calls - len(valset)} left after the seed evaluation)")
