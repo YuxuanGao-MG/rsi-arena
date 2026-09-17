@@ -18,7 +18,7 @@ decoration.
 
 Needs no key and no network beyond the question set already on disk.
 """
-import json, sys, glob, collections
+import json, os, sys, glob, collections
 from datetime import datetime, timezone
 sys.path.insert(0, '.')
 from pathlib import Path
@@ -93,13 +93,17 @@ _owned = sum(1 for w in hold if _board.get(_inc, w) is not None) if len(_board) 
 _cold = ((_probe + len(hold)) * 2 + s.max_metric_calls) * PER_WINDOW
 _next = _cold - _owned * PER_WINDOW
 check("a generation has a ceiling", s.max_generation_usd > 0, f"${s.max_generation_usd:.2f}")
-# The one that would have saved two runs: a ceiling below what the split costs is
-# not a budget, it is a guarantee of an incomplete generation. gen5 ran to the
-# end of its money and reported the difference between two sets of refusals as a
-# result.
-check("the ceiling can actually buy this split", s.max_generation_usd >= _next * 0.9,
-      f"about ${_next:.0f} to run ({len(_board)} answers on file save ${_owned * PER_WINDOW:.0f} "
-      f"of a ${_cold:.0f} cold generation); the ceiling is ${s.max_generation_usd:.2f}")
+# Reported, not asserted. Whether the money is there is the caller's question and
+# it can answer it better than this can — it knows the balance and what the day
+# has already spent. What this knows is what the split costs, and it is the only
+# thing that does.
+print(f"  COST  about ${_next:.0f} to run ({len(_board)} answers on file save "
+      f"${_owned * PER_WINDOW:.0f} of a ${_cold:.0f} cold generation)")
+_emit = os.environ.get("GITHUB_OUTPUT")
+if _emit:
+    with open(_emit, "a") as fh:
+        fh.write(f"predicted_usd={_next:.2f}\n")
+        fh.write(f"cold_usd={_cold:.2f}\n")
 check("the question set is not itself the runaway", len(inst) * PER_WINDOW < 600,
       f"{len(inst)} windows is about ${len(inst) * PER_WINDOW:.0f} per full pass")
 moved = sum(1 for i in inst if abs(i.realised - i.mid_now) >= 0.01)

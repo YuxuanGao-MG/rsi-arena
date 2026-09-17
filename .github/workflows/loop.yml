@@ -15,8 +15,13 @@ on:
   # lineage is on gen4 or gen5. A schedule that always started from the seed
   # would not be a lineage, only the same experiment repeated.
   schedule:
+    # One a day, not two. Two was chosen when a generation was believed to cost
+    # thirty dollars; it costs about fifty, and the pair of them could not both
+    # finish inside a sane daily cap. A generation that runs to the end and
+    # reports a verdict is worth more than two that run out of money, because a
+    # generation that stops halfway does not produce a weak result - it produces
+    # refusals, which read like a result and are not one.
     - cron: "17 3 * * *"
-    - cron: "17 15 * * *"
   workflow_dispatch:
     inputs:
       command:
@@ -63,11 +68,11 @@ on:
         # is the difference between fitting the ceiling and not.
         default: "4"
       max_generation_usd:
-        description: "backstop on the whole generation; 0 removes it"
-        default: "60"
+        description: "override the ceiling; 0 derives it from what preflight predicts"
+        default: "0"
       max_day_usd:
         description: "if the key has already spent this much today, start nothing"
-        default: "80"
+        default: "100"
       trace:
         description: "keep every step each harness took, so the reader can show it"
         type: boolean
@@ -165,51 +170,6 @@ jobs:
       # Fifteen things that have to hold before a generation is worth paying
       # for, none of which need a key. Every one of them is something that went
       # wrong here and was found after a run rather than before one.
-      - name: What this generation may spend
-        id: ceiling
-        shell: bash
-        run: |
-          want="${{ inputs.max_generation_usd || '60' }}"
-          cap="${{ inputs.max_day_usd || '80' }}"
-          # /key reports what this key has spent today, this week and this month,
-          # across everything using it. The balance alone is not enough of a
-          # guard: it says what is left, not what has already gone, and one
-          # dispatched run once spent four hours and about two hundred dollars
-          # on an experiment nobody could read while the balance still looked
-          # healthy. This asks both questions.
-          read_key="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d.get('usage_daily') or 0), 4))"
-          read_balance="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d['total_credits']) - float(d['total_usage']), 4))"
-          left=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-                   https://openrouter.ai/api/v1/credits 2>/dev/null \
-                 | python -c "$read_balance" 2>/dev/null || echo unknown)
-          today=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-                    https://openrouter.ai/api/v1/key 2>/dev/null \
-                  | python -c "$read_key" 2>/dev/null || echo unknown)
-
-          if [ "$left" = "unknown" ]; then
-            echo "::warning title=balance unknown::could not read the OpenRouter balance; using the configured ceiling"
-            usd="$want"
-          else
-            usd=$(python -c "print(round(min(float('$want'), float('$left')/2), 2))")
-          fi
-
-          # The day's cap is a stop, not a trim. A generation given half of what
-          # it needs produces a set of refusals, which is worse than nothing
-          # because it looks like a result.
-          if [ "$today" != "unknown" ] && python -c "import sys; sys.exit(0 if float('$today') >= float('$cap') else 1)"; then
-            echo "go=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=daily cap reached::\$$today spent today, at or over the \$$cap cap; not starting a generation"
-            { echo "### Generation skipped";
-              echo "\$$today has gone on this key today, against a \$$cap daily cap. Nothing was started.";
-              echo "Raise \`max_day_usd\` on a manual run if that is wrong."; } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "go=true" >> "$GITHUB_OUTPUT"
-            echo "\$$left on the key, \$$today spent today; this generation may spend \$$usd of a requested \$$want"
-            { echo "### Budget";
-              echo "- balance \$$left, spent today \$$today of a \$$cap cap, ceiling \$$usd"; } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "usd=$usd" >> "$GITHUB_OUTPUT"
-
       - name: Where this generation goes
         id: chain
         if: github.event_name == 'schedule' || inputs.chain
@@ -225,7 +185,8 @@ jobs:
       # was checked a different split from the one the run would use - and
       # priced it against answers that split does not own.
       - name: Preflight
-        if: steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
+        id: preflight
+        if: github.event_name == 'schedule' || inputs.command == 'optimize'
         run: |
           python scripts/preflight.py \
             --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
@@ -233,8 +194,8 @@ jobs:
             --audit "${{ inputs.audit || '60' }}" \
             --per-fixture "${{ inputs.per_fixture || '4' }}" \
             --max-metric-calls "${{ inputs.max_metric_calls || '600' }}" \
-            --generation "${{ steps.chain.outputs.generations || '0' }}" \
-            --max-generation-usd "${{ steps.ceiling.outputs.usd }}"
+            --generation "${{ steps.chain.outputs.generations || '0' }}"
+
 
       # The ceiling, reconciled with what is actually on the key.
       #
@@ -246,6 +207,65 @@ jobs:
       # exhaustion, so that failure is at least honest, but it is better not to
       # reach it. Half the balance, so a second generation in the same day still
       # has something to spend.
+      # The budget is what the run costs, plus margin — not a number typed once.
+      #
+      # Every generation that failed rather than concluded failed the same way:
+      # it started something it could not finish. A flat ceiling cannot know
+      # that, because the cost moves with the split, with what the scoreboard
+      # already owns, and with the price of the model. Preflight does know, and
+      # has just said so. So: take its figure, add a margin, and check the day
+      # and the balance can cover it. If they cannot, run nothing at all — a
+      # skip is honest and finishes green, where a half-funded generation
+      # produces refusals that read like a verdict.
+      - name: What this generation may spend
+        id: ceiling
+        if: github.event_name == 'schedule' || inputs.command == 'optimize'
+        shell: bash
+        run: |
+          predicted="${{ steps.preflight.outputs.predicted_usd || '0' }}"
+          want="${{ inputs.max_generation_usd || '0' }}"
+          cap="${{ inputs.max_day_usd || '100' }}"
+          margin=1.35
+
+          read_key="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d.get('usage_daily') or 0), 4))"
+          read_bal="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d['total_credits']) - float(d['total_usage']), 4))"
+          left=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+                   https://openrouter.ai/api/v1/credits 2>/dev/null | python -c "$read_bal" 2>/dev/null || echo unknown)
+          today=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+                    https://openrouter.ai/api/v1/key 2>/dev/null | python -c "$read_key" 2>/dev/null || echo unknown)
+
+          # An explicit --max-generation-usd overrides the estimate; otherwise the
+          # estimate plus margin is the ceiling.
+          usd=$(python -c "w=float('$want'); p=float('$predicted'); print(round(w if w > 0 else max(5.0, p * $margin), 2))")
+
+          room="unknown"
+          if [ "$today" != "unknown" ]; then
+            room=$(python -c "print(round(max(0.0, float('$cap') - float('$today')), 2))")
+          fi
+
+          skip=""
+          if [ "$room" != "unknown" ] && python -c "import sys; sys.exit(0 if float('$room') < float('$usd') else 1)"; then
+            skip="\$$today of a \$$cap daily cap is already spent, leaving \$$room; this generation needs \$$usd"
+          elif [ "$left" != "unknown" ] && python -c "import sys; sys.exit(0 if float('$left') < float('$usd') else 1)"; then
+            skip="\$$left on the key; this generation needs \$$usd"
+          fi
+
+          if [ -n "$skip" ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=not enough to finish::$skip — starting nothing"
+            { echo "### Generation not started";
+              echo "$skip.";
+              echo "";
+              echo "A half-funded generation does not produce a weak result, it produces refusals that read like one. Nothing was spent."; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "predicted \$$predicted, ceiling \$$usd, \$$today spent today of \$$cap, \$$left on the key"
+            { echo "### Budget";
+              echo "- preflight predicts **\$$predicted**, ceiling **\$$usd** (x$margin)";
+              echo "- \$$today spent today of a \$$cap cap, \$$left on the key"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "usd=$usd" >> "$GITHUB_OUTPUT"
+
       - name: Optimize
         if: steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
