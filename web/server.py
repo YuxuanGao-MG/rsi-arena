@@ -56,6 +56,18 @@ TYPES = {
 #: Gzip below this and the framing costs more than the saving.
 GZIP_MIN = 900
 
+#: Connections served at once.
+#:
+#: A thread per connection is fine for a page nobody hammers, and keep-alive
+#: means a browser holds several open for the length of a read. The cap is here
+#: because the failure mode without one is not slowness: it is a container that
+#: runs out of memory and takes the site down for everybody, which is what an
+#: afternoon of intermittent 502s looks like from outside.
+MAX_CONNECTIONS = 64
+
+#: How long a connection may sit idle before its thread is taken back.
+IDLE_S = 15
+
 
 def env(name: str) -> str:
     return os.environ.get(name, "").strip()
@@ -69,10 +81,17 @@ def page_bytes() -> bytes:
     not mean editing HTML.
     """
     text = (HERE / "index.html").read_text()
-    return (text
-            .replace("__SUPABASE_URL__", env("SUPABASE_URL"))
-            .replace("__SUPABASE_ANON_KEY__", env("SUPABASE_ANON_KEY"))
-            .encode())
+    for name, value in (("__SUPABASE_URL__", env("SUPABASE_URL")),
+                        ("__SUPABASE_ANON_KEY__", env("SUPABASE_ANON_KEY")),
+                        # What is left on the OpenRouter account, which is not in
+                        # any manifest: a generation records what it spent, and
+                        # nothing records what there is left to spend. Set these
+                        # on the service when the balance is topped up.
+                        ("__CREDIT_REMAINING__", env("OPENROUTER_CREDIT_REMAINING")),
+                        ("__CREDIT_TOTAL__", env("OPENROUTER_CREDIT_TOTAL")),
+                        ("__CREDIT_AS_OF__", env("OPENROUTER_CREDIT_AS_OF"))):
+        text = text.replace(name, value.replace('"', ""))
+    return text.encode()
 
 
 def csp(page: bytes) -> str:
@@ -103,6 +122,42 @@ def csp(page: bytes) -> str:
     ])
 
 
+class Bounded(ThreadingHTTPServer):
+    """A thread per connection, but never more than MAX_CONNECTIONS of them.
+
+    Refusing is a better answer than queueing behind a semaphore: a reader who
+    gets a 503 retries, and a reader whose request is parked for thirty seconds
+    behind sixty other parked requests has already given up.
+    """
+
+    daemon_threads = True
+    request_queue_size = 128
+
+    def __init__(self, *args, **kwargs) -> None:
+        self._slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address) -> None:
+        if not self._slots.acquire(blocking=False):
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\n"
+                                b"Retry-After: 2\r\nContent-Length: 0\r\n"
+                                b"Connection: close\r\n\r\n")
+            except OSError:
+                pass
+            return self.shutdown_request(request)
+        super().process_request(request, client_address)
+
+    def shutdown_request(self, request) -> None:
+        try:
+            super().shutdown_request(request)
+        finally:
+            try:
+                self._slots.release()
+            except ValueError:                     # released twice; already free
+                pass
+
+
 class Asset:
     __slots__ = ("body", "gz", "kind", "etag")
 
@@ -113,9 +168,27 @@ class Asset:
         self.gz = gzip.compress(body, 6) if len(body) >= GZIP_MIN else b""
 
 
+def archive_path() -> Path | None:
+    """`runs/archive.json`, wherever it ended up.
+
+    It is committed to the repository rather than published to Supabase: it is
+    the record of what the search *found*, which carries no claim, and keeping
+    it out of the database is what stops an archive turning into a leaderboard.
+    """
+    for candidate in (Path(env("ARCHIVE_PATH") or "/nonexistent"),
+                      HERE.parent / "runs" / "archive.json",
+                      HERE / "archive.json"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def load() -> dict[str, Asset]:
     """Everything servable, keyed by request path."""
     out = {"/": Asset(page_bytes(), TYPES[".html"])}
+    found = archive_path()
+    if found is not None:
+        out["/archive.json"] = Asset(found.read_bytes(), TYPES[".json"])
     for path in sorted(HERE.rglob("*")):
         if not path.is_file() or path.name == "index.html":
             continue
@@ -134,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"          # keep-alive; a dozen modules per load
     server_version = "rsi-arena"
     sys_version = ""
-    timeout = 30                           # a half-open socket holds a thread
+    timeout = IDLE_S                       # a half-open socket holds a thread
 
     def do_GET(self) -> None:              # noqa: N802 - stdlib's name
         self._serve(body=True)
@@ -214,8 +287,7 @@ def main() -> int:
     if not env("SUPABASE_ANON_KEY"):
         print("WARNING: no SUPABASE_ANON_KEY; every query would come back 401")
 
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    server.daemon_threads = True
+    server = Bounded(("0.0.0.0", port), Handler)
 
     def stop(*_: object) -> None:
         # Railway sends SIGTERM on every redeploy. shutdown() blocks until the

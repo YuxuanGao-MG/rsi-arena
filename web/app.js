@@ -35,6 +35,7 @@ const navEl = document.getElementById("nav");
 let inflight = null;      // the running route's AbortController
 let lastName = null;
 let firstPaint = true;
+let slowTimer = 0;        // says so out loud when a fetch is taking its time
 
 /* ---------- chrome -------------------------------------------------------- */
 
@@ -85,6 +86,7 @@ function paint({ title, heading, lead, crumbs, body, ready }) {
     <h1 id="page-title" tabindex="-1">${heading}</h1>
     ${lead ? html`<p class="sub">${lead}</p>` : ""}`;
 
+  clearTimeout(slowTimer);
   mount(viewEl, html`<div class="fade">${head}${body}</div>`);
   viewEl.classList.remove("stale");
   document.title = `${title} · rsi-arena`;
@@ -110,6 +112,18 @@ async function route({ fresh = false } = {}) {
   if (r.name === lastName && viewEl.firstChild) viewEl.classList.add("stale");
   else mount(viewEl, skeleton(4));
   lastName = r.name;
+
+  // A skeleton that never resolves is the worst of the failure states, because
+  // it looks like progress. After five seconds this says what is actually
+  // happening; the fetch itself gives up at fifteen and shows a retry.
+  clearTimeout(slowTimer);
+  slowTimer = setTimeout(() => {
+    if (signal.aborted) return;
+    const note = document.createElement("p");
+    note.className = "msg";
+    note.textContent = "Still waiting on the database.";
+    viewEl.append(note);
+  }, 5000);
 
   const view = VIEWS[r.name];
   if (!view) {

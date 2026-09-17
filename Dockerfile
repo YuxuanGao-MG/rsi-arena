@@ -9,6 +9,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 COPY web/ /app/web/
+# The candidate archive is a file rather than a table on purpose — it records
+# what the search found, which carries no claim — so the reader has to carry it.
+COPY runs/archive.json /app/runs/archive.json
 
 # Nothing here needs to write to the filesystem or bind a privileged port, and
 # a container that runs as root because nobody said otherwise is a container

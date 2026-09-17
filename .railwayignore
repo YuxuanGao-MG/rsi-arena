@@ -1,5 +1,7 @@
 # Only web/ is deployed; the Dockerfile copies nothing else.
 runs/
+# except the archive, which the Dockerfile copies into the image.
+!runs/archive.json
 benchmarks/
 .cache/
 tests/

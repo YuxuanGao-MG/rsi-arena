@@ -1,6 +1,6 @@
 # Handoff: rsi-arena
 
-Written 2026-09-14 for a Claude Code desktop session picking this up. Read this
+Written 2026-09-14, substantially revised 2026-09-16. Read this
 first, then `README.md`, then `docs/design.md`. Everything below is the state
 of the repository at commit time; `git log` is the record after that.
 
@@ -24,6 +24,52 @@ hand-written optimizer. It reuses only Yuxuan's stdlib-only Kalshi data layer,
 copied into `rsi_arena/kalshi/`. `docs/sean-runtime-notes.md` describes the
 old codebase; `docs/frameworks.md` is the survey that chose GEPA. Treat the old
 repo as reference only; do not depend on it.
+
+## Read this first (2026-09-16)
+
+**The OpenRouter account has about $12 of credit left**, of $5,626. Nothing runs
+past that. Topping it up is the one thing nobody but the account owner can do,
+and every item below is idle until it happens.
+
+Six things were spending money and producing nothing, all found in one evening
+by reading a scheduled run's log rather than its result:
+
+- `_settings()` copied five of `Settings`' eleven fields, so `--per-fixture 8`
+  parsed, printed in the log, and was discarded. Every scheduled generation
+  evaluated all thirty-four windows of all four hundred and eighty-five matches.
+  One was killed by the job timeout at exactly five and a half hours.
+- The incumbent was scored on the whole train split and then all but the probe's
+  hundred and sixty rollouts were thrown away, because the probe was chosen
+  after the search instead of before the spending. About ninety dollars a
+  generation.
+- `gepa.optimize` raises `ImportError` when `display_progress_bar` is set and
+  tqdm is missing, and tqdm was not a declared dependency. A run paid for its
+  entire nineteen-minute baseline and died on the opening line of the search.
+- A scheduled run has no `inputs`, so the question-set step called
+  `--holdout ''`; argparse rejected it and the benchmark was never rebuilt. The
+  step reported success because it pipes into `tee` and a pipeline's exit code
+  is the last command's.
+- The publish step's condition read `env.SUPABASE_DB_URL` from the step's own
+  `env:` block, which is not in scope when the condition is evaluated. The
+  reader had never once been fed.
+- Nothing bounded a generation's spend at all. `max_usd` bounds one window.
+
+**The gate could not see its own search.** `scripts/power.py` asks, from the real
+paired rollouts, what effect the bootstrap can resolve. On thirty-five held-out
+matches: about 0.027 pooled skill. The best rewrite anyone has found moved it by
+under 0.01. So three generations of "no improvement" were statements about the
+sample size. Held-out is a hundred matches now, a sixty-match audit set is frozen
+for confirming promotions, and every interval reports `detectable` beside `diff`.
+
+**The search now has a memory.** `runs/archive.json` keeps every candidate any
+search has proposed with its per-instance score matrix, and the next generation's
+parent is sampled off the frontier rather than always being the incumbent. All of
+it was already in `gepa_state.bin` and never read; `scripts/backfill_archive.py`
+recovered sixteen candidates from the rejected runs without paying again.
+
+**The tool allowlist had never once been mutated** across fourteen candidates,
+because `make_reflective_dataset` handed all three components byte-identical
+records. Each component now sees evidence it can act on.
 
 ## State of the code
 

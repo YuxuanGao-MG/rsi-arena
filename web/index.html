@@ -15,7 +15,14 @@
   // mean editing HTML. If these placeholders survive, the page is being read
   // off disk or the service has no environment; data.js says so in words
   // rather than letting every fetch go relative and come back as HTML.
-  window.RSI = { url: "__SUPABASE_URL__", key: "__SUPABASE_ANON_KEY__" };
+  window.RSI = {
+    url: "__SUPABASE_URL__", key: "__SUPABASE_ANON_KEY__",
+    // The account balance is not in any manifest: a generation records what it
+    // spent, nothing records what is left. Set on the service, read by the cost
+    // page, and absent rather than guessed at when nobody has set it.
+    credit: { remaining: "__CREDIT_REMAINING__", total: "__CREDIT_TOTAL__",
+              asOf: "__CREDIT_AS_OF__" },
+  };
   // Applied before first paint so a manual choice never flashes the other theme.
   try {
     var t = localStorage.getItem("rsi_theme");
