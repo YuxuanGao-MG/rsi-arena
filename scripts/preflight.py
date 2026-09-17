@@ -112,6 +112,13 @@ check("enough windows actually move", moved / len(inst) > 0.4, f"{moved}/{len(in
 print("\n— the gate —")
 check("cascade is on", s.cascade > 0, f"{s.cascade} matches, floor {s.cascade_floor:+.3f}")
 check("search budget buys several rewrites", s.max_metric_calls >= 400, str(s.max_metric_calls))
+# The assertion that was missing for four generations. GEPA scores the seed
+# across the whole valset before it consults the stop condition, so a valset at
+# or over the budget spends everything on the seed and proposes nothing - and
+# the run still gates result.best_candidate and prints a verdict about it.
+check("the search can actually iterate", 0 < s.valset < s.max_metric_calls * 0.7,
+      f"valset {s.valset} against {s.max_metric_calls} calls leaves "
+      f"{s.max_metric_calls - s.valset} for proposals")
 check("cost ceiling is set", s.max_cost_ratio > 1, f"{s.max_cost_ratio}x")
 
 print(f"\n{len(ok)} pass, {len(bad)} fail")
