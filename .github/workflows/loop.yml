@@ -46,7 +46,13 @@ on:
         default: holdout
       max_metric_calls:
         description: "optimize: window evaluations GEPA may spend"
-        default: "200"
+        # A dispatch input's declared default is what a manual run gets - the
+        # || '600' fallbacks downstream apply only on a schedule, where inputs
+        # are empty. This said 200 from the era of the five-match benchmark, so
+        # the first manual dispatch after the valset fix handed preflight
+        # 240 valset against 200 calls and was correctly refused for $0.
+        # Declared default and fallback must agree.
+        default: "600"
       benchmark:
         description: "the fixture list"
         default: benchmarks/soccer-2026.json
