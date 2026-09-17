@@ -18,7 +18,7 @@ the shape of this failure is a data gap that looks like a quiet evening.
 Every invocation carries a spend ceiling, because it runs on a cron beside a
 loop that costs thirty-five dollars a generation and it must not outgrow it.
 
-    python scripts/collect_live.py --league EPL,LALIGA --minutes 120 --max-usd 2
+    python scripts/collect_live.py --league EPL,LALIGA --minutes 120 --max-usd 0.5
 """
 
 from __future__ import annotations
@@ -222,7 +222,7 @@ async def main() -> int:
     ap.add_argument("--minutes", type=int, default=120, help="how long to keep collecting")
     ap.add_argument("--poll", type=int, default=300, help="seconds between sweeps")
     ap.add_argument("--max-contracts", type=int, default=6, help="markets per sweep")
-    ap.add_argument("--max-usd", type=float, default=3.0,
+    ap.add_argument("--max-usd", type=float, default=0.5,
                     help="ceiling on this invocation's model spend; 0 removes it")
     ap.add_argument("--max-unidentified", type=float, default=0.10,
                     help="fail if more than this fraction of open events found no fixture")
@@ -232,11 +232,11 @@ async def main() -> int:
     client, hist = KalshiClient(), History()
     harness = Harness.load(args.harness)
     # A ceiling per invocation, because this runs on a cron and nothing else
-    # stops it. The evolution loop is thirty-five dollars a generation twice a
-    # day and is the thing worth spending on; live collection is evidence
-    # gathered alongside it and must not quietly outgrow it. Past the line the
-    # client refuses to call out, the run is scored as silence, and the sweep
-    # ends rather than filling the file with provider errors.
+    # stops it. The default is fifty cents: the key is down to about twelve
+    # dollars of its original 5,626, the evolution loop has first claim on what
+    # is left, and live collection is evidence gathered alongside it rather than
+    # the experiment itself. Past the line the client refuses to call out, so the
+    # sweep ends here instead of filling the file with provider errors.
     llm = OpenRouter(budget_usd=args.max_usd or None)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -248,6 +248,13 @@ async def main() -> int:
     seen_events: set[str] = set()
     pending: list[dict] = []
     made = 0
+    #: Consecutive runs that died in the provider. Three is the signal that the
+    #: key, not this invocation, is out of money: a 402 answers every call the
+    #: same way, and forty minutes of retrying it writes forty identical errors
+    #: instead of forecasts. Stopping is not a failure — there was nothing to
+    #: collect — so it is reported and the job stays green.
+    provider_failures = 0
+    starved = False
 
     try:
         while time.time() < deadline:
@@ -258,14 +265,25 @@ async def main() -> int:
             _REFUSED.clear()
             targets: list[tuple[str, str, str]] = []
             for league in leagues:
-                if league not in catalogue:
-                    series = f"KX{league.replace('_', '')}GAME"
-                    markets = list(client.paginate("/markets", "markets",
-                                                   {"series_ticker": series}, max_items=4000))
-                    catalogue[league] = (harvest_team_codes(client, series),
-                                         names_from_markets(markets))
-                codes, names = catalogue[league]
-                for event in live_events(client, league):
+                try:
+                    if league not in catalogue:
+                        series = f"KX{league.replace('_', '')}GAME"
+                        markets = list(client.paginate("/markets", "markets",
+                                                       {"series_ticker": series}, max_items=4000))
+                        catalogue[league] = (harvest_team_codes(client, series),
+                                             names_from_markets(markets))
+                    codes, names = catalogue[league]
+                    events = live_events(client, league)
+                except Exception as exc:
+                    # Kalshi read the socket to a timeout while a catalogue was
+                    # being built and the traceback came out through main, which
+                    # would have taken every unresolved forecast with it — each
+                    # one already paid for and five minutes from a score. One
+                    # league missing a sweep is a smaller loss than all of them.
+                    print(f"::warning title=sweep failed::{league}: "
+                          f"{type(exc).__name__}: {exc}")
+                    continue
+                for event in events:
                     ticker = event.get("event_ticker", "")
                     if not ticker:
                         continue
@@ -298,15 +316,24 @@ async def main() -> int:
                 row = await one(harness, llm, league, game, ticker, hist)
                 if row.get("skipped"):
                     continue
+                kind = (row.get("run") or {}).get("error_kind")
+                provider_failures = provider_failures + 1 if kind == "provider" else 0
                 pending.append(row)
                 made += 1
                 said = (row.get("output") or {}).get("delta_cents")
                 print(f"  {ticker} at {row['mid_now']:.3f} -> {said:+.1f}c"
-                      if said is not None else f"  {ticker}: no forecast")
+                      if said is not None else f"  {ticker}: no forecast ({row.get('error')})")
+                if provider_failures >= 3:
+                    print(f"::notice title=nothing to collect::three model calls in a row "
+                          f"failed in the provider ({row.get('error')}); stopping")
+                    starved = True
+                    break
 
             pending = write_resolved(pending, hist, out)
             if llm.over_budget:
                 print(f"  ${llm.spent_usd:.2f} spent of ${args.max_usd:.2f}; stopping early")
+                break
+            if starved:
                 break
             await asyncio.sleep(args.poll)
 
@@ -327,6 +354,11 @@ async def main() -> int:
              f"- {made} forecasts across {', '.join(leagues)}",
              f"- ${llm.spent_usd:.2f} spent" + (f" of ${args.max_usd:.2f}" if args.max_usd else ""),
              f"- identified {linked}/{len(seen_events)} open events ({missed:.0%} missed)"]
+    if starved:
+        lines.append("- stopped early: the model refused three calls in a row, which is "
+                     "what an exhausted key looks like from here")
+    elif llm.over_budget:
+        lines.append(f"- stopped early: this invocation's ${args.max_usd:.2f} was spent")
     for ticker, why in unidentified.items():
         # On stdout, where Actions reads its annotations: an event nobody could
         # attach to a match is a market the harness would forecast blind, and a

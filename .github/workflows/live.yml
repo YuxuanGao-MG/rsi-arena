@@ -16,21 +16,28 @@ on:
   #   European weekend afternoons 11:00 onwards, through the evening slots
   #   MLS and Liga MX             23:00–05:00, the night after each of those
   #
-  # So: every day 00:05–04:05 for the Americas, which is the same block whether
-  # the matches that feed it were Tuesday's or Saturday's; weekdays 17:05–23:05
-  # for Europe; weekends from 11:05 instead, because Saturday's first kickoff is
-  # six hours before Tuesday's. Each invocation collects for fifty minutes, so
-  # an hourly cron covers the hour with a ten-minute seam for the publish and
-  # the queue, and 05:00–11:00 — night in the Americas, morning in Europe, no
-  # league in this list playing — is left alone rather than paid for.
+  # An earlier draft of this file ran hourly across all three bands — ninety-six
+  # invocations a week, which is the right shape when the point is coverage. It
+  # is the wrong shape now: the key is down to about twelve dollars of its
+  # original 5,626 and the evolution loop has first claim on what is left. So
+  # one invocation per band instead, placed mid-window where the most matches
+  # are in play rather than at its edge:
   #
-  # Ninety-six invocations a week. Almost all of them cost nothing: with no open
-  # market the collector reports "nothing live" and never calls a model. The
-  # ceiling below is what binds on the evenings that do have matches.
+  #   19:05 weekdays — the 18:45 and 19:00 kickoffs are twenty minutes old and
+  #                    the 20:00 ones are pricing
+  #   15:05 weekends — Saturday's 14:00 and 15:00 slates, before the evening
+  #   01:05 daily    — two hours into the MLS and Liga MX card, which is the
+  #                    same block whether the evening that fed it was Tuesday's
+  #                    or Saturday's, so it runs every day rather than twice
+  #
+  # Fourteen invocations a week at fifty cents each: seven dollars a week of
+  # ceiling, against a loop that wants seventy a day when it is funded. The
+  # balance check below is what actually decides, and it is written to skip
+  # rather than fail — an empty key is not a broken workflow.
   schedule:
-    - cron: "5 0-4 * * *"        # Americas night, every day
-    - cron: "5 17-23 * * 1-5"    # European weekday evenings
-    - cron: "5 11-23 * * 0,6"    # weekends, from the lunchtime kickoffs
+    - cron: "5 19 * * 1-5"
+    - cron: "5 15 * * 0,6"
+    - cron: "5 1 * * *"
   workflow_dispatch:
     inputs:
       league:
@@ -41,10 +48,10 @@ on:
         default: "50"
       max_usd:
         description: "model spend this invocation may not pass"
-        default: "2"
+        default: "0.5"
       max_contracts:
-        description: "markets forecast per sweep"
-        default: "6"
+        description: "markets forecast per sweep; the ceiling divided over the window"
+        default: "2"
       max_unidentified:
         description: "fail the job past this fraction of unlinkable open events"
         default: "0.10"
@@ -58,9 +65,9 @@ on:
 permissions:
   contents: read
 
-# Invocations are an hour apart and each runs for fifty minutes, so a queued
-# runner is enough to make two of them overlap — two collectors appending to one
-# forecasts.jsonl and both spending against their own ceiling. Queue instead.
+# Bands are hours apart now, but a queued runner and a fifty-minute collection
+# can still overlap two of them — two collectors appending to one forecasts.jsonl
+# and each spending its own ceiling. Queue instead.
 concurrency:
   group: live
   cancel-in-progress: false
@@ -107,14 +114,45 @@ jobs:
             exit 1
           fi
 
+      # Asked before spending rather than discovered afterwards. With the key
+      # nearly empty, the failure this avoids is a cron that turns every
+      # remaining dollar into live evidence the loop needed for a generation —
+      # and does it fifty-nine minutes at a time, writing a file of 402s. A
+      # balance below this invocation's ceiling skips the collection and says so;
+      # it is not a failure, there was simply nothing to collect with. A balance
+      # this cannot read does not block anything: --max-usd still bounds the run.
+      - name: Is there anything left to spend
+        id: credit
+        shell: bash
+        run: |
+          ceiling="${{ inputs.max_usd || '0.5' }}"
+          balance="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d['total_credits']) - float(d['total_usage']), 4))"
+          left=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+                   https://openrouter.ai/api/v1/credits 2>/dev/null \
+                 | python -c "$balance" 2>/dev/null || echo unknown)
+          if [ "$left" = "unknown" ]; then
+            echo "::warning title=balance unknown::could not read the OpenRouter balance; --max-usd is the only bound this run"
+            echo "enough=true" >> "$GITHUB_OUTPUT"
+          elif python -c "import sys; sys.exit(0 if float('$left') >= float('$ceiling') else 1)"; then
+            echo "enough=true" >> "$GITHUB_OUTPUT"
+            echo "### Live collection" >> "$GITHUB_STEP_SUMMARY"
+            echo "- \$$left on the key, spending at most \$$ceiling" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "enough=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=nothing to spend::\$$left left, under the \$$ceiling this invocation would need; skipping"
+            { echo "### Live collection skipped";
+              echo "\$$left left on the key, under the \$$ceiling ceiling. The evolution loop has first claim on what is left, so this invocation collected nothing and the job is green."; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Fails the job when more than a tenth of the open events could not be
-      # attached to a fixture. Identification is 112 of 112 today, so this is a
-      # regression alarm: the failure worth catching is the quiet one, where a
-      # ticker format shifts and the collection keeps running against a third
-      # fewer matches while looking merely uneventful. The script writes the
-      # spend, the counts and a ::warning:: per unlinked event into the step
-      # summary itself.
+      # attached to a fixture. Identification is 112 of 112 across eight leagues
+      # today, so this is a regression alarm: the failure worth catching is the
+      # quiet one, where a ticker format shifts and the collection keeps running
+      # against a third fewer matches while looking merely uneventful. The script
+      # writes the spend, the counts and a ::warning:: per unlinked event into
+      # the step summary itself, and stops on its own if the key refuses.
       - name: Collect
+        if: steps.credit.outputs.enough == 'true'
         # Named explicitly because that is what turns on `pipefail`: the default
         # shell is `bash -e`, under which `python ... | tee` reports tee's exit
         # code and the identification alarm below would never fail anything.
@@ -124,8 +162,8 @@ jobs:
             --league "${{ inputs.league || 'EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE' }}" \
             --harness "${{ inputs.harness || 'harnesses/horizon-5m.json' }}" \
             --minutes "${{ inputs.minutes || '50' }}" \
-            --max-contracts "${{ inputs.max_contracts || '6' }}" \
-            --max-usd "${{ inputs.max_usd || '2' }}" \
+            --max-contracts "${{ inputs.max_contracts || '2' }}" \
+            --max-usd "${{ inputs.max_usd || '0.5' }}" \
             --max-unidentified "${{ inputs.max_unidentified || '0.10' }}" | tee live.txt
 
       # `always()`, because the two ways the collect step fails — identification
@@ -140,10 +178,12 @@ jobs:
           pip install -q psycopg2-binary
           python scripts/publish_live.py | tee -a live.txt \
             || echo "::warning::publishing failed; the forecasts are in the run artifact"
-          { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ -s live.txt ]; then
+            { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # The only copy outside Postgres. Kept for the days the publish fails, and
-      # kept short: this runs a dozen times a day.
+      # kept short: nothing here is worth a month of storage.
       - name: Keep the forecasts as an artifact
         if: always()
         uses: actions/upload-artifact@v4
