@@ -86,6 +86,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: loop
@@ -302,12 +303,45 @@ jobs:
       - name: Publish to the reader
         if: always() && env.SUPABASE_DB_URL != ''
         run: |
-          pip install -q psycopg2-binary
-          shopt -s nullglob
-          dirs=(runs/*/)
-          if [ ${#dirs[@]} -eq 0 ]; then echo "no run directories"; exit 0; fi
-          python scripts/publish_runs.py "${dirs[@]}" \
-            || echo "::warning::publishing failed; the run is still committed"
+          pip install -q psycopg2-binary || { echo "::warning::psycopg2 install failed; not publishing"; exit 0; }
+          # Only this run's directory. Publishing runs/*/ every night deleted and
+          # re-inserted every historical rollout - quadratic work that would fill
+          # the shared 500 MB database inside two months, behind a || that kept
+          # the job green while the reader silently froze. Republishing an old
+          # run after an amendment is a deliberate act, done by hand.
+          run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
+          if [ -d "$run_dir" ]; then
+            python scripts/publish_runs.py "$run_dir" \
+              || echo "::warning::publishing failed; the run is still committed"
+          else
+            echo "nothing new to publish"
+          fi
+
+      # Full working trajectories, off the repository's back.
+      #
+      # Every tool call and model turn is already recorded three ways: full
+      # traces in runs/<gen>/rollouts when --trace is on, trimmed spans in
+      # rsi.traces, and the per-run artifact below. What none of those gives is
+      # a durable home that is not git - a generation adds ~2,600 files and
+      # ~50 MB, which is an 82,000-file repository by day 30. With AWS secrets
+      # set, the whole run directory syncs to S3 and the bulky search outputs
+      # can stay out of git; without them this step says so and moves on.
+      - name: Keep the trajectories in S3
+        if: always() && env.AWS_ACCESS_KEY_ID != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: |
+          bucket="${{ secrets.TRACE_BUCKET }}"
+          run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
+          if [ -z "$bucket" ]; then
+            echo "::notice::AWS key is set but TRACE_BUCKET is not; skipping"
+          elif [ -d "$run_dir" ]; then
+            aws s3 sync "$run_dir" "s3://$bucket/rsi-arena/$(basename "$run_dir")/" --only-show-errors \
+              && echo "- trajectories synced to s3://$bucket/rsi-arena/$(basename "$run_dir")/" >> "$GITHUB_STEP_SUMMARY" \
+              || echo "::warning::S3 sync failed; the artifact below still has everything"
+          fi
 
       - name: Commit results
         if: always()
@@ -323,12 +357,34 @@ jobs:
           done
           exit 1
 
+      # Prune before the cache save: the key is unique per run, so every run
+      # writes a fresh entry of a .cache that never shrank - 10 GB of repo cache
+      # and LRU eviction in about seven weeks, after which the hit rate falls
+      # and the bill rises with no signal. Fourteen days covers a rotation.
+      - name: Prune the model cache
+        if: always()
+        run: find .cache -type f -mtime +14 -delete 2>/dev/null || true
+
       - name: Keep the run as an artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: run-${{ github.run_id }}
+          retention-days: 14
           path: |
             runs
             benchmarks/windows
           if-no-files-found: ignore
+
+      # The only alerting there is. Three crons and real money, and until now a
+      # failed run's sole witness was a step summary nobody opens. An issue in
+      # the repo notifies its owner the way anything else in the repo does.
+      - name: Say so if this failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "loop failed: $(date -u +%Y-%m-%d) run ${{ github.run_id }}" \
+            --body "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} failed. A generation may have spent money without producing a record." \
+            || echo "::warning::could not open an issue about the failure"

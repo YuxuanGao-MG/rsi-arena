@@ -6,3 +6,8 @@ __pycache__/
 .pytest_cache/
 .env
 runs/live/
+
+# GEPA writes one JSON per (task, candidate) under here: 2,600 files and 10 MB
+# per generation, 70% of the repository file count from a single day. Their
+# durable homes are the per-run artifact and, when AWS secrets are set, S3.
+runs/*/gepa/generated_best_outputs_valset/

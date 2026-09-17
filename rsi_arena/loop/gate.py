@@ -29,6 +29,15 @@ MIN_GROUPS = 8
 #: size of effect a test could have resolved, never to decide anything.
 DETECTION_Z = 1.96 + 0.84
 
+#: The fraction of a held-out side that may go unscored before the whole
+#: comparison is refused. An unscored window is pooled as silence, which is a
+#: real value — so a side that is one-quarter refusals is one-quarter fabricated,
+#: and the fabrication is invisible in the interval. gen5's baseline was 69%
+#: refusals and produced a fully-formed bootstrap interval; `over_budget` was the
+#: only thing that stopped it being read, and §the 402 audit showed a path where
+#: `over_budget` stays False. This guard does not depend on knowing why.
+MAX_UNSCORED = 0.25
+
 
 def paired_bootstrap(task: Task, candidate: list[Rollout], incumbent: list[Rollout], *,
                      n: int = 2000, seed: int = 0, level: float = 0.95,
@@ -148,6 +157,20 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
                         reasons=[f"the cascade rejected it on {train.get('groups', 0)} "
                                  f"train matches ({train.get('diff', 0.0):+.3f}), so "
                                  f"held-out was never paid for"])
+    # Per side, not pooled across both: a candidate that is 40% refusals against
+    # a clean incumbent averages to 20% and would slip a combined threshold,
+    # while being exactly the comparison the guard exists to refuse.
+    unscored = max(_unscored_fraction(candidate_holdout),
+                   _unscored_fraction(incumbent_holdout))
+    if unscored > MAX_UNSCORED:
+        # Refused outright rather than folded into `ok`, because the numbers
+        # above it are not weak evidence — they are part fabrication, and a
+        # fabricated interval quoted beside a refusal reads as a near miss.
+        return Decision(accepted=False, holdout=hold, train=train,
+                        reasons=[f"{unscored:.0%} of the held-out windows went unscored "
+                                 f"and were pooled as silence; above {MAX_UNSCORED:.0%} "
+                                 f"the comparison is part fabrication and no verdict "
+                                 f"is drawn from it"])
     if hold["paired"] < 2:
         ok = False
         reasons.append("no paired held-out instances to judge on")
@@ -179,6 +202,19 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         reasons.append(f"costs {cand_cost / inc_cost:.1f}x the incumbent per instance "
                        f"(limit {max_cost_ratio:.1f}x)")
     return Decision(accepted=ok, reasons=reasons, holdout=hold, train=train)
+
+
+def _unscored_fraction(rollouts: list[Rollout]) -> float:
+    """How much of an evaluation is silence nobody chose.
+
+    A memoised outcome has no run but was genuinely scored; a refusal has no
+    score however it is wrapped. The outcome's own record is the one thing both
+    shapes carry.
+    """
+    if not rollouts:
+        return 0.0
+    unscored = sum(1 for r in rollouts if not r.outcome.details.get("scored"))
+    return unscored / len(rollouts)
 
 
 def _cost_per_instance(rollouts: list[Rollout]) -> float:

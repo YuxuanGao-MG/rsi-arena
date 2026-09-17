@@ -64,6 +64,7 @@ on:
 # off.
 permissions:
   contents: read
+  issues: write
 
 # Bands are hours apart now, but a queued runner and a fifty-minute collection
 # can still overlap two of them — two collectors appending to one forecasts.jsonl
@@ -192,3 +193,15 @@ jobs:
           path: runs/live
           retention-days: 14
           if-no-files-found: ignore
+
+      # Identification degrading is the one failure this job raises loudly, and
+      # until now it raised it into a step summary nobody opens.
+      - name: Say so if this failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "live collection failed: $(date -u +%Y-%m-%d) run ${{ github.run_id }}" \
+            --body "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} failed — most likely the fixture-identification alarm or the feed." \
+            || echo "::warning::could not open an issue about the failure"

@@ -475,3 +475,41 @@ def test_running_out_of_money_does_not_read_as_a_cascade_rejection():
                   candidate_holdout=empty, incumbent_holdout=empty,
                   stopped_early=True, exhausted=True)
     assert "ran out of money" in both.reasons[0]
+
+
+def test_a_holdout_that_is_a_quarter_refusals_produces_no_verdict():
+    """The fabrication guard does not depend on knowing why the windows died.
+
+    gen5's baseline was 69% refusals pooled as silence, and `over_budget` was
+    the only thing standing between that and a fully-formed interval being read
+    as evidence. The 402 audit found a path where `over_budget` stays False, so
+    the gate now measures the fabrication directly.
+    """
+    from rsi_arena.loop import accept
+    from rsi_arena.loop.task import Instance, Outcome, Rollout
+
+    class T:
+        def statistic(self, outcomes):
+            return sum(o.value for o in outcomes) / max(1, len(outcomes))
+
+    class I:
+        def __init__(self, i, g):
+            self.id, self.group = f"i{i}", f"g{g}"
+
+    def roll(i, g, scored):
+        return Rollout(instance=I(i, g), run=None,
+                       outcome=Outcome(value=0.5, feedback="", objectives={},
+                                       details={"scored": scored}))
+
+    # 12 groups, 40% of windows unscored on the candidate side.
+    cand = [roll(i, i % 12, scored=(i % 5 > 1)) for i in range(60)]
+    inc = [roll(i, i % 12, scored=True) for i in range(60)]
+    d = accept(T(), candidate_train=[], incumbent_train=[],
+               candidate_holdout=cand, incumbent_holdout=inc)
+    assert not d.accepted
+    assert "fabrication" in d.reasons[0] and "unscored" in d.reasons[0]
+
+    # And a fully-scored comparison is untouched by the guard.
+    clean = accept(T(), candidate_train=[], incumbent_train=[],
+                   candidate_holdout=inc, incumbent_holdout=inc)
+    assert "fabrication" not in " ".join(clean.reasons)
