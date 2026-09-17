@@ -21,7 +21,7 @@ from .task import Instance, Rollout, Task, evaluate
 
 class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
     def __init__(self, task: Task, base: Harness, llm: LLM, *, concurrency: int = 4,
-                 memo: Any = None) -> None:
+                 memo: Any = None, progress: Any = None) -> None:
         self.task, self.base, self.llm, self.concurrency = task, base, llm, concurrency
         self.evaluations = 0
         #: Outcomes already paid for. The search is the largest line in a
@@ -29,6 +29,9 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
         #: at the start of every search, and the seed is usually a harness some
         #: earlier generation already measured on these very windows.
         self.memo = memo
+        #: The heartbeat, if the run has one. Ticked per batch because this is
+        #: the one chokepoint every candidate evaluation passes through.
+        self.progress = progress
         # Resolved once. The tools prompt needs to know what was *not* called as
         # much as what was, and asking the topic per trajectory would cost the
         # question set each time.
@@ -37,6 +40,9 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
     def evaluate(self, batch: list[Instance], candidate: dict[str, str],
                  capture_traces: bool = False) -> EvaluationBatch[dict, dict]:
         self.evaluations += len(batch)
+        if self.progress is not None:
+            self.progress.tick("search", evaluations=self.evaluations,
+                               spent_usd=round(getattr(self.llm, "spent_usd", 0.0), 2))
         try:
             harness = self.base.from_components(candidate)
         except HarnessError as exc:

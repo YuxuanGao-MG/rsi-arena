@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .harness import Harness, OpenRouter, SyncLLM
-from .loop import (ARCHIVE, SCOREBOARD, Archive, Entry, Generation, Scoreboard, Rollout, Settings, TaskAdapter, accept,
+from .loop import (ARCHIVE, SCOREBOARD, Archive, Entry, Generation, Progress, Scoreboard, Rollout, Settings, TaskAdapter, accept,
                    evaluate, from_gepa_state, lineage, probe_sample, reflection_templates,
                    render_lineage, split_by_group, summarise, three_way_split)
 from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
@@ -295,6 +295,12 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         return 1
 
     llm = _llm(s)
+    # The heartbeat: one row in rsi.progress the reader polls, so a person can
+    # see which phase a ninety-minute run is in while it is in it. Fail-open by
+    # construction - it must never be the reason a paid generation dies.
+    beat = Progress(run_dir.name)
+    beat.phase("baseline", train=len(train), holdout=len(hold), audit=len(audit))
+
     # The probe is chosen before anything is paid for, not after the search.
     #
     # It used to be picked after GEPA returned, which meant the incumbent was
@@ -354,6 +360,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             f"negative."]}
         gen.save()
         asyncio.run(llm.close())
+        beat.done("incomplete", reason="budget exhausted during the baseline",
+                  spent_usd=round(llm.spent_usd, 2))
         log(f"budget exhausted during the baseline (${llm.spent_usd:.2f} of "
             f"${s.max_generation_usd:.2f}). Stopping before the search, because a "
             f"baseline that is half refusals is not a baseline.")
@@ -402,6 +410,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         log(f"refusing to search: the valset is {len(valset)} instances and the budget is "
             f"{s.max_metric_calls} calls. The seed evaluation alone would spend all of it "
             f"and no rewrite would ever be proposed.")
+        beat.done("refused", reason="valset exceeds the search budget")
         return 1
     # The valset in the order GEPA sees it, so its per-instance score matrix can
     # be read back afterwards. Positional against `prog_candidate_val_subscores`
@@ -411,7 +420,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     log(f"  search: {len(valset)} valset instances, {s.max_metric_calls} calls "
         f"({s.max_metric_calls - len(valset)} left after the seed evaluation)")
 
-    adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency, memo=memo)
+    beat.phase("search", valset=len(valset), budget_calls=s.max_metric_calls,
+               spent_usd=round(llm.spent_usd, 2))
+    adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency, memo=memo,
+                          progress=beat)
     result = gepa.optimize(
         seed_candidate=seed_components, trainset=train, valset=valset, adapter=adapter,
         reflection_lm=SyncLLM(llm, s.reflection_model),
@@ -453,6 +465,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         # candidate got worse, and twenty matches answer that as well as a
         # hundred and forty at a fifteenth of the price. Held-out is the half
         # that needs power, and held-out is scored in full.
+        beat.phase("cascade", spent_usd=round(llm.spent_usd, 2))
         cand_train = _bench(task, candidate, probe, llm, s,
                             memo=memo, fingerprint=gen.candidate_fingerprint)
         gap = (task.statistic([r.outcome for r in cand_train])
@@ -472,6 +485,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         log("  not scoring held-out: the generation's budget is already gone, and a "
             "half-paid held-out set is worse than none")
     if not stopped_early and not exhausted:
+        beat.phase("holdout", spent_usd=round(llm.spent_usd, 2))
         cand_hold = _bench(task, candidate, hold, llm, s,
                            memo=memo, fingerprint=gen.candidate_fingerprint)
     gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
@@ -519,6 +533,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # one that does not is the winner's curse caught in the act. It costs
     # nothing until something is accepted, which so far is never.
     if decision.accepted and audit:
+        beat.phase("audit", spent_usd=round(llm.spent_usd, 2))
         log(f"confirming on {len(audit)} audit instances the search has never seen")
         base_audit = _bench(task, incumbent, audit, llm, s)
         cand_audit = _bench(task, candidate, audit, llm, s)
@@ -552,6 +567,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             f"as incomplete, not as evidence.")
     asyncio.run(llm.close())
 
+    beat.done("accepted" if decision.accepted else "rejected",
+              reason=(decision.reasons or [""])[0][:200],
+              spent_usd=round(llm.spent_usd, 2), candidates=gen.search.get("candidates"))
     print(render_lineage(lineage(run_dir)))
     print()
     print(("ACCEPTED " if decision.accepted else "REJECTED ") + "; ".join(decision.reasons))

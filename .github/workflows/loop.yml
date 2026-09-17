@@ -128,7 +128,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e .
+      # The publish extra carries psycopg2, which both the end-of-run publish
+      # and the mid-run progress heartbeat need. The heartbeat is fail-open, so
+      # a missing driver would not break anything - it would just mean the run
+      # goes dark for ninety minutes, which is the thing it exists to prevent.
+      - run: pip install -e ".[publish]"
 
       - name: Restore tool and model caches
         uses: actions/cache@v4
