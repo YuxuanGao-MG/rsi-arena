@@ -16,6 +16,21 @@
 /** One tick. The smallest benchmark error that means anything. */
 export const TICK = 0.01;
 
+/**
+ * One window's skill on today's formula, from the two errors stored with it.
+ *
+ * The stored `skill` column is whatever the metric said on the day the run was
+ * scored, and `runs/gen1-floored` was scored while silence on a dead market was
+ * worth a full point — so its "Where it won" table, read straight from the
+ * column, is six echoes of the mid scoring 1.000. Recomputing from `err` and
+ * `naive_error` puts every window on one scale, and the rows where the two
+ * disagree are exactly the rows that were misleading.
+ */
+export function windowSkill(r) {
+  if (r.err == null || r.naive_error == null) return r.skill ?? null;
+  return (r.naive_error - r.err) / Math.max(r.naive_error, TICK);
+}
+
 /** The gated statistic: sum the error removed, sum the benchmark, then divide. */
 export function pooled(rows) {
   let removed = 0, benchmark = 0, scored = 0, quiet = 0;

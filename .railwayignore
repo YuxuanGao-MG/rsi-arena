@@ -1,6 +1,12 @@
-# Only web/ is deployed; the Dockerfile copies nothing else.
-runs/
-# except the archive, which the Dockerfile copies into the image.
+# Only web/ is deployed, plus the one file the Dockerfile reaches outside it.
+#
+# `runs/` with a trailing slash excludes the directory itself, and a negation
+# cannot re-include a file inside a directory that is never walked into — so
+# `!runs/archive.json` under `runs/` silently did nothing, the COPY found no
+# file, and the deploy failed while the previous one kept serving. The glob form
+# excludes the contents rather than the directory, which is what makes the
+# negation reachable.
+runs/*
 !runs/archive.json
 benchmarks/
 .cache/

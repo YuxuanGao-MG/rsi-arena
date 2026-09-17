@@ -8,38 +8,35 @@
  * won", which on any run with more than 500 windows is the best of the worst.
  */
 
-import { q, qAll } from "../data.js";
+import { q, qAll, qs } from "../data.js";
 import { href } from "../routes.js";
 import {
   html, raw, stat, pill, n3, usd, price, dir, empty, clock, plural, holdout, skillBar,
 } from "../dom.js";
 import { predictedVsRealised, skillHistogram } from "../charts.js";
-import { pooled, pooledOnMoves } from "../stats.js";
+import { pooled, pooledOnMoves, windowSkill } from "../stats.js";
 
 const NARROW = "id,fixture,ticker,at,mid_now,realised,predicted,half_width," +
                "err,naive_error,skill,echoed,unmeasurable,cost_usd,ok";
-const WITH_OUTPUT = NARROW + ",output";
 
 export async function runView({ params, query, signal }) {
   const id = params.id;
   const side = query.side === "baseline" ? "baseline" : "candidate";
   if (!id) return { title: "Generation", heading: "No generation named", body: empty("Pick one from the list.") };
 
-  const base = `rollouts?run_id=eq.${encodeURIComponent(id)}&side=eq.${side}&split=eq.holdout`;
-  // Serial awaits here used to cost a round trip each; the run record and the
-  // windows do not depend on one another.
-  const [[run], all, worst, best] = await Promise.all([
+  const base = `rollouts?run_id=${encodeURIComponent(id)}&side=eq.${side}&split=eq.holdout`;
+  // The run record and the windows do not depend on one another; serial awaits
+  // here used to cost a round trip each.
+  const [[run], allRaw] = await Promise.all([
     q(`runs?id=eq.${encodeURIComponent(id)}&select=*`, { signal }),
     qAll(`${base}&select=${NARROW}&order=skill.asc`, { signal, max: 8000 }),
-    q(`${base}&select=${WITH_OUTPUT}&order=skill.asc&limit=12`, { signal }),
-    q(`${base}&select=${WITH_OUTPUT}&order=skill.desc&limit=6`, { signal }),
   ]);
 
   if (!run) {
     return { title: "Generation", heading: "No such generation",
              body: empty(html`Nothing published under <code>${id}</code>.`) };
   }
-  if (!all.length) {
+  if (!allRaw.length) {
     return {
       title: id, heading: id,
       crumbs: [["generations", href.runs()], [id]],
@@ -47,6 +44,28 @@ export async function runView({ params, query, signal }) {
         been published before the split was recorded, or scored on train only.`),
     };
   }
+
+  // Every skill on this page is recomputed from the window's own errors, so a
+  // generation scored under an older metric does not read as a better one — and
+  // so "worst first" and "best first" are actually worst and best. Ordering by
+  // the stored column would put six echoes of the mid, each worth a full point
+  // under the metric of the week, at the top of "Where it won".
+  const all = allRaw.map(r => ({ ...r, published_skill: r.skill, skill: windowSkill(r) }));
+  const ranked = [...all].sort((a, b) => (a.skill ?? 0) - (b.skill ?? 0));
+  const worst = ranked.slice(0, 12);
+  const best = ranked.slice(-6).reverse();
+
+  // The drivers, for those eighteen rows only. `output` is the largest column
+  // on the table and there is no reason to drag it across every window to print
+  // eighteen sentences.
+  const wanted = [...worst, ...best].map(r => r.id);
+  const drivers = new Map();
+  if (wanted.length) {
+    const rows = await qAll(`rollouts?select=id,output&id=${qs.inList(wanted)}`,
+                            { signal, max: 100 });
+    for (const row of rows) drivers.set(row.id, row.output);
+  }
+  for (const row of [...worst, ...best]) row.output = drivers.get(row.id) || null;
 
   const published = holdout(run, side) || {};
   const mine = pooled(all);
@@ -146,14 +165,14 @@ export async function runView({ params, query, signal }) {
       <div class="panel-h"><h2>Where it lost</h2>
         <span class="pill">worst first — the only thing a rewrite can aim at</span></div>
       <div class="scroll">${windowTable(worst,
-        "The held-out windows this harness lost the most error on, worst first.")}</div>
+        html`The held-out windows this harness lost the most error on, worst first.${restated(worst)}`)}</div>
     </section>
 
     <section class="panel">
       <div class="panel-h"><h2>Where it won</h2>
         <span class="pill">best of all ${plural(all.length, "held-out window")}</span></div>
       <div class="scroll">${windowTable(best,
-        "The held-out windows it removed the most error on, best first.")}</div>
+        html`The held-out windows it removed the most error on, best first.${restated(best)}`)}</div>
     </section>`;
 
   return {
@@ -249,6 +268,16 @@ function provenance(run) {
       ? " — and stopped because that ran out, not because the search was finished" : ""}.
       ${llm.cache_hits ? `${llm.cache_hits} of ${(llm.calls || 0) + llm.cache_hits} model calls came from the cache.` : ""}</p>`);
   return bits.length ? html`<div class="prose provenance">${bits}</div>` : "";
+}
+
+/** Says so when a table's numbers are not the ones the database stored. */
+function restated(rows) {
+  const moved = rows.filter(r => r.published_skill != null
+    && Math.abs(r.published_skill - r.skill) > 0.002).length;
+  return moved
+    ? html` ${plural(moved, "row")} here scored differently under the metric in force when this
+        generation ran; the skill shown is recomputed from the window's own errors.`
+    : "";
 }
 
 function windowTable(rows, caption) {

@@ -6,7 +6,7 @@ import {
   html, raw, stat, pill, n3, usd, dir, empty, day, plural,
 } from "../dom.js";
 import { generationSkill, sparkline } from "../charts.js";
-import { groupBy, recompute, metricGap } from "../stats.js";
+import { groupBy, recompute, metricGap, windowSkill } from "../stats.js";
 
 const RUN_COLUMNS = "id,created,parent,accepted,reasons,incumbent_fp,candidate_fp," +
                     "baseline,candidate,decision,search,llm,split";
@@ -172,7 +172,7 @@ export async function runsView({ signal }) {
 
 function row(r, windows, level) {
   const hold = r.decision?.holdout || {};
-  const skills = windows.map(w => w.skill).filter(v => v != null);
+  const skills = windows.map(windowSkill).filter(v => v != null);
   const inc = level?.baseline?.skill ?? r.baseline?.holdout?.statistic;
   const cand = level?.candidate?.skill ?? r.candidate?.holdout?.statistic;
   return html`<li>

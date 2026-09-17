@@ -10,6 +10,7 @@ import {
   html, raw, pill, n3, n2, usd, cents, dir, empty, stamp, plural,
 } from "../dom.js";
 import { priceTrack } from "../charts.js";
+import { windowSkill } from "../stats.js";
 
 export async function windowView({ params, signal }) {
   const rid = String(params.id || "");
@@ -26,6 +27,10 @@ export async function windowView({ params, signal }) {
                    body: empty(html`Nothing published with id <code>${rid}</code>.`) };
 
   const spans = (traces[0] && traces[0].spans) || [];
+  // Recomputed from this window's own errors, for the same reason the tables
+  // are: the stored column carries whatever the metric said that week.
+  const skill = windowSkill(r);
+  const restated = r.skill != null && Math.abs(r.skill - skill) > 0.002;
   const o = r.output || {};
   const covered = r.realised != null && r.predicted != null && r.half_width != null
     && Math.abs(r.realised - r.predicted) <= r.half_width;
@@ -51,12 +56,14 @@ export async function windowView({ params, signal }) {
                   ? covered ? "The price printed inside that quote."
                             : "The price printed outside that quote." : ""}</p></div>
             <div class="box"><div class="k">it was worth</div>
-              <div class="big ${dir(r.skill)}">${n3(r.skill)}</div>
+              <div class="big ${dir(skill)}">${n3(skill)}</div>
               <p>against no change${r.unmeasurable
                 ? " — but the market did not move, so there was no error to remove" : ""}.
                 ${r.err != null && r.naive_error != null
                   ? `Missed by ${n2(r.err * 100)}c where saying nothing would have missed by
-                     ${n2(r.naive_error * 100)}c.` : ""}</p></div>
+                     ${n2(r.naive_error * 100)}c.` : ""}
+                ${restated ? `The scoreboard of the day recorded ${n3(r.skill)} here, under a
+                   metric that has since changed.` : ""}</p></div>
           </div>
           ${r.cost_usd != null ? html`<p class="note">This window cost ${usd(r.cost_usd)}.</p>` : ""}
           ${r.ok === false ? html`<div class="box"><div class="k">the run failed</div>
