@@ -145,13 +145,15 @@ export async function runView({ params, query, signal }) {
     <section class="panel">
       <div class="panel-h"><h2>Where it lost</h2>
         <span class="pill">worst first — the only thing a rewrite can aim at</span></div>
-      <div class="scroll">${windowTable(worst)}</div>
+      <div class="scroll">${windowTable(worst,
+        "The held-out windows this harness lost the most error on, worst first.")}</div>
     </section>
 
     <section class="panel">
       <div class="panel-h"><h2>Where it won</h2>
         <span class="pill">best of all ${plural(all.length, "held-out window")}</span></div>
-      <div class="scroll">${windowTable(best)}</div>
+      <div class="scroll">${windowTable(best,
+        "The held-out windows it removed the most error on, best first.")}</div>
     </section>`;
 
   return {
@@ -249,9 +251,10 @@ function provenance(run) {
   return bits.length ? html`<div class="prose provenance">${bits}</div>` : "";
 }
 
-function windowTable(rows) {
+function windowTable(rows, caption) {
   if (!rows.length) return empty("nothing scored");
   return html`<table>
+    <caption>${caption}</caption>
     <thead><tr>
       <th scope="col">window</th><th scope="col" class="n">mid</th>
       <th scope="col" class="n">said</th><th scope="col" class="n">printed</th>
