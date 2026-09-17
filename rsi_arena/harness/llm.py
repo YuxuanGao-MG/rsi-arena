@@ -227,7 +227,8 @@ class OpenRouter:
             return self._completion(data, model, cached=True)
 
         if self.over_budget:
-            raise GenerationBudgetExceeded(self.spent_usd, float(self.budget_usd))
+            raise GenerationBudgetExceeded(self.spent_usd,
+                                           float(self.budget_usd or self.spent_usd))
         data = await self._post(body)
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -242,7 +243,11 @@ class OpenRouter:
         headers = {"Authorization": f"Bearer {self.api_key}", "X-Title": self.app_title,
                    "Content-Type": "application/json"}
         delay = 1.0
-        for attempt in range(self.max_retries + 1):
+        attempt = -1
+        while True:
+            attempt += 1
+            if attempt > self.max_retries:
+                break
             try:
                 async with self._limit():
                     resp = await self._http().post(f"{self.base_url}/chat/completions",
@@ -280,10 +285,23 @@ class OpenRouter:
                 #
                 # So wait it out, and only conclude the money is gone when it is
                 # still gone after the top-up has had time to arrive.
+                # Waiting for a top-up must not consume a retry attempt.
+                #
+                # It did, and the arithmetic did not close: four retries times a
+                # fifteen-second sleep cap is sixty seconds of tolerance against
+                # a ninety-second threshold, so the branch below was unreachable
+                # from one call's own clock. The call fell out of the loop as
+                # `LLMError(None, "unreachable")` with `starved` still false — and
+                # a provider error is recorded by the runner as *silence*, pooled
+                # by the gate as a real measurement, and reported as evidence.
+                # A funding hiccup became a verdict. The balance here sits
+                # between ten and forty dollars against a fifty-dollar
+                # generation, so this was not hypothetical.
                 self.starved_since = self.starved_since or time.monotonic()
                 waited = time.monotonic() - self.starved_since
                 if waited < self.starve_after_s:
                     await asyncio.sleep(min(15.0, self.starve_after_s - waited))
+                    attempt -= 1            # the wait is not a failed attempt
                     continue
                 self.starved = True
                 raise GenerationBudgetExceeded(self.spent_usd,

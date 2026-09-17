@@ -72,6 +72,18 @@ class Entry:
     promoted: bool = False                     # did the gate ever accept it
     note: str = ""
 
+    @property
+    def flat(self) -> bool:
+        """Every score the same, so it separates nothing.
+
+        Silence across a whole valset looks like this, and so does a harness that
+        failed identically everywhere. Either way there is no instance it is
+        better at than any other.
+        """
+        if len(self.scores) < 4:
+            return False
+        return len(set(round(v, 9) for v in self.scores.values())) == 1
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -135,9 +147,16 @@ class Archive:
     # -- the frontier --
 
     def instance_best(self) -> dict[str, float]:
-        """``s*[i]``: the best anything has ever scored on each instance."""
+        """``s*[i]``: the best anything has ever scored on each instance.
+
+        Flat candidates are left out for the same reason they win nothing: a
+        column whose only reading is an identical refusal does not establish what
+        good looks like there.
+        """
         best: dict[str, float] = {}
         for e in self.entries:
+            if e.flat:
+                continue
             for instance, score in e.scores.items():
                 if score > best.get(instance, float("-inf")):
                     best[instance] = score
@@ -153,6 +172,17 @@ class Archive:
         best = self.instance_best()
         out: dict[str, list[str]] = {e.id: [] for e in self.entries}
         for e in self.entries:
+            if e.flat:
+                # A candidate whose every score is identical has told us nothing
+                # about which instances suit it, so it cannot be best *at* any of
+                # them. gen5's search ran out of money and returned a harness
+                # scored 0.5 on all 2,600 windows — pure silence — and because no
+                # other candidate had seen those windows it claimed nearly all of
+                # them as instance-bests. That is a sampling weight of 2,498
+                # against every real candidate's 41: it would have seeded the
+                # search every night for two months on the strength of having
+                # been refused.
+                continue
             for instance, score in e.scores.items():
                 if score >= best[instance]:
                     out[e.id].append(instance)

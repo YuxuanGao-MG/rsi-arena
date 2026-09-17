@@ -61,6 +61,8 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--concurrency", type=int, default=d.concurrency)
     ap.add_argument("--cascade", type=int, default=d.cascade,
                     help="train matches to probe before paying for the full evaluation; 0 disables")
+    ap.add_argument("--valset", type=int, default=d.valset,
+                    help="instances the search scores candidates on; must be under the call budget")
     ap.add_argument("--cascade-floor", type=float, default=d.cascade_floor,
                     help="a probe below this is rejected without confirming")
     ap.add_argument("--max-generation-usd", type=float, default=d.max_generation_usd,
@@ -386,11 +388,33 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # The valset in the order GEPA sees it, so its per-instance score matrix can
     # be read back afterwards. Positional against `prog_candidate_val_subscores`
     # and unrecoverable from anything else once the run is over.
-    (run_dir / "valset.json").write_text(json.dumps([i.id for i in train]))
+    (run_dir / "valset.json").write_text(json.dumps([i.id for i in valset]))
+
+    # What the search scores candidates on, which is not the whole train split.
+    #
+    # GEPA evaluates the seed across the entire valset before it first checks
+    # whether it may keep going, so a valset bigger than the call budget spends
+    # the budget on the seed and proposes nothing. That is not a risk; it is what
+    # the last four generations did. Drawn with the same stratified sampler the
+    # probe uses, so the frontier is not one league.
+    if 0 < s.valset < len(train):
+        keep = probe_sample({i.group for i in train},
+                            max(1, s.valset // max(1, s.per_fixture or 1)), s.seed + 1)
+        valset = [i for i in train if i.group in keep][:s.valset]
+    else:
+        valset = train
+    if len(valset) >= s.max_metric_calls:
+        log(f"refusing to search: the valset is {len(valset)} instances and the budget is "
+            f"{s.max_metric_calls} calls. The seed evaluation alone would spend all of it "
+            f"and no rewrite would ever be proposed.")
+        return 1
+    gen.search["valset"] = len(valset)
+    log(f"  search: {len(valset)} valset instances, {s.max_metric_calls} calls "
+        f"({s.max_metric_calls - len(valset)} left after the seed evaluation)")
 
     adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency, memo=memo)
     result = gepa.optimize(
-        seed_candidate=seed_components, trainset=train, valset=train, adapter=adapter,
+        seed_candidate=seed_components, trainset=train, valset=valset, adapter=adapter,
         reflection_lm=SyncLLM(llm, s.reflection_model),
         reflection_prompt_template=reflection_templates(task, incumbent),
         reflection_minibatch_size=s.minibatch, max_metric_calls=s.max_metric_calls,
@@ -465,7 +489,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # deleted at this line every generation so far, along with the per-instance
     # matrix that says what each of them was uniquely good at — which is the one
     # thing the next generation most wants to know.
-    found = from_gepa_state(run_dir, run_dir.name, [i.id for i in train],
+    # A generation that ran out of money found nothing; filing its candidates
+    # would file its refusals. The gate already refuses to read them as a
+    # verdict — the archive has to refuse to read them as evidence.
+    found = [] if exhausted else from_gepa_state(run_dir, run_dir.name, [i.id for i in valset],
                             lambda c: fingerprint_components(c, candidate.config.model),
                             promoted_id=gen.candidate_fingerprint if decision.accepted else None)
     for entry in found:

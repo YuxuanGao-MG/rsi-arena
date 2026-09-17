@@ -155,7 +155,9 @@ jobs:
 
       - name: Bench
         if: inputs.command == 'bench'
+        shell: bash
         run: |
+          set -o pipefail
           args=(--harness "${{ inputs.harness }}" --split "${{ inputs.split }}"
                 --benchmark "${{ inputs.benchmark }}" --holdout "${{ inputs.holdout }}"
                 --per-fixture "${{ inputs.per_fixture }}")
@@ -233,7 +235,11 @@ jobs:
           # a balance check would skip every night forever while the money to run
           # was arriving the whole time. What bounds the spending is the day's
           # total, which the top-ups do not reset.
-          read_key="import json,sys; d=json.load(sys.stdin)['data']; print(round(float(d.get('usage_daily') or 0), 4))"
+          # `or 0` here reported "$0 spent today" whenever the field was absent,
+          # which is not unknown — it is a confident zero that disables the cap
+          # while the step summary asserts the cap is fine. OpenRouter does not
+          # return usage_daily for every key type. Absent means unknown.
+          read_key="import json,sys; v=(json.load(sys.stdin)['data'] or {}).get('usage_daily'); print('unknown' if v is None else round(float(v), 4))"
           today=$(curl -sS --max-time 20 -H "Authorization: Bearer $OPENROUTER_API_KEY" \
                     https://openrouter.ai/api/v1/key 2>/dev/null | python -c "$read_key" 2>/dev/null || echo unknown)
 
@@ -247,7 +253,9 @@ jobs:
           fi
 
           skip=""
-          if [ "$room" != "unknown" ] && python -c "import sys; sys.exit(0 if float('$room') < float('$usd') else 1)"; then
+          if [ "$today" = "unknown" ]; then
+            skip="could not read what this key has spent today, and the daily cap is the only bound left"
+          elif python -c "import sys; sys.exit(0 if float('$room') < float('$usd') else 1)"; then
             skip="\$$today of a \$$cap daily cap is already spent, leaving \$$room; this generation needs \$$usd"
           fi
 

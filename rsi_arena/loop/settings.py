@@ -49,6 +49,20 @@ class Settings:
     # full train evaluation, so it is the number to revisit if a generation ever
     # gets accepted and the loop is worth running deeper.
     max_metric_calls: int = 600                    # instance evaluations GEPA may spend
+    # Instances GEPA scores a candidate on to place it on its Pareto frontier.
+    #
+    # Not the train split, which is what it used to be, and that quietly stopped
+    # the search from running at all. GEPA scores the seed across the whole
+    # valset before it consults the stop condition, so a valset larger than
+    # `max_metric_calls` spends the entire budget before proposing a single
+    # rewrite. Four generations ran that way: gen5 spent 2600 calls of a 600
+    # budget and returned exactly one candidate, the seed, which was then gated
+    # and reported as a verdict.
+    #
+    # Sized so the seed evaluation leaves room to iterate: at 600 calls, 240
+    # leaves about 360, which buys roughly forty-five proposals at a minibatch
+    # of eight.
+    valset: int = 240
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
     # What a whole generation may spend. The per-window ledger caps one run at
