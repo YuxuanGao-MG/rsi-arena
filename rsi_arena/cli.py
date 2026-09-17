@@ -21,6 +21,7 @@ from .harness import Harness, OpenRouter, SyncLLM
 from .loop import (ARCHIVE, SCOREBOARD, Archive, Entry, Generation, Progress, Scoreboard, Rollout, Settings, TaskAdapter, accept,
                    evaluate, from_gepa_state, lineage, probe_sample, reflection_templates,
                    render_lineage, split_by_group, summarise, three_way_split)
+from .loop.gate import MAX_UNSCORED
 from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
 from .topics import TOPICS, load_topic
 
@@ -472,7 +473,18 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                - task.statistic([r.outcome for r in base_train]))
         log(f"  cascade: {len(probe)} windows over {len(probe_groups)} matches, "
             f"{gap:+.3f} against the incumbent")
-        if gap < s.cascade_floor:
+        # A candidate that mostly cannot run has nothing to confirm. gen7's
+        # rewrite failed every probe window, which pooled to silence, which beat
+        # an incumbent below silence - so the cascade waved a broken harness
+        # through to a twelve-dollar held-out evaluation whose only possible
+        # verdict was the fabrication guard's refusal. The gate's threshold,
+        # applied here, keeps the money.
+        unscored = sum(1 for r in cand_train if not r.outcome.details.get("scored"))
+        if unscored / max(1, len(cand_train)) > MAX_UNSCORED:
+            log(f"  stopping here: {unscored} of {len(cand_train)} probe windows never "
+                f"ran; held-out would be paying to confirm a broken harness")
+            stopped_early = True
+        elif gap < s.cascade_floor:
             log(f"  stopping here: {gap:+.3f} is below {s.cascade_floor:+.3f}, and "
                 f"held-out would only confirm it")
             stopped_early = True

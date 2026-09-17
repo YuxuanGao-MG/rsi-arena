@@ -16,6 +16,12 @@ from ...loop import Outcome, Settings
 from .score import WindowScore, pooled, pooled_skill, score_output
 from .windows import Window, build_windows, load_fixtures
 
+#: What a run that produced no usable forecast loses against deliberate silence,
+#: on the optimizer's value scale. Half a cent of edge: enough that no crash can
+#: tie a quiet forecast, small enough that a candidate genuinely better where it
+#: does run still outranks one that is merely never broken.
+BREAKAGE = 0.05
+
 BACKGROUND = """The harness forecasts the short-term path of a Kalshi sports contract while the
 match is being played. It is given {{question}}, the contract ticker, and {{game}}, the
 score, clock and recent events as they stood at that instant. It may call three tools,
@@ -162,12 +168,22 @@ class KalshiHorizon:
         cost = run.cost_usd if run else 0.0
         # Silence is a real result with a real value, not a missing one.
         reading = score or WindowScore.silent(w.mid_now, w.realised)
+        # But a harness that COULD NOT run is not choosing silence, and pricing
+        # the two identically built a flat spot the search found in one night:
+        # gen7's rewrite called four tools its allowlist did not name, failed
+        # every window at exactly 0.5, and 0.5-flat beat a parent that averaged
+        # below silence - GEPA crowned the crash. A small step below silence
+        # breaks the flat spot without reviving the old half-the-range gap: to
+        # the optimizer, crashing is now strictly worse than shutting up, while
+        # the gate's statistic still reads both as silence, which only ever
+        # errs against the candidate and so cannot fabricate a promotion.
+        value = reading.value if score is not None else max(0.0, reading.value - BREAKAGE)
         details = {"scored": score is not None, "mid_now": w.mid_now,
                    "realised": w.realised, **reading.to_dict()}
         return Outcome(
-            value=reading.value,
+            value=value,
             feedback=_feedback(w, score, run),
-            objectives={"skill": reading.value,
+            objectives={"skill": value,
                         "cost": max(0.0, 1.0 - cost / 0.05)},
             details=details)
 
@@ -186,7 +202,11 @@ def _feedback(w: Window, s: WindowScore | None, run: Run | None) -> str:
         lines.append(f"The run failed ({run.error_kind}): {run.error}.")
     if s is None:
         lines.append("No usable forecast: the last step must return a JSON object with numeric "
-                     "delta_cents and half_width_cents.")
+                     "delta_cents and half_width_cents. A rewrite that cannot run scores BELOW "
+                     "deliberate silence - if you meant to say 'no change', return delta_cents 0 "
+                     "instead of breaking. If the failure names tools the harness does not list, "
+                     "the plan may only call tools already in the tools component; adding a tool "
+                     "there is its own separate edit.")
     else:
         lines.append(f"Predicted {100 * (s.predicted - s.mid_now):+.1f}c with half-width "
                      f"{100 * s.half_width:.1f}c: missed by {s.error:.3f}, skill {s.skill:+.2f}"

@@ -56,11 +56,10 @@ async def test_a_harness_that_cannot_run_fails_every_instance_with_the_reason(t0
     tk = task(history, t0)
     broken = Harness.load(BASE).from_components({"tools": "market_quote, news_search"})
     rollouts = await evaluate(tk, broken, tk.instances(), FakeLLM(oracle))
-    # The two numbers on this line used to disagree: the optimizer was handed
-    # 0.0 and the gate computed 0.0 skill, which look equal and are not — 0.0 on
-    # the optimizer's scale is a ten-cent error, and 0.0 skill is silence, which
-    # is 0.5. They now say the same thing about the same window.
-    assert all(r.run is None and r.outcome.value == 0.5 for r in rollouts)
+    # A harness that cannot run scores just below silence — see
+    # test_a_failed_run_is_worth_slightly_less_than_silence for the two ways
+    # this line has been wrong.
+    assert all(r.run is None and r.outcome.value == 0.45 for r in rollouts)
     assert "news_search" in rollouts[0].outcome.feedback
     assert tk.statistic([r.outcome for r in rollouts]) == 0.0        # counted as silence
 
@@ -86,15 +85,12 @@ def test_adapter_speaks_gepa(t0, history):
     assert "skill +1.00" in rec["Feedback"] and "Score 0.75" in rec["Feedback"]
     assert json.loads(rec["Generated Outputs"])["delta_cents"] == 5
     bad = adapter.evaluate(tk.instances()[:2], {**adapter.base.to_components(), "plan": "nope"}, True)
-    # 0.5, not 0.0. A harness that cannot run said nothing, and saying nothing is
-    # worth exactly silence — which is the middle of this scale, because value is
-    # affine in error removed and silence removes none. This asserted 0.0 until
-    # the day someone noticed the gate was reading the same window as silence
-    # while the optimizer was reading it as ten cents wrong: half the range of
-    # disagreement about the commonest failure there is. The reason for the
-    # rejection still has to be in the feedback, and that is the part that
-    # matters here.
-    assert bad.scores == [0.5, 0.5] and "not valid JSON" in bad.trajectories[0]["feedback"]
+    # 0.45: slightly below silence, on purpose, and this line has now been
+    # wrong in both directions. It asserted 0.0 until the gate/optimizer gap was
+    # found, then 0.5 until gen7 proved a crash tying silence is a flat spot the
+    # search exploits — a rewrite that failed every window beat a parent that
+    # averaged below silence, and GEPA crowned the crash. BREAKAGE breaks the tie.
+    assert bad.scores == [0.45, 0.45] and "not valid JSON" in bad.trajectories[0]["feedback"]
 
 
 def test_reflection_templates_state_the_task_once_per_component():
@@ -513,3 +509,28 @@ def test_a_holdout_that_is_a_quarter_refusals_produces_no_verdict():
     clean = accept(T(), candidate_train=[], incumbent_train=[],
                    candidate_holdout=inc, incumbent_holdout=inc)
     assert "fabrication" not in " ".join(clean.reasons)
+
+
+def test_the_cascade_stops_a_candidate_that_mostly_cannot_run():
+    """gen7's twelve-dollar lesson, kept.
+
+    A rewrite that failed every probe window pooled to silence, which beat an
+    incumbent below silence, so the cascade waved a broken harness through to a
+    full held-out evaluation whose only possible verdict was the fabrication
+    guard's refusal. The same threshold, applied at the probe, keeps the money.
+    """
+    from rsi_arena.loop.gate import MAX_UNSCORED
+
+    # The guard the cli applies, extracted: unscored fraction over the probe.
+    def would_stop(outcomes):
+        unscored = sum(1 for o in outcomes if not o.details.get("scored"))
+        return unscored / max(1, len(outcomes)) > MAX_UNSCORED
+
+    from rsi_arena.loop import Outcome
+    broken = [Outcome(value=0.45, feedback="", objectives={}, details={"scored": False})
+              for _ in range(80)]
+    healthy = [Outcome(value=0.6, feedback="", objectives={}, details={"scored": True})
+               for _ in range(80)]
+    assert would_stop(broken)
+    assert not would_stop(healthy)
+    assert not would_stop(healthy[:60] + broken[:20] + healthy[:0])  # exactly 25%: allowed

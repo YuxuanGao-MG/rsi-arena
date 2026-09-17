@@ -186,15 +186,22 @@ def test_thinning_keeps_matches_and_spreads_across_each():
 
 # -- the optimizer and the gate read a failure the same way -------------------
 
-def test_a_failed_run_is_worth_exactly_silence():
-    """Not zero.
+def test_a_failed_run_is_worth_slightly_less_than_silence():
+    """The rule has now been wrong in both directions, so the history matters.
 
-    The optimizer used to be handed 0.0 for a run that produced nothing — the
-    floor of the scale, what a harness gets for being ten cents wrong — while
-    the gate read the same window as exactly silence. Half the range of
-    disagreement about the most common failure there is.
+    First it was 0.0 — the floor of the scale, half the range below what the
+    gate read for the same window, quietly taxing every fragile rewrite. Then
+    it was exactly silence, 0.5 — and GEPA found the flat spot in one night:
+    gen7's rewrite called tools its allowlist did not name, failed every window
+    at a flat 0.5, and beat a parent that averaged below silence. The optimizer
+    crowned the crash.
+
+    So: a failure is worth silence minus BREAKAGE. Strictly worse than shutting
+    up on purpose, nowhere near the old cliff, and one-directional against the
+    gate — which still reads both as silence, so the disagreement can only ever
+    cost a candidate, never promote one.
     """
-    from rsi_arena.topics.kalshi_horizon.task import KalshiHorizon
+    from rsi_arena.topics.kalshi_horizon.task import BREAKAGE, KalshiHorizon
     from rsi_arena.topics.kalshi_horizon.windows import Window
     from datetime import datetime, timezone
 
@@ -204,8 +211,8 @@ def test_a_failed_run_is_worth_exactly_silence():
     silent = WindowScore.silent(w.mid_now, w.realised)
 
     unrunnable = task.failed(w, "no such tool")
-    assert unrunnable.value == pytest.approx(silent.value)
-    assert unrunnable.objectives["skill"] == pytest.approx(silent.value)
+    assert unrunnable.value == pytest.approx(silent.value - BREAKAGE)
+    assert unrunnable.value < silent.value, "crashing must not tie deliberate silence"
 
     class _NoOutput:
         output = None
@@ -219,7 +226,10 @@ def test_a_failed_run_is_worth_exactly_silence():
 
     quiet = task.score(w, _NoOutput())
     assert quiet.value == pytest.approx(unrunnable.value), \
-        "a run that failed and a run that said nothing are the same result"
+        "however a run fails, it fails to the same value"
+    # And the gate is unmoved: to the pooled statistic both are still silence,
+    # which is what keeps the divergence one-directional.
+    assert task.statistic([quiet, unrunnable]) == 0.0
 
 
 def test_silence_is_the_middle_of_the_optimizer_scale():

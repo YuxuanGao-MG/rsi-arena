@@ -175,8 +175,11 @@ def reflection_templates(task: Task, base: Harness) -> dict[str, str]:
                 + "Plan grammar:\n" + Plan.GRAMMAR + "\n\n" + examples
                 + "Write a new plan as JSON in the same grammar: change the steps, their prompts, "
                 "their order, add or remove tool calls, or add a loop, whatever the feedback "
-                "argues for. The last step's output is the harness's answer and must keep the "
-                "output contract described in the task. Provide the JSON within ``` blocks.",
+                "argues for. The plan may only call tools the harness's CURRENT tool list names "
+                "- adding a tool to that list is a separate edit, and a plan that calls an "
+                "unlisted tool cannot run at all, which scores below saying nothing. The last "
+                "step's output is the harness's answer and must keep the output contract "
+                "described in the task. Provide the JSON within ``` blocks.",
         "tools": head + "The current tool list:\n```\n<curr_param>\n```\n\n" + examples
                  + "Write the new tool list as comma-separated names drawn only from the tools "
                  "named above — including ones the current list leaves out, if the feedback "
