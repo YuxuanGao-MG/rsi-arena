@@ -7,7 +7,12 @@ requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27",
     "pydantic>=2.7",
-    "gepa>=0.1.4",
+    # Pinned, not floored. CI resolves fresh every run, cmd_optimize depends on
+    # four attributes of GEPAResult and on gepa.optimize's kwarg names, and the
+    # valset fix depends on the engine evaluating the seed before the stopper -
+    # behaviour read out of this exact version's source. A silent minor bump is
+    # this project's most likely novel failure.
+    "gepa==0.1.4",
     # Undeclared, and used. The Kalshi client signs with it; the publisher needs
     # psycopg2. Both were being installed by hand or not at all — one scheduled
     # run installed psycopg2-binary inline in the workflow.
