@@ -51,16 +51,30 @@ def test_a_candidate_that_wins_nothing_is_not_on_the_frontier():
     assert [e.id for e in a.frontier()] == ["full"]
 
 
-def test_domination_needs_enough_shared_instances():
-    """Being asked fewer questions is not the same as answering them better.
+def test_only_a_contested_instance_can_rank_anything():
+    """An instance one candidate has seen cannot say it is better than anyone.
 
-    ``barely_seen`` wins both instances it was shown. ``full`` is better on the
-    other eighteen, which it alone has seen. Three shared instances is not
-    enough to call that domination, so both stay.
+    This is how gen5's refused harness came to own the archive: scored an
+    identical 0.5 on all 2,600 windows of its own split, with no earlier
+    candidate having seen any of them, it was trivially instance-best on 2,586 —
+    a sampling weight of sixty to one over every candidate that had actually
+    forecast something, earned entirely by being refused.
     """
-    a = Archive([entry("full", {**spread(0.6, 20), "i0": 0.4, "i1": 0.4}),
-                 entry("barely_seen", {"i0": 0.5, "i1": 0.5})])
-    assert {e.id for e in a.frontier()} == {"full", "barely_seen"}
+    alone = Archive([entry("a", spread(0.5, 30)), entry("b", {f"z{i}": 0.9 for i in range(30)})])
+    assert alone.contested() == set()
+    assert alone.wins() == {"a": [], "b": []}
+    # Neither has been compared, so neither is dropped and neither dominates.
+    assert {e.id for e in alone.frontier()} == {"a", "b"}
+    picks = [alone.sample_parents(1, seed=s)[0].id for s in range(20)]
+    assert set(picks) == {"a", "b"}, "an uncompared candidate must stay reachable"
+
+
+def test_a_candidate_that_lost_every_comparison_it_had_is_dropped():
+    """Compared and beaten is not the same as never compared."""
+    a = Archive([entry("better", {**spread(0.6, 20), "i0": 0.9, "i1": 0.9}),
+                 entry("beaten", {"i0": 0.5, "i1": 0.5})])
+    assert a.contested() == {"i0", "i1"}
+    assert [e.id for e in a.frontier()] == ["better"]
 
 
 def test_parents_are_sampled_in_proportion_to_what_they_own():

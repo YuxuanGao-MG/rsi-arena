@@ -146,19 +146,33 @@ class Archive:
 
     # -- the frontier --
 
-    def instance_best(self) -> dict[str, float]:
-        """``s*[i]``: the best anything has ever scored on each instance.
+    def contested(self) -> set[str]:
+        """Instances more than one candidate has actually been scored on.
 
-        Flat candidates are left out for the same reason they win nothing: a
-        column whose only reading is an identical refusal does not establish what
-        good looks like there.
+        An instance only one candidate has seen cannot rank candidates — there is
+        nobody to be better *than*. Counting it anyway is how gen5's refused
+        harness came to own the archive: it was scored an identical 0.5 on all
+        2,600 windows of its own split, no earlier candidate had seen any of
+        them, and so it was trivially instance-best on 2,586 — a sampling weight
+        of sixty to one over every candidate that had actually forecast
+        something, earned entirely by being refused.
+
+        Comparing only where a comparison exists is also what makes the frontier
+        mean anything when the held-out set rotates.
         """
-        best: dict[str, float] = {}
+        seen: dict[str, int] = {}
         for e in self.entries:
-            if e.flat:
-                continue
+            for instance in e.scores:
+                seen[instance] = seen.get(instance, 0) + 1
+        return {i for i, n in seen.items() if n > 1}
+
+    def instance_best(self) -> dict[str, float]:
+        """``s*[i]``: the best anything has scored on each contested instance."""
+        best: dict[str, float] = {}
+        contested = self.contested()
+        for e in self.entries:
             for instance, score in e.scores.items():
-                if score > best.get(instance, float("-inf")):
+                if instance in contested and score > best.get(instance, float("-inf")):
                     best[instance] = score
         return best
 
@@ -172,19 +186,8 @@ class Archive:
         best = self.instance_best()
         out: dict[str, list[str]] = {e.id: [] for e in self.entries}
         for e in self.entries:
-            if e.flat:
-                # A candidate whose every score is identical has told us nothing
-                # about which instances suit it, so it cannot be best *at* any of
-                # them. gen5's search ran out of money and returned a harness
-                # scored 0.5 on all 2,600 windows — pure silence — and because no
-                # other candidate had seen those windows it claimed nearly all of
-                # them as instance-bests. That is a sampling weight of 2,498
-                # against every real candidate's 41: it would have seeded the
-                # search every night for two months on the strength of having
-                # been refused.
-                continue
             for instance, score in e.scores.items():
-                if score >= best[instance]:
+                if instance in best and score >= best[instance]:
                     out[e.id].append(instance)
         return out
 
@@ -198,7 +201,17 @@ class Archive:
         worth making at all.
         """
         wins = self.wins()
-        contenders = [e for e in self.entries if wins[e.id]]
+        contested = self.contested()
+        # Never compared is not the same as compared and beaten.
+        #
+        # A candidate from a rotated held-out set may share no instance with
+        # anything already in the archive. It has won nothing, but nothing has
+        # beaten it either, and dropping it would mean the frontier empties every
+        # time the split moves. It stays, and `sample_parents` gives it the floor
+        # weight of one — reachable, never dominant. A candidate that *was*
+        # compared and lost every comparison is a different case and does drop.
+        contenders = [e for e in self.entries
+                      if wins[e.id] or not (set(e.scores) & contested)]
         keep: list[Entry] = []
         for e in contenders:
             if not any(_dominates(other, e) for other in contenders if other.id != e.id):
@@ -247,6 +260,8 @@ class Archive:
         wins = self.wins()
         front = self.frontier()
         return {"candidates": len(self.entries),
+                "flat": sum(1 for e in self.entries if e.flat),
+                "contested": len(self.contested()),
                 "frontier": len(front),
                 "instances": len(self.instance_best()),
                 "generations": len({e.generation for e in self.entries}),
