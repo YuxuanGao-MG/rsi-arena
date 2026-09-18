@@ -189,6 +189,15 @@ def resolve(row: dict, hist: History) -> bool:
         return True
     score = score_output(row.get("output"), row["mid_now"], realised)
     row["realised"] = realised
+    if score is None:
+        # The harness never answered - the first live in-play window hit the
+        # twenty-cent ledger with a dollar-sixty prompt (in-match tool payloads
+        # are an order larger than pre-match ones) and this line read .skill off
+        # None, crashing the sweep and taking every still-pending grading with
+        # it. An unanswered quote is a recorded fact, not an exception.
+        row["scored"] = None
+        row["unscored_because"] = "the harness produced no forecast"
+        return True
     row["scored"] = {"skill": round(score.skill, 4), "value": round(score.value, 4),
                      "error": round(score.error, 4), "naive_error": round(score.naive_error, 4)}
     return True

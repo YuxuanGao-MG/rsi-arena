@@ -211,3 +211,29 @@ def test_a_feed_that_stays_down_is_given_up_on(monkeypatch):
     for _ in range(6):
         assert live.fixtures_on("EPL", "2026-09-19") == []
     assert len(calls) == live.MAX_DAY_ATTEMPTS
+
+
+def test_an_unanswered_live_quote_is_recorded_not_raised():
+    """The first in-play window hit the per-window ledger at $1.65 of $0.20,
+    produced no forecast, and resolve() read .skill off None - crashing the
+    sweep and losing every still-pending grading with it."""
+    import importlib.util, sys
+    from datetime import datetime, timedelta, timezone
+
+    spec = importlib.util.spec_from_file_location("cl", "scripts/collect_live.py")
+    cl = importlib.util.module_from_spec(spec)
+    sys.modules["cl"] = spec.loader.exec_module(spec.loader.load_module.__self__) if False else None
+    spec.loader.exec_module(cl)
+
+    class Hist:
+        def __init__(self):
+            pass
+
+    row = {"at": (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(),
+           "ticker": "T", "mid_now": 0.4, "output": None}
+    cl.realised_mid = lambda *a, **k: 0.43
+    done = cl.resolve(row, Hist())
+    assert done is True
+    assert row["scored"] is None
+    assert "no forecast" in row["unscored_because"]
+    assert row["realised"] == 0.43
