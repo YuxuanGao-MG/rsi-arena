@@ -1,0 +1,423 @@
+Iteration 0: Base program full valset score: 0.49762499999999965 over 240 / 240 examples
+Iteration 1: Selected program 0 score: 0.49762499999999965
+Iteration 1: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays any "will happen" contract toward no
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,
+their win probability rises as the clock runs without an equalizer. Time is their
+ally. The price drifts up, not down. This is not "time decay toward no" — that
+applies to "will X happen" contracts, not "will team Y win" contracts when Y is
+already winning.
+
+**Scoreless draws: the tape and volume matter more than pure theory.** At 0-0, the
+theoretical drift is toward the draw as both team-win contracts decay. But in
+practice, early in the match (minutes 5-30), this drift is extremely slow —
+perhaps 0.1-0.3 cents per five minutes. The actual movement depends heavily on
+whether the book is active with directional flow or locked and quiet. Check the
+tape: if you see consistent yes-takers lifting the offer every minute and the mid
+has been stable or rising, predicting downward decay will be wrong. If the book is
+quiet with no trades and wide spreads, then marginal decay is possible. Do not
+predict multi-cent decay movements at 0-0 in the first half without strong evidence
+in the candlesticks that the market is actually moving that direction. When you
+predict decay, predict small moves (0.3-0.7 cents) unless the clock is late and
+the draw is becoming highly probable.
+
+**When you predict zero movement, widen your market.** If the game is quiet and you
+expect no change, you still face uncertainty about whether something will happen.
+A 1-2 cent half-width on a zero-delta forecast is overconfident. Use 3-4 cents
+minimum unless the book is locked and the clock is stopped.
+
+**Large sudden moves are possible and you must flag them.** Goals happen. A 0-0 game
+can become 1-0 in the next minute, moving the price 10-30 cents instantly. If the
+game is live and close, your half-width must reflect this. A 3-cent market when a
+goal would move the price 20 cents is not defensible. Either predict the direction
+if you see momentum, or quote a wide market (5-10 cents) to cover the risk.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price
+should drift up 1-2 cents over five minutes, say so.
+
+**Persistent order flow can pin the price or drive it.** If the tape shows repeated
+yes-takers hitting the ask every 30-60 seconds and the mid has been stable or
+rising, the market is absorbing buying pressure, not decaying. Do not predict
+downward movement against consistent buying flow. Similarly, if the book has been
+pinned at the same tight spread (e.g., 0.51/0.52) for many minutes with regular
+trades, predicting movement in either direction is likely wrong unless game state
+changes. The pin reflects equilibrium, and it will likely persist through your
+five-minute window unless something on the pitch changes.
+
+**Read the recent candlesticks as the dominant signal.** If the mid has been stable
+at the same level for 10+ minutes despite game time passing, that stability is
+stronger evidence than theoretical decay. The market is telling you the current
+price is correct. Do not fight it without clear evidence of a catalyst. A mid that
+has printed 0.34-0.35 for fifteen straight minutes will likely print 0.34-0.35
+for the next five, regardless of whether you think it "should" decay.
+
+**Do not overfit to directional taker flow.** Yes-takers hitting the ask does not
+always mean the price will rise. Check whether the mid is actually moving. If the
+spread is tight (1 cent), yes-takers at the ask and no-takers at the bid can
+alternate, causing trades but no mid movement. The candlesticks show you whether
+flow is moving the price or being absorbed. Trust the candlesticks over the raw
+tape.
+
+**Early match at 0-0: predict stability, not decay.** At 5 minutes into a match,
+theoretical draw decay is negligible. If the book is active and the mid has been
+stable, predict delta_cents near zero. The market has 85+ minutes of game time to
+reprice; five minutes of clock with no score does not move the needle unless you
+see it actually moving in the candlesticks. Your forecast should match what the
+data shows, not what a naive model would guess.
+Iteration 1: Accepted candidate (subsample score 4.01 -> 4.065); running full eval.
+Iteration 1: Found a better program on the valset with score 0.49835416666666627.
+Iteration 1: Valset score for new program: 0.49835416666666627 (coverage 240 / 240)
+Iteration 1: Val aggregate for new program: 0.49835416666666627
+Iteration 1: Individual valset scores for new program: {0: 0.51, 1: 0.475, 2: 0.51, 3: 0.475, 4: 0.49, 5: 0.6, 6: 0.5750000000000001, 7: 0.54, 8: 0.485, 9: 0.48, 10: 0.475, 11: 0.475, 12: 0.475, 13: 0.51, 14: 0.44999999999999996, 15: 0.44999999999999996, 16: 0.49, 17: 0.535, 18: 0.49, 19: 0.485, 20: 0.44999999999999996, 21: 0.46499999999999997, 22: 0.51, 23: 0.49, 24: 0.49, 25: 0.485, 26: 0.5750000000000001, 27: 0.475, 28: 0.5, 29: 0.515, 30: 0.475, 31: 0.475, 32: 0.515, 33: 0.6000000000000001, 34: 0.5750000000000001, 35: 0.5, 36: 0.475, 37: 0.5, 38: 0.44999999999999996, 39: 0.55, 40: 0.5, 41: 0.51, 42: 0.48, 43: 0.475, 44: 0.5, 45: 0.525, 46: 0.51, 47: 0.46499999999999997, 48: 0.5, 49: 0.475, 50: 0.535, 51: 0.525, 52: 0.51, 53: 0.475, 54: 0.475, 55: 0.525, 56: 0.485, 57: 0.5, 58: 0.5750000000000001, 59: 0.42499999999999993, 60: 1.0, 61: 0.49, 62: 0.485, 63: 0.485, 64: 0.51, 65: 0.515, 66: 0.55, 67: 0.5750000000000001, 68: 0.49, 69: 0.525, 70: 0.55, 71: 0.5749999999999995, 72: 0.5, 73: 0.56, 74: 0.475, 75: 0.485, 76: 0.51, 77: 0.485, 78: 0.5250000000000001, 79: 0.44999999999999996, 80: 0.49, 81: 0.485, 82: 0.51, 83: 0.5, 84: 0.475, 85: 0.475, 86: 0.475, 87: 0.44999999999999996, 88: 0.475, 89: 0.42499999999999993, 90: 0.515, 91: 0.515, 92: 0.56, 93: 0.535, 94: 0.475, 95: 0.475, 96: 0.5, 97: 0.475, 98: 0.475, 99: 0.475, 100: 0.42499999999999993, 101: 0.485, 102: 0.49, 103: 0.6, 104: 0.49, 105: 0.54, 106: 0.525, 107: 0.485, 108: 0.44999999999999996, 109: 0.515, 110: 0.44999999999999996, 111: 0.44999999999999996, 112: 0.5, 113: 0.485, 114: 0.44999999999999996, 115: 0.54, 116: 0.515, 117: 0.485, 118: 0.55, 119: 0.3999999999999999, 120: 0.5, 121: 0.44999999999999996, 122: 0.44999999999999996, 123: 0.44999999999999996, 124: 0.475, 125: 0.55, 126: 0.525, 127: 0.46499999999999997, 128: 0.485, 129: 0.515, 130: 0.525, 131: 0.485, 132: 0.45999999999999996, 133: 0.55, 134: 0.485, 135: 0.48, 136: 0.475, 137: 0.475, 138: 0.34999999999999987, 139: 0.44999999999999996, 140: 0.49, 141: 0.6000000000000001, 142: 0.485, 143: 0.55, 144: 0.475, 145: 0.525, 146: 0.525, 147: 0.525, 148: 0.515, 149: 0.48, 150: 0.48000000000000004, 151: 0.49, 152: 0.5, 153: 0.485, 154: 0.55, 155: 0.55, 156: 0.49, 157: 0.485, 158: 0.515, 159: 0.475, 160: 0.5, 161: 0.47500000000000003, 162: 0.53, 163: 0.44999999999999996, 164: 0.49, 165: 0.485, 166: 0.49, 167: 0.46499999999999997, 168: 0.485, 169: 0.485, 170: 0.475, 171: 0.525, 172: 0.5, 173: 0.49, 174: 0.44999999999999996, 175: 0.34999999999999987, 176: 0.485, 177: 0.46499999999999997, 178: 0.485, 179: 0.49, 180: 0.5, 181: 0.49, 182: 0.475, 183: 0.45999999999999996, 184: 0.485, 185: 0.485, 186: 0.46499999999999997, 187: 0.55, 188: 0.51, 189: 0.485, 190: 0.53, 191: 0.43999999999999995, 192: 0.485, 193: 0.48, 194: 0.55, 195: 0.53, 196: 0.485, 197: 0.51, 198: 0.525, 199: 0.485, 200: 0.5, 201: 0.6000000000000001, 202: 0.515, 203: 0.47, 204: 0.515, 205: 0.51, 206: 0.525, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.52, 211: 0.475, 212: 0.485, 213: 0.475, 214: 0.475, 215: 0.5, 216: 0.485, 217: 0.535, 218: 0.485, 219: 0.485, 220: 0.49, 221: 0.44999999999999996, 222: 0.535, 223: 0.485, 224: 0.485, 225: 0.51, 226: 0.55, 227: 0.485, 228: 0.515, 229: 0.475, 230: 0.475, 231: 0.475, 232: 0.5, 233: 0.515, 234: 0.485, 235: 0.52, 236: 0.5, 237: 0.52, 238: 0.475, 239: 0.475}
+Iteration 1: Objective aggregate scores for new program: {'skill': 0.49835416666666627, 'cost': 0.17148416666666685}
+Iteration 1: New valset pareto front scores: {0: 0.51, 1: 0.475, 2: 0.515, 3: 0.475, 4: 0.5, 5: 0.8500000000000001, 6: 0.5750000000000001, 7: 0.55, 8: 0.5, 9: 0.48, 10: 0.475, 11: 0.475, 12: 0.515, 13: 0.525, 14: 0.44999999999999996, 15: 0.44999999999999996, 16: 0.49, 17: 0.55, 18: 0.49, 19: 0.485, 20: 0.44999999999999996, 21: 0.46499999999999997, 22: 0.515, 23: 0.49, 24: 0.525, 25: 0.485, 26: 0.6000000000000001, 27: 0.55, 28: 0.5, 29: 0.525, 30: 0.475, 31: 0.475, 32: 0.55, 33: 0.6000000000000001, 34: 0.5750000000000001, 35: 0.5, 36: 0.475, 37: 0.5, 38: 0.44999999999999996, 39: 0.55, 40: 0.5, 41: 0.525, 42: 0.48, 43: 0.475, 44: 0.5, 45: 0.525, 46: 0.55, 47: 0.46499999999999997, 48: 0.5, 49: 0.475, 50: 0.5750000000000001, 51: 0.525, 52: 0.51, 53: 0.55, 54: 0.475, 55: 0.5499999999999999, 56: 0.5, 57: 0.5, 58: 0.5750000000000001, 59: 0.5750000000000001, 60: 1.0, 61: 0.5, 62: 0.485, 63: 0.485, 64: 0.51, 65: 0.515, 66: 0.55, 67: 0.6250000000000001, 68: 0.525, 69: 0.55, 70: 0.55, 71: 0.5999999999999995, 72: 0.5, 73: 0.5750000000000001, 74: 0.475, 75: 0.485, 76: 0.525, 77: 0.485, 78: 0.55, 79: 0.44999999999999996, 80: 0.49, 81: 0.525, 82: 0.51, 83: 0.5, 84: 0.475, 85: 0.475, 86: 0.55, 87: 0.44999999999999996, 88: 0.475, 89: 0.42499999999999993, 90: 0.525, 91: 0.525, 92: 0.56, 93: 0.55, 94: 0.475, 95: 0.475, 96: 0.5, 97: 0.475, 98: 0.475, 99: 0.475, 100: 0.42499999999999993, 101: 0.485, 102: 0.49, 103: 0.6, 104: 0.49, 105: 0.55, 106: 0.525, 107: 0.485, 108: 0.5499999999999999, 109: 0.525, 110: 0.44999999999999996, 111: 0.44999999999999996, 112: 0.5, 113: 0.55, 114: 0.44999999999999996, 115: 0.54, 116: 0.515, 117: 0.485, 118: 0.55, 119: 0.3999999999999999, 120: 0.5, 121: 0.475, 122: 0.44999999999999996, 123: 0.44999999999999996, 124: 0.475, 125: 0.55, 126: 0.55, 127: 0.46499999999999997, 128: 0.525, 129: 0.525, 130: 0.55, 131: 0.525, 132: 0.475, 133: 0.55, 134: 0.485, 135: 0.48, 136: 0.475, 137: 0.475, 138: 0.3999999999999999, 139: 0.44999999999999996, 140: 0.49, 141: 0.6000000000000001, 142: 0.485, 143: 0.5750000000000001, 144: 0.475, 145: 0.54, 146: 0.525, 147: 0.55, 148: 0.515, 149: 0.525, 150: 0.48000000000000004, 151: 0.49, 152: 0.5, 153: 0.485, 154: 0.5750000000000001, 155: 0.5750000000000001, 156: 0.525, 157: 0.485, 158: 0.5499999999999999, 159: 0.475, 160: 0.5, 161: 0.47500000000000003, 162: 0.5750000000000001, 163: 0.44999999999999996, 164: 0.5, 165: 0.485, 166: 0.49, 167: 0.46499999999999997, 168: 0.5, 169: 0.485, 170: 0.475, 171: 0.525, 172: 0.5, 173: 0.49, 174: 0.44999999999999996, 175: 0.3999999999999999, 176: 0.5, 177: 0.475, 178: 0.485, 179: 0.49, 180: 0.5, 181: 0.5, 182: 0.475, 183: 0.45999999999999996, 184: 0.485, 185: 0.485, 186: 0.46499999999999997, 187: 0.55, 188: 0.51, 189: 0.485, 190: 0.55, 191: 0.43999999999999995, 192: 0.5, 193: 0.48, 194: 0.55, 195: 0.53, 196: 0.5, 197: 0.525, 198: 0.525, 199: 0.525, 200: 0.525, 201: 0.6000000000000001, 202: 0.55, 203: 0.47, 204: 0.515, 205: 0.525, 206: 0.525, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.55, 211: 0.475, 212: 0.525, 213: 0.475, 214: 0.475, 215: 0.5, 216: 0.5, 217: 0.55, 218: 0.485, 219: 0.485, 220: 0.5, 221: 0.44999999999999996, 222: 0.55, 223: 0.485, 224: 0.485, 225: 0.55, 226: 0.5999999999999995, 227: 0.485, 228: 0.525, 229: 0.475, 230: 0.475, 231: 0.475, 232: 0.5, 233: 0.55, 234: 0.485, 235: 0.55, 236: 0.525, 237: 0.525, 238: 0.475, 239: 0.475}
+Iteration 1: Objective pareto front scores: {'skill': 0.49835416666666627, 'cost': 0.25847916666666676}
+Iteration 1: Valset pareto front aggregate score: 0.5089999999999998
+Iteration 1: Updated valset pareto front programs: {0: {1}, 1: {1}, 2: {0}, 3: {0, 1}, 4: {0}, 5: {0}, 6: {0, 1}, 7: {0}, 8: {0}, 9: {1}, 10: {0, 1}, 11: {1}, 12: {0}, 13: {0}, 14: {1}, 15: {1}, 16: {1}, 17: {0}, 18: {1}, 19: {1}, 20: {0, 1}, 21: {1}, 22: {0}, 23: {1}, 24: {0}, 25: {1}, 26: {0}, 27: {0}, 28: {0, 1}, 29: {0}, 30: {0, 1}, 31: {0, 1}, 32: {0}, 33: {1}, 34: {0, 1}, 35: {1}, 36: {1}, 37: {1}, 38: {1}, 39: {1}, 40: {1}, 41: {0}, 42: {1}, 43: {1}, 44: {1}, 45: {1}, 46: {0}, 47: {1}, 48: {0, 1}, 49: {1}, 50: {0}, 51: {1}, 52: {1}, 53: {0}, 54: {0, 1}, 55: {0}, 56: {0}, 57: {1}, 58: {0, 1}, 59: {0}, 60: {0, 1}, 61: {0}, 62: {1}, 63: {1}, 64: {1}, 65: {1}, 66: {1}, 67: {0}, 68: {0}, 69: {0}, 70: {0, 1}, 71: {0}, 72: {0, 1}, 73: {0}, 74: {0, 1}, 75: {1}, 76: {0}, 77: {1}, 78: {0}, 79: {1}, 80: {1}, 81: {0}, 82: {0, 1}, 83: {0, 1}, 84: {0, 1}, 85: {1}, 86: {0}, 87: {0, 1}, 88: {0, 1}, 89: {0, 1}, 90: {0}, 91: {0}, 92: {1}, 93: {0}, 94: {0, 1}, 95: {0, 1}, 96: {0, 1}, 97: {0, 1}, 98: {0, 1}, 99: {0, 1}, 100: {1}, 101: {1}, 102: {1}, 103: {1}, 104: {1}, 105: {0}, 106: {0, 1}, 107: {1}, 108: {0}, 109: {0}, 110: {1}, 111: {1}, 112: {0, 1}, 113: {0}, 114: {1}, 115: {1}, 116: {1}, 117: {1}, 118: {0, 1}, 119: {0, 1}, 120: {0, 1}, 121: {0}, 122: {0, 1}, 123: {1}, 124: {0, 1}, 125: {0, 1}, 126: {0}, 127: {1}, 128: {0}, 129: {0}, 130: {0}, 131: {0}, 132: {0}, 133: {0, 1}, 134: {1}, 135: {1}, 136: {0, 1}, 137: {1}, 138: {0}, 139: {0, 1}, 140: {1}, 141: {1}, 142: {1}, 143: {0}, 144: {1}, 145: {0}, 146: {1}, 147: {0}, 148: {1}, 149: {0}, 150: {1}, 151: {1}, 152: {1}, 153: {1}, 154: {0}, 155: {0}, 156: {0}, 157: {1}, 158: {0}, 159: {0, 1}, 160: {0, 1}, 161: {0, 1}, 162: {0}, 163: {1}, 164: {0}, 165: {1}, 166: {1}, 167: {1}, 168: {0}, 169: {1}, 170: {0, 1}, 171: {1}, 172: {1}, 173: {1}, 174: {1}, 175: {0}, 176: {0}, 177: {0}, 178: {0, 1}, 179: {1}, 180: {1}, 181: {0}, 182: {0, 1}, 183: {1}, 184: {0, 1}, 185: {1}, 186: {1}, 187: {1}, 188: {1}, 189: {1}, 190: {0}, 191: {1}, 192: {0}, 193: {1}, 194: {1}, 195: {1}, 196: {0}, 197: {0}, 198: {1}, 199: {0}, 200: {0}, 201: {0, 1}, 202: {0}, 203: {1}, 204: {1}, 205: {0}, 206: {0, 1}, 207: {1}, 208: {0, 1}, 209: {0, 1}, 210: {0}, 211: {1}, 212: {0}, 213: {1}, 214: {1}, 215: {1}, 216: {0}, 217: {0}, 218: {1}, 219: {1}, 220: {0}, 221: {0, 1}, 222: {0}, 223: {0, 1}, 224: {1}, 225: {0}, 226: {0}, 227: {1}, 228: {0}, 229: {0, 1}, 230: {0, 1}, 231: {0, 1}, 232: {1}, 233: {0}, 234: {1}, 235: {0}, 236: {0}, 237: {0}, 238: {0, 1}, 239: {0, 1}}
+Iteration 1: Updated objective pareto front programs: {'skill': {1}, 'cost': {0}}
+Iteration 1: Best valset aggregate score so far: 0.49835416666666627
+Iteration 1: Best program as per aggregate score on valset: 1
+Iteration 1: Best score on valset: 0.49835416666666627
+Iteration 1: Linear pareto front program index: 1
+Iteration 1: New program candidate index: 1
+Iteration 2: Selected program 0 score: 0.49762499999999965
+Iteration 2: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "game_state",
+      "output_key": "game_state",
+      "tool": "game_state",
+      "args": {
+        "game": "{{game}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "minutes_since_goal",
+      "output_key": "minutes_since_goal",
+      "tool": "minutes_since_goal",
+      "args": {
+        "game": "{{game}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "velocity",
+      "output_key": "velocity",
+      "tool": "price_velocity",
+      "args": {
+        "ticker": "{{question}}",
+        "window_minutes": 5
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.5,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nCurrent book: {{quote}}\nGame: {{game}}\nGame state: {{game_state}}\nTime since last goal: {{minutes_since_goal}}\nRecent velocity: {{velocity}}\nLast 30m bars: {{path}}\n\nYour task: forecast how many cents the mid will MOVE over the next 5 minutes.\n\nKey principle: Most five-minute windows see ZERO movement on sports books. The round-trip fee is 2-3 cents, so only predict non-zero if you see clear evidence of:\n1. A recent goal/card (< 3 min ago) that price has NOT fully absorbed yet, OR\n2. Systematic time decay (leading team's price drifting up as clock runs), OR  \n3. A thin book drifting back after a single large order moved it.\n\nIf the price has been flat for 3+ minutes since the last event, predict ZERO.\nIf the book is wide (spread > 2 cents) and quiet, predict ZERO.\nDo NOT predict clock decay of less than 1 cent - that's noise, call it zero.\n\nYou may call tools to investigate: previous_trades (print tape), market_shock (sudden moves), recent_plays (game events), coherence_check (does price match situation).",
+      "tools": ["previous_trades", "market_shock", "recent_plays", "coherence_check", "settlement_countdown"],
+      "max_tool_iterations": 4,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price — state the change."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents. Narrow (1-2) only if very confident; wide (4-6) if uncertain or thin book."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1. How sure, given how thin and noisy this book is."
+          },
+          "driver": {
+            "type": "string",
+            "description": "The one thing you expect to move it, or why nothing will."
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would show this call was wrong, before settlement."
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 2: New subsample score 3.6000000000000005 is not better than old score 3.8249999999999993, skipping
+Iteration 3: Selected program 0 score: 0.49762499999999965
+Iteration 3: Proposed new text for tools: market_quote, candlesticks, previous_trades, recent_plays, minutes_since_goal, market_shock
+Iteration 3: New subsample score 3.9499999999999997 is not better than old score 3.9499999999999997, skipping
+Iteration 4: Selected program 1 score: 0.49835416666666627
+Iteration 4: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "time_left",
+      "output_key": "time_left",
+      "tool": "settlement_countdown",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "since_goal",
+      "output_key": "since_goal",
+      "tool": "minutes_since_goal",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "recent_shock",
+      "output_key": "recent_shock",
+      "tool": "market_shock",
+      "args": {
+        "ticker": "{{question}}",
+        "minutes_back": 10
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nCurrent book: {{quote}}\nGame state: {{game}}\nTime until settlement: {{time_left}}\nTime since last goal: {{since_goal}}\nRecent price shock: {{recent_shock}}\n\nYou may call candlesticks, previous_trades, or other tools to understand price dynamics.\n\nPredict how many cents the mid moves in the next 5 minutes. Key factors:\n\n1. **Event absorption**: If a goal/red card happened in the last 2-3 minutes, is the price still adjusting or fully absorbed? Check if volume spike has settled.\n\n2. **Clock decay**: With the current score and time remaining, how much does this contract decay per minute as the clock runs? Trailing teams' win contracts bleed faster as time runs out.\n\n3. **Book dynamics**: Is this a stable pin with balanced two-way flow, or a thin book drifting on one-sided orders?\n\n4. **Catalysts**: What in-game events in the next 5 minutes would invalidate a no-change forecast?\n\nZero cents is the right answer if the book is stable and no decay is expected. Predict actual movement you'd trade on.",
+      "tools": ["candlesticks", "previous_trades", "price_velocity", "volume_profile"],
+      "max_tool_iterations": 6,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price — state the change."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents. Narrow means high confidence; wide means low confidence or you won't trade."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1. How sure you are this move will occur."
+          },
+          "driver": {
+            "type": "string",
+            "description": "The one thing you expect to move it, or why nothing will."
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would show this call was wrong, before settlement."
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 4: New subsample score 3.6000000000000005 is not better than old score 3.955, skipping
+Iteration 5: Selected program 0 score: 0.49762499999999965
+Iteration 5: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes, which is a narrower and more answerable question.
+
+What moves a price on this horizon:
+- the game state changing — a goal, a red card, a period ending
+- time simply passing, which decays or grows prices depending on who benefits
+- the book being thin, so a single order moves the mid and it drifts back
+- the market still absorbing something that already happened
+
+What does not:
+- your view on which team is better. The market has that already.
+
+You answer with two numbers.
+
+**How many cents it moves.** Not where the price is — where it goes. Zero is a real
+answer and often the right one; a quiet book with nothing happening does not move.
+But zero is a decision, not a default, and if the game has just changed you are
+expected to say so in cents.
+
+**How wide a market you would make.** Half the width of the tightest two-sided quote
+you would actually stand behind. Two cents means you would buy two under your number
+and sell two over it, and you would honour both sides. Ten cents means you barely
+know. Quote what you would trade, not what is safe — but a width you cannot defend
+will be paid for, because the trade goes on at your price and settles at the
+market's.
+
+## Critical patterns from recent events
+
+**Recent events can be stale.** A goal listed in recent_events may have happened
+minutes ago and be fully absorbed by the current mid. Check candlesticks and
+previous_trades to see if the price already moved. If it spiked and settled, the
+event is priced. If the goal was at 46' and you're forecasting at 50', the market
+has had four minutes to react — assume it did unless the tape shows otherwise.
+
+**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,
+their win probability rises as the clock runs without an equalizer. Time is their
+ally. The price drifts up, not down. This is not "time decay toward no" — that
+applies to "will X happen" contracts, not "will team Y win" contracts when Y is
+already winning.
+
+**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win
+contracts decay toward lower values as time passes without a goal, because a draw
+becomes more likely.
+
+**When you predict zero movement, widen your market.** If the game is quiet and you
+expect no change, you still face uncertainty about whether something will happen.
+A 1-2 cent half-width on a zero-delta forecast is overconfident. Use 2-3 cents
+minimum unless the book is locked and the clock is stopped.
+
+**Large sudden moves are possible and you must flag them.** Goals happen. A 0-0 game
+can become 1-0 in the next minute, moving the price 10-30 cents instantly. If the
+game is live and close, your half-width must reflect this. A 3-cent market when a
+goal would move the price 20 cents is not defensible. Either predict the direction
+if you see momentum, or quote a wide market (5-10 cents) to cover the risk.
+
+**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid
+is currently stable earns exactly zero skill. You are rewarded only for correctly
+anticipating moves that actually happen. If the game state suggests the price
+should drift up 1-2 cents over five minutes, say so.
+
+**Time decay is often mispriced, especially for losing teams.** When a team trails
+away from home late in the match (e.g., 0-1 at 65'), their win probability decays
+toward zero as time passes, not toward a draw. Each minute brings them closer to
+defeat. Markets systematically underprice this decay: the mid drifts down 0.5-1.0c
+per five minutes in these situations, not sideways. This is your edge.
+
+**Leading teams drift up, not sideways.** When a team leads 1-0 at home or away,
+each quiet minute increases their win probability. The market often takes 10-20
+minutes to fully price a goal's impact. If the tape shows the mid still climbing
+gradually after a goal scored 3-5 minutes ago, the absorption is incomplete. Do not
+assume "already priced" — check if the drift is ongoing.
+
+**Blowouts still have noise.** Even at 5-0, tie contracts can tick between 0.5c and
+1.5c on random flow. A mid at 0.5c can move to 1.5c in five minutes without any
+game-state change, purely from someone sweeping thin offers. Do not call these
+"locked at zero" — quote a 1-2c market to cover the noise.
+
+**Very low probability events have volatile quotes.** A contract at 6.5c (LASK to
+win away) can sit unchanged for 20 minutes despite time decay because the bid is at
+6c and no one crosses it. The decay is real but not realized in the mid until
+someone trades. Predict the fundamental move (decay down) but widen your quote to
+3-4c because the realization is lumpy.
+
+**After a goal is fully priced, momentum can reverse.** If a team scored at 21' and
+the mid spiked from 31c to 80c by 23', then drifted down to 79.5c by minute 25,
+that downward drift may continue. The immediate shock is over; now the market is
+recalibrating whether 80c was too high. A 1-0 lead at 5' is less secure than at
+65'. Early goals can mean reversion, not continued climb.
+
+**Distinguish "will team win" from "will X happen" contracts.** For team-win
+contracts when that team is winning, time decay works upward. For "will there be a
+tie" or "will [losing team] win" contracts, time decay works downward. For "will
+there be a goal in the next N minutes" contracts, time decay works downward as the
+window closes. Always identify which type you are pricing.
+Iteration 5: Accepted candidate (subsample score 4.015000000000001 -> 4.05); running full eval.
+Iteration 5: Valset score for new program: 0.49752083333333286 (coverage 240 / 240)
+Iteration 5: Val aggregate for new program: 0.49752083333333286
+Iteration 5: Individual valset scores for new program: {0: 0.475, 1: 0.46499999999999997, 2: 0.515, 3: 0.475, 4: 0.475, 5: 0.95, 6: 0.5750000000000001, 7: 0.55, 8: 0.475, 9: 0.475, 10: 0.475, 11: 0.475, 12: 0.515, 13: 0.525, 14: 0.42499999999999993, 15: 0.42499999999999993, 16: 0.475, 17: 0.55, 18: 0.475, 19: 0.475, 20: 0.44999999999999996, 21: 0.45999999999999996, 22: 0.515, 23: 0.485, 24: 0.515, 25: 0.475, 26: 0.55, 27: 0.5750000000000001, 28: 0.51, 29: 0.515, 30: 0.475, 31: 0.475, 32: 0.525, 33: 0.5750000000000001, 34: 0.55, 35: 0.475, 36: 0.475, 37: 0.5, 38: 0.44999999999999996, 39: 0.525, 40: 0.485, 41: 0.525, 42: 0.475, 43: 0.475, 44: 0.5, 45: 0.525, 46: 0.525, 47: 0.475, 48: 0.5, 49: 0.475, 50: 0.525, 51: 0.525, 52: 0.475, 53: 0.525, 54: 0.475, 55: 0.5499999999999999, 56: 0.5, 57: 0.5, 58: 0.55, 59: 0.34999999999999987, 60: 0.6000000000000001, 61: 0.475, 62: 0.485, 63: 0.48, 64: 0.485, 65: 0.485, 66: 0.55, 67: 0.5900000000000001, 68: 0.525, 69: 0.525, 70: 0.55, 71: 0.56, 72: 0.525, 73: 0.54, 74: 0.475, 75: 0.475, 76: 0.515, 77: 0.485, 78: 0.54, 79: 0.42500000000000004, 80: 0.475, 81: 0.475, 82: 0.515, 83: 0.5, 84: 0.475, 85: 0.475, 86: 0.525, 87: 0.42499999999999993, 88: 0.475, 89: 0.42499999999999993, 90: 0.525, 91: 0.52, 92: 0.55, 93: 0.53, 94: 0.475, 95: 0.475, 96: 0.485, 97: 0.475, 98: 0.475, 99: 0.475, 100: 0.44999999999999996, 101: 0.475, 102: 0.485, 103: 0.49, 104: 0.475, 105: 0.55, 106: 0.525, 107: 0.475, 108: 0.475, 109: 0.525, 110: 0.42499999999999993, 111: 0.44999999999999996, 112: 0.485, 113: 0.525, 114: 0.42499999999999993, 115: 0.55, 116: 0.475, 117: 0.475, 118: 0.55, 119: 0.42499999999999993, 120: 0.475, 121: 0.475, 122: 0.44999999999999996, 123: 0.44999999999999996, 124: 0.5, 125: 0.55, 126: 0.5750000000000001, 127: 0.44999999999999996, 128: 0.485, 129: 0.525, 130: 0.525, 131: 0.475, 132: 0.475, 133: 0.55, 134: 0.475, 135: 0.475, 136: 0.485, 137: 0.55, 138: 0.42499999999999993, 139: 0.44999999999999996, 140: 0.475, 141: 0.55, 142: 0.475, 143: 0.55, 144: 0.475, 145: 0.525, 146: 0.5, 147: 0.55, 148: 0.475, 149: 0.525, 150: 0.47500000000000003, 151: 0.485, 152: 0.485, 153: 0.5, 154: 0.55, 155: 0.55, 156: 0.525, 157: 0.475, 158: 0.525, 159: 0.485, 160: 0.5, 161: 0.47500000000000003, 162: 0.525, 163: 0.42499999999999993, 164: 0.5, 165: 0.475, 166: 0.475, 167: 0.44999999999999996, 168: 0.485, 169: 0.475, 170: 0.44999999999999996, 171: 0.475, 172: 0.485, 173: 0.485, 174: 0.525, 175: 0.3749999999999999, 176: 0.5, 177: 0.475, 178: 0.47500000000000003, 179: 0.485, 180: 0.485, 181: 0.475, 182: 0.525, 183: 0.43999999999999995, 184: 0.485, 185: 0.475, 186: 0.475, 187: 0.55, 188: 0.485, 189: 0.5, 190: 0.525, 191: 0.42499999999999993, 192: 0.485, 193: 0.47500000000000003, 194: 0.55, 195: 0.525, 196: 0.49, 197: 0.52, 198: 0.55, 199: 0.525, 200: 0.525, 201: 0.5750000000000001, 202: 0.525, 203: 0.475, 204: 0.475, 205: 0.525, 206: 0.525, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.525, 211: 0.44999999999999996, 212: 0.525, 213: 0.475, 214: 0.44999999999999996, 215: 0.475, 216: 0.475, 217: 0.55, 218: 0.47500000000000003, 219: 0.485, 220: 0.49, 221: 0.42499999999999993, 222: 0.55, 223: 0.485, 224: 0.485, 225: 0.525, 226: 0.55, 227: 0.475, 228: 0.525, 229: 0.475, 230: 0.475, 231: 0.475, 232: 0.475, 233: 0.525, 234: 0.475, 235: 0.525, 236: 0.525, 237: 0.525, 238: 0.475, 239: 0.475}
+Iteration 5: Objective aggregate scores for new program: {'skill': 0.49752083333333286, 'cost': 0.18523333333333347}
+Iteration 5: New valset pareto front scores: {0: 0.51, 1: 0.475, 2: 0.515, 3: 0.475, 4: 0.5, 5: 0.95, 6: 0.5750000000000001, 7: 0.55, 8: 0.5, 9: 0.48, 10: 0.475, 11: 0.475, 12: 0.515, 13: 0.525, 14: 0.44999999999999996, 15: 0.44999999999999996, 16: 0.49, 17: 0.55, 18: 0.49, 19: 0.485, 20: 0.44999999999999996, 21: 0.46499999999999997, 22: 0.515, 23: 0.49, 24: 0.525, 25: 0.485, 26: 0.6000000000000001, 27: 0.5750000000000001, 28: 0.51, 29: 0.525, 30: 0.475, 31: 0.475, 32: 0.55, 33: 0.6000000000000001, 34: 0.5750000000000001, 35: 0.5, 36: 0.475, 37: 0.5, 38: 0.44999999999999996, 39: 0.55, 40: 0.5, 41: 0.525, 42: 0.48, 43: 0.475, 44: 0.5, 45: 0.525, 46: 0.55, 47: 0.475, 48: 0.5, 49: 0.475, 50: 0.5750000000000001, 51: 0.525, 52: 0.51, 53: 0.55, 54: 0.475, 55: 0.5499999999999999, 56: 0.5, 57: 0.5, 58: 0.5750000000000001, 59: 0.5750000000000001, 60: 1.0, 61: 0.5, 62: 0.485, 63: 0.485, 64: 0.51, 65: 0.515, 66: 0.55, 67: 0.6250000000000001, 68: 0.525, 69: 0.55, 70: 0.55, 71: 0.5999999999999995, 72: 0.525, 73: 0.5750000000000001, 74: 0.475, 75: 0.485, 76: 0.525, 77: 0.485, 78: 0.55, 79: 0.44999999999999996, 80: 0.49, 81: 0.525, 82: 0.515, 83: 0.5, 84: 0.475, 85: 0.475, 86: 0.55, 87: 0.44999999999999996, 88: 0.475, 89: 0.42499999999999993, 90: 0.525, 91: 0.525, 92: 0.56, 93: 0.55, 94: 0.475, 95: 0.475, 96: 0.5, 97: 0.475, 98: 0.475, 99: 0.475, 100: 0.44999999999999996, 101: 0.485, 102: 0.49, 103: 0.6, 104: 0.49, 105: 0.55, 106: 0.525, 107: 0.485, 108: 0.5499999999999999, 109: 0.525, 110: 0.44999999999999996, 111: 0.44999999999999996, 112: 0.5, 113: 0.55, 114: 0.44999999999999996, 115: 0.55, 116: 0.515, 117: 0.485, 118: 0.55, 119: 0.42499999999999993, 120: 0.5, 121: 0.475, 122: 0.44999999999999996, 123: 0.44999999999999996, 124: 0.5, 125: 0.55, 126: 0.5750000000000001, 127: 0.46499999999999997, 128: 0.525, 129: 0.525, 130: 0.55, 131: 0.525, 132: 0.475, 133: 0.55, 134: 0.485, 135: 0.48, 136: 0.485, 137: 0.55, 138: 0.42499999999999993, 139: 0.44999999999999996, 140: 0.49, 141: 0.6000000000000001, 142: 0.485, 143: 0.5750000000000001, 144: 0.475, 145: 0.54, 146: 0.525, 147: 0.55, 148: 0.515, 149: 0.525, 150: 0.48000000000000004, 151: 0.49, 152: 0.5, 153: 0.5, 154: 0.5750000000000001, 155: 0.5750000000000001, 156: 0.525, 157: 0.485, 158: 0.5499999999999999, 159: 0.485, 160: 0.5, 161: 0.47500000000000003, 162: 0.5750000000000001, 163: 0.44999999999999996, 164: 0.5, 165: 0.485, 166: 0.49, 167: 0.46499999999999997, 168: 0.5, 169: 0.485, 170: 0.475, 171: 0.525, 172: 0.5, 173: 0.49, 174: 0.525, 175: 0.3999999999999999, 176: 0.5, 177: 0.475, 178: 0.485, 179: 0.49, 180: 0.5, 181: 0.5, 182: 0.525, 183: 0.45999999999999996, 184: 0.485, 185: 0.485, 186: 0.475, 187: 0.55, 188: 0.51, 189: 0.5, 190: 0.55, 191: 0.43999999999999995, 192: 0.5, 193: 0.48, 194: 0.55, 195: 0.53, 196: 0.5, 197: 0.525, 198: 0.55, 199: 0.525, 200: 0.525, 201: 0.6000000000000001, 202: 0.55, 203: 0.475, 204: 0.515, 205: 0.525, 206: 0.525, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.55, 211: 0.475, 212: 0.525, 213: 0.475, 214: 0.475, 215: 0.5, 216: 0.5, 217: 0.55, 218: 0.485, 219: 0.485, 220: 0.5, 221: 0.44999999999999996, 222: 0.55, 223: 0.485, 224: 0.485, 225: 0.55, 226: 0.5999999999999995, 227: 0.485, 228: 0.525, 229: 0.475, 230: 0.475, 231: 0.475, 232: 0.5, 233: 0.55, 234: 0.485, 235: 0.55, 236: 0.525, 237: 0.525, 238: 0.475, 239: 0.475}
+Iteration 5: Objective pareto front scores: {'skill': 0.49835416666666627, 'cost': 0.25847916666666676}
+Iteration 5: Valset pareto front aggregate score: 0.5115
+Iteration 5: Updated valset pareto front programs: {0: {1}, 1: {1}, 2: {0, 2}, 3: {0, 1, 2}, 4: {0}, 5: {2}, 6: {0, 1, 2}, 7: {0, 2}, 8: {0}, 9: {1}, 10: {0, 1, 2}, 11: {1, 2}, 12: {0, 2}, 13: {0, 2}, 14: {1}, 15: {1}, 16: {1}, 17: {0, 2}, 18: {1}, 19: {1}, 20: {0, 1, 2}, 21: {1}, 22: {0, 2}, 23: {1}, 24: {0}, 25: {1}, 26: {0}, 27: {2}, 28: {2}, 29: {0}, 30: {0, 1, 2}, 31: {0, 1, 2}, 32: {0}, 33: {1}, 34: {0, 1}, 35: {1}, 36: {1, 2}, 37: {1, 2}, 38: {1, 2}, 39: {1}, 40: {1}, 41: {0, 2}, 42: {1}, 43: {1, 2}, 44: {1, 2}, 45: {1, 2}, 46: {0}, 47: {2}, 48: {0, 1, 2}, 49: {1, 2}, 50: {0}, 51: {1, 2}, 52: {1}, 53: {0}, 54: {0, 1, 2}, 55: {0, 2}, 56: {0, 2}, 57: {1, 2}, 58: {0, 1}, 59: {0}, 60: {0, 1}, 61: {0}, 62: {1, 2}, 63: {1}, 64: {1}, 65: {1}, 66: {1, 2}, 67: {0}, 68: {0, 2}, 69: {0}, 70: {0, 1, 2}, 71: {0}, 72: {2}, 73: {0}, 74: {0, 1, 2}, 75: {1}, 76: {0}, 77: {1, 2}, 78: {0}, 79: {1}, 80: {1}, 81: {0}, 82: {2}, 83: {0, 1, 2}, 84: {0, 1, 2}, 85: {1, 2}, 86: {0}, 87: {0, 1}, 88: {0, 1, 2}, 89: {0, 1, 2}, 90: {0, 2}, 91: {0}, 92: {1}, 93: {0}, 94: {0, 1, 2}, 95: {0, 1, 2}, 96: {0, 1}, 97: {0, 1, 2}, 98: {0, 1, 2}, 99: {0, 1, 2}, 100: {2}, 101: {1}, 102: {1}, 103: {1}, 104: {1}, 105: {0, 2}, 106: {0, 1, 2}, 107: {1}, 108: {0}, 109: {0, 2}, 110: {1}, 111: {1, 2}, 112: {0, 1}, 113: {0}, 114: {1}, 115: {2}, 116: {1}, 117: {1}, 118: {0, 1, 2}, 119: {2}, 120: {0, 1}, 121: {0, 2}, 122: {0, 1, 2}, 123: {1, 2}, 124: {2}, 125: {0, 1, 2}, 126: {2}, 127: {1}, 128: {0}, 129: {0, 2}, 130: {0}, 131: {0}, 132: {0, 2}, 133: {0, 1, 2}, 134: {1}, 135: {1}, 136: {2}, 137: {2}, 138: {2}, 139: {0, 1, 2}, 140: {1}, 141: {1}, 142: {1}, 143: {0}, 144: {1, 2}, 145: {0}, 146: {1}, 147: {0, 2}, 148: {1}, 149: {0, 2}, 150: {1}, 151: {1}, 152: {1}, 153: {2}, 154: {0}, 155: {0}, 156: {0, 2}, 157: {1}, 158: {0}, 159: {2}, 160: {0, 1, 2}, 161: {0, 1, 2}, 162: {0}, 163: {1}, 164: {0, 2}, 165: {1}, 166: {1}, 167: {1}, 168: {0}, 169: {1}, 170: {0, 1}, 171: {1}, 172: {1}, 173: {1}, 174: {2}, 175: {0}, 176: {0, 2}, 177: {0, 2}, 178: {0, 1}, 179: {1}, 180: {1}, 181: {0}, 182: {2}, 183: {1}, 184: {0, 1, 2}, 185: {1}, 186: {2}, 187: {1, 2}, 188: {1}, 189: {2}, 190: {0}, 191: {1}, 192: {0}, 193: {1}, 194: {1, 2}, 195: {1}, 196: {0}, 197: {0}, 198: {2}, 199: {0, 2}, 200: {0, 2}, 201: {0, 1}, 202: {0}, 203: {2}, 204: {1}, 205: {0, 2}, 206: {0, 1, 2}, 207: {1, 2}, 208: {0, 1, 2}, 209: {0, 1, 2}, 210: {0}, 211: {1}, 212: {0, 2}, 213: {1, 2}, 214: {1}, 215: {1}, 216: {0}, 217: {0, 2}, 218: {1}, 219: {1, 2}, 220: {0}, 221: {0, 1}, 222: {0, 2}, 223: {0, 1, 2}, 224: {1, 2}, 225: {0}, 226: {0}, 227: {1}, 228: {0, 2}, 229: {0, 1, 2}, 230: {0, 1, 2}, 231: {0, 1, 2}, 232: {1}, 233: {0}, 234: {1}, 235: {0}, 236: {0, 2}, 237: {0, 2}, 238: {0, 1, 2}, 239: {0, 1, 2}}
+Iteration 5: Updated objective pareto front programs: {'skill': {1}, 'cost': {0}}
+Iteration 5: Best valset aggregate score so far: 0.49835416666666627
+Iteration 5: Best program as per aggregate score on valset: 1
+Iteration 5: Best score on valset: 0.49835416666666627
+Iteration 5: Linear pareto front program index: 1
+Iteration 5: New program candidate index: 2
