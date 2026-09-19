@@ -1,0 +1,103 @@
+{
+  "name": "kalshi-horizon-5m+gen9",
+  "description": "Predicts this contract's mid price 5 minutes ahead.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote\nyou would actually stand behind. Two cents means you would buy two under your number\nand sell two over it, and you would honour both sides. Ten cents means you barely\nknow. Quote what you would trade, not what is safe \u2014 but a width you cannot defend\nwill be paid for, because the trade goes on at your price and settles at the\nmarket's.\n\n## Critical patterns from recent events\n\n**Recent events can be stale.** A goal listed in recent_events may have happened\nminutes ago and be fully absorbed by the current mid. Check candlesticks and\nprevious_trades to see if the price already moved. If it spiked and settled, the\nevent is priced. If the goal was at 46' and you're forecasting at 50', the market\nhas had four minutes to react \u2014 assume it did unless the tape shows otherwise.\n\n**A team winning decays upward, not downward.** If a team leads 1-0 at 65 minutes,\ntheir win probability rises as the clock runs without an equalizer. Time is their\nally. The price drifts up, not down. This is not \"time decay toward no\" \u2014 that\napplies to \"will X happen\" contracts, not \"will team Y win\" contracts when Y is\nalready winning.\n\n**Scoreless draws decay both ways toward a coin flip.** At 0-0, both team-win\ncontracts decay toward lower values as time passes without a goal, because a draw\nbecomes more likely.\n\n**When you predict zero movement, widen your market.** If the game is quiet and you\nexpect no change, you still face uncertainty about whether something will happen.\nA 1-2 cent half-width on a zero-delta forecast is overconfident. Use 2-3 cents\nminimum unless the book is locked and the clock is stopped.\n\n**Large sudden moves are possible and you must flag them.** Goals happen. A 0-0 game\ncan become 1-0 in the next minute, moving the price 10-30 cents instantly. If the\ngame is live and close, your half-width must reflect this. A 3-cent market when a\ngoal would move the price 20 cents is not defensible. Either predict the direction\nif you see momentum, or quote a wide market (5-10 cents) to cover the risk.\n\n**The current mid is not your baseline.** Predicting delta_cents: 0 because the mid\nis currently stable earns exactly zero skill. You are rewarded only for correctly\nanticipating moves that actually happen. If the game state suggests the price\nshould drift up 1-2 cents over five minutes, say so.",
+  "config": {
+    "model": "anthropic/claude-opus-5",
+    "temperature": null,
+    "max_tokens": null,
+    "max_usd": 0.2,
+    "max_calls": 200
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 12
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "prediction",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\n\nHow many cents does this mid move over the next 5 minutes, and how wide a market would you make around that? Zero cents is a real answer on a quiet book. Quote a width you would actually stand behind on both sides.",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "delta_cents": {
+              "type": "number",
+              "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price \u2014 state the change."
+            },
+            "half_width_cents": {
+              "type": "number",
+              "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents. This is your quote: you are saying you would buy at (prediction - this) and sell at (prediction + this). Narrow means you will trade; wide means you will not."
+            },
+            "confidence": {
+              "type": "number",
+              "description": "0-1. How sure, given how thin and noisy this book is."
+            },
+            "driver": {
+              "type": "string",
+              "description": "The one thing you expect to move it, or why nothing will."
+            },
+            "falsifier": {
+              "type": "string",
+              "description": "What would show this call was wrong, before settlement."
+            }
+          },
+          "required": [
+            "delta_cents",
+            "half_width_cents",
+            "confidence",
+            "driver",
+            "falsifier"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
