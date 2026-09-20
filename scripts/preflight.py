@@ -90,7 +90,11 @@ from rsi_arena.loop.generation import fingerprint
 _board = Scoreboard.load(Path(s.run_dir).parent / SCOREBOARD) if s.reuse_scores else Scoreboard()
 _inc = fingerprint(h)
 _owned = sum(1 for w in hold if _board.get(_inc, w) is not None) if len(_board) else 0
-_cold = ((_probe + len(hold)) * 2 + s.max_metric_calls) * PER_WINDOW
+# max_metric_calls plus one full valset evaluation: GEPA's stopper is checked
+# between steps, so an accepted candidate near the line still gets its full
+# eval - gen10 spent 800 calls of a 600 budget that way, and the ceiling
+# (rightly) cut it mid-probe for a $53 incomplete. Charge the overrun.
+_cold = ((_probe + len(hold)) * 2 + s.max_metric_calls + s.valset) * PER_WINDOW
 _next = _cold - _owned * PER_WINDOW
 check("a generation has a ceiling", s.max_generation_usd > 0, f"${s.max_generation_usd:.2f}")
 # Reported, not asserted. Whether the money is there is the caller's question and
