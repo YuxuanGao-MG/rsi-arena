@@ -14,7 +14,7 @@ from typing import Any
 
 from gepa.core.adapter import EvaluationBatch, GEPAAdapter
 
-from ..harness import LLM, Harness, HarnessError, Plan, run_sync
+from ..harness import LLM, Harness, HarnessError, Plan, model_tool_names, run_sync
 from .generation import fingerprint_components
 from .task import Instance, Rollout, Task, evaluate
 
@@ -166,12 +166,15 @@ def _available(task: Task, base: Harness) -> list[str]:
     find out which tools exist costs the whole benchmark for a string.
     """
     named = getattr(task, "tools", None)
+    found = list(base.tools)
     if callable(named):
         try:
-            return sorted(named())
+            found = list(named())
         except Exception:
             pass
-    return list(base.tools)
+    # The model tools are the runner's, not the topic's, so they are added
+    # here whatever the topic said: a rewrite may delegate on any task.
+    return sorted(set(found) | set(model_tool_names()))
 
 
 def reflection_templates(task: Task, base: Harness,

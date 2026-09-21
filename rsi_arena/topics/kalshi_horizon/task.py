@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import sys
 from typing import Any
 
-from ...harness import Run, Toolbox
+from ...harness import Run, Toolbox, model_tool_names
 from ...kalshi._history import History
 from ...kalshi.replay import MatchTimeline, ToolCache, match_timeline, replay_tools
 from ...loop import Outcome, Settings
@@ -94,8 +94,9 @@ class KalshiHorizon:
         stand_in = MatchTimeline(game_id="", league="", home="", away="",
                                  kickoff=datetime(2020, 1, 1, tzinfo=timezone.utc),
                                  events=[])
-        return sorted(replay_tools(datetime(2020, 1, 1, tzinfo=timezone.utc),
-                                   self.history, self.tool_cache, line=stand_in))
+        return sorted(set(replay_tools(datetime(2020, 1, 1, tzinfo=timezone.utc),
+                                       self.history, self.tool_cache, line=stand_in))
+                      | set(model_tool_names()))
 
     def _timeline(self, window: Window) -> MatchTimeline | None:
         """The match this window belongs to, built once per match.

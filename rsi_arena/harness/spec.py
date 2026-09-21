@@ -144,6 +144,11 @@ Later steps read earlier results with {{name}} or {{name.field}}.
 
 - {"type": "tool", "tool": <tool name>, "args": {...}, "fail_ok": false}
   Calls one tool with fixed arguments; argument strings may contain {{placeholders}}.
+  The ask_* tools (ask_opus, ask_sonnet, ask_gpt5_mini) put a prompt to a chat model and
+  answer in text: {"type": "tool", "tool": "ask_opus", "args": {"prompt": "..."},
+  "output_key": "opinion"} makes {{opinion.text}} readable by later steps, which is how a
+  decisions model gets a paragraph of reasoning it cannot write itself; the call is paid
+  for like a prompt step.
 - {"type": "prompt", "prompt": <text>, "system": null, "output_schema": null, "tools": [], "max_tool_iterations": 6}
   Asks the model. With "output_schema" (a JSON Schema) the step returns parsed JSON.
   With "tools" (a list of tool names, or ["*"] for all the harness lists) the model may

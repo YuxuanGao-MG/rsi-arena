@@ -14,7 +14,7 @@ import random
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
-from ..harness import LLM, Harness, HarnessError, Run, Runner, Toolbox
+from ..harness import LLM, Harness, HarnessError, Run, Runner, Toolbox, with_model_tools
 
 
 @runtime_checkable
@@ -183,7 +183,9 @@ async def evaluate(task: Task, harness: Harness, instances: list[Instance], llm:
     if not instances:
         return []
     try:
-        harness.check(task.toolbox(instances[0]), inputs=set(task.inputs))
+        # Checked against the box the runner will actually hold: the topic's
+        # frozen tools with the model tools beside them.
+        harness.check(with_model_tools(task.toolbox(instances[0]), llm), inputs=set(task.inputs))
     except HarnessError as exc:
         return [Rollout(instance=i, run=None, outcome=task.failed(i, str(exc))) for i in instances]
     gate = asyncio.Semaphore(concurrency)

@@ -17,6 +17,7 @@ from typing import Any
 
 from .decisions import answers_to_output
 from .llm import LLM, LLMError, parse_json_loose
+from .model_tools import with_model_tools
 from .spec import Harness, HarnessError, LoopStep, Plan, PromptStep, ToolStep
 from .template import ConditionError, evaluate, render
 from .tools import Toolbox, ToolResult
@@ -163,8 +164,12 @@ class _Context:
 
 
 class Runner:
-    def __init__(self, llm: LLM, toolbox: Toolbox) -> None:
-        self.llm, self.toolbox = llm, toolbox
+    def __init__(self, llm: LLM, toolbox: Toolbox, *, model_tools: bool = True) -> None:
+        # The model tools ride beside the host's box rather than inside it, so
+        # the frozen box stays the host's own statement of the instant and the
+        # same client that answers prompt steps answers ``ask_*`` steps.
+        self.llm = llm
+        self.toolbox = with_model_tools(toolbox, llm) if model_tools else toolbox
 
     async def run(self, harness: Harness, *, question: str = "", **inputs: Any) -> Run:
         state: dict[str, Any] = {"question": question, **inputs}
@@ -303,11 +308,21 @@ class Runner:
         if name not in ctx.harness.tools or name not in ctx.toolbox:
             result = ToolResult.failed(f"tool {name!r} is not available to this harness")
         else:
-            result = await asyncio.to_thread(ctx.toolbox[name].safe_call, **args)
+            try:
+                result = await ctx.toolbox[name].safe_acall(**args)
+            except Exception as exc:
+                span.status, span.error = "error", f"{type(exc).__name__}: {exc}"
+                span.ended = time.monotonic()
+                raise
         span.ended = time.monotonic()
         span.output = result.text
+        span.cost_usd = result.cost_usd
         if not result.ok:
             span.status, span.error = "error", result.error
+        if result.cost_usd:
+            # A tool that asked a model spent the window's money, and the
+            # ledger is the one place that knows whether it may.
+            ctx.ledger.add(result.cost_usd, name)
         return result
 
     async def _tool(self, step: ToolStep, ctx: _Context) -> Any:
