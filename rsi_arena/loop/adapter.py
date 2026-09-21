@@ -211,6 +211,12 @@ def reflection_templates(task: Task, base: Harness,
                  "silence at a fourteenth of the price; anthropic/claude-sonnet-4.5 echoed the "
                  "market often. A cheaper model that stays quiet at the right times can beat an "
                  "expensive one that speaks badly - the gate charges for cost as well as error. "
+                 "typesafe/jev-1.13 is different in kind: it answers typed questions with a "
+                 "probability distribution, writes no text, calls no tools, and costs about "
+                 "two thousandths of a cent a window; it can only run a plan whose prompt "
+                 "steps carry \"questions\" and \"answers\" (the plan grammar describes them), "
+                 "and a chat model cannot run such a plan. Swap to or from it only if the plan "
+                 "matches, or the harness fails to load. "
                  "Reply with the model name alone within ``` blocks.",
         "tools": head + "The current tool list:\n```\n<curr_param>\n```\n\n" + examples
                  + "Write the new tool list as comma-separated names drawn only from the tools "

@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 import pytest
 
-from rsi_arena.harness import Completion
+from rsi_arena.harness import Completion, Decision
 from rsi_arena.kalshi._history import Candle
 
 UTC = timezone.utc
@@ -17,10 +17,37 @@ UTC = timezone.utc
 class FakeLLM:
     """Answers by calling ``script(messages, schema, tools)``; counts calls."""
 
-    def __init__(self, script: Callable[..., Any] | None = None, cost: float = 0.001) -> None:
+    def __init__(self, script: Callable[..., Any] | None = None, cost: float = 0.001,
+                 decisions: Callable[..., Any] | None = None) -> None:
         self.script = script or (lambda messages, schema, tools: "ok")
         self.cost = cost
         self.calls: list[dict[str, Any]] = []
+        #: ``decisions(state, questions) -> answers`` for a decisions model.
+        #: The default answers every score question with all its mass on the
+        #: middle level, every noul with 0.5 and every choice with its first label.
+        self.decisions = decisions
+        self.decided: list[dict[str, Any]] = []
+
+    async def decide(self, state, questions, *, model) -> Decision:
+        self.decided.append({"state": state, "questions": questions, "model": model})
+        if self.decisions is not None:
+            answers = self.decisions(state, questions)
+        else:
+            answers = {}
+            for key, q in questions.items():
+                if q["type"] == "score":
+                    n = len(q["criteria"]); mid = (n - 1) // 2
+                    answers[key] = {"type": "score", "score": float(mid),
+                                    "probabilities": {str(i): (1.0 if i == mid else 0.0) for i in range(n)},
+                                    "confidence": 1.0}
+                elif q["type"] == "noul":
+                    answers[key] = {"type": "noul", "noul": 0.5}
+                else:
+                    first = next(iter(q["criteria"]))
+                    answers[key] = {"type": "choice", "choice": first,
+                                    "probabilities": {k: (1.0 if k == first else 0.0) for k in q["criteria"]},
+                                    "confidence": 1.0}
+        return Decision(answers=answers, cost_usd=self.cost / 1000, model=model)
 
     async def complete(self, messages, *, model, system=None, schema=None, tools=None,
                        temperature=None, max_tokens=None) -> Completion:

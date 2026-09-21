@@ -15,6 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from .decisions import answers_to_output
 from .llm import LLM, LLMError, parse_json_loose
 from .spec import Harness, HarnessError, LoopStep, Plan, PromptStep, ToolStep
 from .template import ConditionError, evaluate, render
@@ -228,6 +229,8 @@ class Runner:
         cfg = ctx.harness.config
         prompt = render(step.prompt, ctx.state)
         system = render(step.system, ctx.state) if step.system else (ctx.harness.context or None)
+        if step.questions is not None:
+            return await self._decide(step, ctx, prompt, system)
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
         tool_names = step.tools
         if tool_names == ["*"]:
@@ -268,6 +271,32 @@ class Runner:
             except ValueError as exc:
                 raise HarnessError(f"step {step.name!r} did not return JSON: {exc}") from None
         return completion.text
+
+    async def _decide(self, step: PromptStep, ctx: _Context, prompt: str, system: str | None) -> Any:
+        """The prompt step for a model that answers questions instead of writing.
+
+        The rendered prompt is the state, with the harness context ahead of it
+        - a decisions model has no system turn, and the context is the domain
+        knowledge the questions are asked against. The answers are mapped to
+        the step's output fields by the plan's ``answers``.
+        """
+        cfg = ctx.harness.config
+        state = f"{system}\n\n{prompt}" if system else prompt
+        ctx.ledger.check(step.name or "prompt")
+        span = ctx.span("decide", "llm", input=state)
+        try:
+            decision = await ctx.llm.decide(state, step.questions or {}, model=step.model or cfg.model)
+        except Exception as exc:
+            span.status, span.error, span.ended = "error", f"{type(exc).__name__}: {exc}", time.monotonic()
+            raise
+        span.ended = time.monotonic()
+        span.cost_usd, span.cached = decision.cost_usd, decision.cached
+        span.output = decision.answers
+        ctx.ledger.add(decision.cost_usd, step.name or "prompt")
+        try:
+            return answers_to_output(step.questions or {}, decision.answers, step.answers)
+        except ValueError as exc:
+            raise HarnessError(f"step {step.name!r} could not read its answers: {exc}") from None
 
     async def _call_tool(self, name: str, args: dict[str, Any], ctx: _Context):
         span = ctx.span(name, "tool", input=args)

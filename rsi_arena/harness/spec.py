@@ -20,8 +20,9 @@ import json
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from .decisions import is_decision_model, validate_questions
 from .template import reads as template_reads
 from .tools import Toolbox
 
@@ -59,6 +60,25 @@ class PromptStep(_Step):
     tools: list[str] = Field(default_factory=list)
     max_tool_iterations: int = 6
     output_schema: dict[str, Any] | None = None
+    #: For a decisions model (see ``decisions.py``): typed questions asked of
+    #: the rendered prompt in place of a schema, and how their answers become
+    #: the step's output fields. A step with questions calls no tools.
+    questions: dict[str, Any] | None = None
+    answers: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _questions_are_well_formed(self) -> "PromptStep":
+        if self.questions is not None:
+            try:
+                validate_questions(self.questions, self.answers)
+            except ValueError as exc:
+                raise ValueError(f"step {self.name or 'prompt'!r}: {exc}") from None
+            if self.tools:
+                raise ValueError(f"step {self.name or 'prompt'!r} has questions and tools; a "
+                                 f"decisions model answers questions and calls nothing")
+        elif self.answers is not None:
+            raise ValueError(f"step {self.name or 'prompt'!r} has answers but no questions")
+        return self
 
     def reads(self) -> set[str]:
         return super().reads() | template_reads(self.prompt) | template_reads(self.system or "")
@@ -128,6 +148,16 @@ Later steps read earlier results with {{name}} or {{name.field}}.
   Asks the model. With "output_schema" (a JSON Schema) the step returns parsed JSON.
   With "tools" (a list of tool names, or ["*"] for all the harness lists) the model may
   call tools itself, in any order, up to max_tool_iterations turns.
+- {"type": "prompt", "prompt": <text>, "questions": {...}, "answers": {...}}
+  The same step for a decisions model (a model id starting typesafe/), which answers
+  typed questions with probabilities and writes no text. "questions" maps a name to
+  {"type": "noul"|"choice"|"score", "instructions": <text>, "criteria": ...}; a score
+  question lists ordered levels in "criteria" and may give one number per level in
+  "values". "answers" maps each output field to {"from": <question>, "as": <kind>} with
+  kind one of mean, stdev, half_range (with "coverage"), confidence, probability, choice,
+  score, or {"as": "const", "value": ...}; "min"/"max" clamp a number. A decisions model
+  needs questions on every prompt step, a chat model refuses them, and neither may
+  give a questions step tools.
 - {"type": "loop", "steps": [...], "max_loops": 3, "until": <condition>, "collect": true}
   Repeats its steps until the condition holds or max_loops is spent. Inside, loop_iteration
   (1-based) and loop_results are readable.
@@ -182,6 +212,32 @@ class Harness(BaseModel):
     config: HarnessConfig = Field(default_factory=HarnessConfig)
     tools: list[str] = Field(default_factory=list)
     plan: Plan = Field(default_factory=Plan)
+
+    @model_validator(mode="after")
+    def _model_and_steps_agree(self) -> "Harness":
+        """A decisions model answers only questions; a chat model answers none.
+
+        Checked here rather than at call time so that a rewrite that swaps the
+        model without rewriting the plan - or the plan without the model -
+        fails at load with a sentence the optimizer can read, instead of
+        failing every window with a provider error.
+        """
+        def walk(steps):
+            for step in steps:
+                if isinstance(step, LoopStep):
+                    yield from walk(step.steps)
+                elif isinstance(step, PromptStep):
+                    yield step
+        for step in walk(self.plan.steps):
+            model = step.model or self.config.model
+            if is_decision_model(model) and step.questions is None:
+                raise ValueError(f"model {model!r} answers typed questions only, and step "
+                                 f"{step.name or 'prompt'!r} asks it for text; give the step "
+                                 f"'questions' and 'answers', or choose a chat model")
+            if step.questions is not None and not is_decision_model(model):
+                raise ValueError(f"step {step.name or 'prompt'!r} carries questions, which only "
+                                 f"a decisions model (typesafe/...) answers; {model!r} is a chat model")
+        return self
 
     # -- files --
 

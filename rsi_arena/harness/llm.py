@@ -23,9 +23,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from .decisions import Decision, wire_questions
+
 import httpx
 
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def decisions_url(base_url: str) -> str:
+    """Where typed questions go. OpenRouter serves them from an alpha route
+    beside v1; a gateway that fronts OpenRouter serves them beside its own
+    chat route."""
+    base = base_url.rstrip("/")
+    if base.endswith("openrouter.ai/api/v1"):
+        return base[: -len("/v1")] + "/alpha/decisions"
+    return base + "/decisions"
 
 
 class LLMError(RuntimeError):
@@ -68,6 +80,9 @@ class Completion:
 
 
 class LLM(Protocol):
+    async def decide(self, state: Any, questions: dict[str, Any], *, model: str) -> "Decision":
+        ...
+
     async def complete(self, messages: list[dict[str, Any]], *, model: str,
                        system: str | None = None, schema: dict[str, Any] | None = None,
                        tools: list[dict[str, Any]] | None = None,
@@ -239,7 +254,40 @@ class OpenRouter:
         self.spent_usd += completion.cost_usd
         return completion
 
-    async def _post(self, body: dict[str, Any]) -> dict[str, Any]:
+    async def decide(self, state: Any, questions: dict[str, Any], *, model: str) -> Decision:
+        """Ask a decisions model typed questions about a state. Same cache,
+        same ceiling, same retries and the same 402 rule as ``complete``."""
+        if not self.api_key:
+            raise LLMError(None, "OPENROUTER_API_KEY is not set in the environment")
+        body: dict[str, Any] = {"model": model, "state": state, "questions": wire_questions(questions)}
+        path = self._cache_path(body)
+        if path is not None and path.exists():
+            data = json.loads(path.read_text())
+            self.cache_hits += 1
+            return self._decision(data, model, cached=True)
+        if self.over_budget:
+            raise GenerationBudgetExceeded(self.spent_usd,
+                                           float(self.budget_usd or self.spent_usd))
+        data = await self._post(body, url=decisions_url(self.base_url))
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data))
+        self.starved_since = None
+        decision = self._decision(data, model, cached=False)
+        self.calls += 1
+        self.spent_usd += decision.cost_usd
+        return decision
+
+    @staticmethod
+    def _decision(data: dict[str, Any], model: str, *, cached: bool) -> Decision:
+        answers = data.get("answers")
+        if not isinstance(answers, dict):
+            raise LLMError(None, f"decisions response carried no answers: {str(data)[:300]}")
+        usage = data.get("usage") or {}
+        return Decision(answers=answers, cost_usd=0.0 if cached else float(usage.get("cost") or 0.0),
+                        usage=usage, cached=cached, model=data.get("model") or model)
+
+    async def _post(self, body: dict[str, Any], *, url: str | None = None) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {self.api_key}", "X-Title": self.app_title,
                    "Content-Type": "application/json"}
         delay = 1.0
@@ -250,7 +298,7 @@ class OpenRouter:
                 break
             try:
                 async with self._limit():
-                    resp = await self._http().post(f"{self.base_url}/chat/completions",
+                    resp = await self._http().post(url or f"{self.base_url}/chat/completions",
                                                    json=body, headers=headers)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 if attempt == self.max_retries:
@@ -260,7 +308,7 @@ class OpenRouter:
                 continue
             if resp.status_code == 200:
                 data = resp.json()
-                if "error" in data and not data.get("choices"):
+                if "error" in data and not (data.get("choices") or data.get("answers")):
                     raise LLMError(data["error"].get("code"), data["error"].get("message", "error"))
                 return data
             if resp.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:

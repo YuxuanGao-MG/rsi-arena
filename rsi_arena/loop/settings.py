@@ -34,7 +34,13 @@ class Settings:
     # the harness before a call is made, and scores like any other breakage.
     model_choices: tuple = ("anthropic/claude-opus-5",
                             "anthropic/claude-sonnet-4.5",
-                            "openai/gpt-5-mini")
+                            "openai/gpt-5-mini",
+                            # A decisions model: answers typed questions with
+                            # probabilities, writes nothing, and costs about two
+                            # thousandths of a cent a window. A plan for it ends
+                            # in a prompt step with "questions"; see harnesses/
+                            # horizon-5m-jev.json.
+                            "typesafe/jev-1.13")
     # The model that reads traces and rewrites harnesses. Deliberately the
     # strongest available and deliberately not the one under test: it runs tens
     # of times a generation against the task model's thousands, so it is under
