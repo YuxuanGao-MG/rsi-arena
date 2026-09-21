@@ -1,0 +1,763 @@
+Iteration 0: Base program full valset score: 0.4959062499999998 over 240 / 240 examples
+Iteration 1: Selected program 0 score: 0.4959062499999998
+Iteration 1: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes: delta_cents (how many cents it moves) and half_width_cents (half the
+width of a two-sided quote you would stand behind).
+
+## What moves prices on this horizon
+
+**Goals and cards the market hasn't absorbed yet.** A goal 2-3 minutes ago may still be
+moving the price as the book digests it. Look at candlestick patterns: a spike followed
+by drift means absorption is ongoing.
+
+**Time decay.** When a team is behind and the clock runs, their win probability decays
+toward zero. The rate accelerates as time runs out: -1c per 5 minutes with 30 minutes
+left becomes -2 to -4c per 5 minutes with 15 minutes left. A draw contract decays
+toward certainty (100) when the leading team protects their lead late.
+
+**Thin books drifting.** A single large order moves the mid, then it drifts back over
+minutes. Recent trades show if this is happening: one-sided flow at a new level that
+doesn't hold.
+
+**Score changes.** Not just that a goal happened, but whether the price has fully
+adjusted. A trailing team's contract drops when they concede, but may continue drifting
+down for several minutes after.
+
+## What does not move prices
+
+Your view on team quality. The market prices that already. A yellow card in minute 15
+when the score is 0-0. Substitutions unless they coincide with other events.
+
+## Critical facts about these contracts
+
+**Ticker format:** KXEPLGAME-[DATE][HOMECODE][AWAYCODE]-[WINNING_TEAM_CODE]
+
+The last segment tells you which team the contract pays on. KXEPLGAME-26SEP06EVEMUN-MUN
+is a contract on Manchester United (MUN) winning. If United leads 1-0, this contract is
+in the money and rises with time decay. If Everton leads 1-0, this contract decays
+toward zero.
+
+**Always check:** Does the score favor the contract team or oppose it? A 0-1 scoreline
+where away is winning means very different things for a home-team contract versus an
+away-team contract.
+
+## Time decay: the dominant driver and most common error
+
+**Time decay is NOT always negligible.** The feedback shows harnesses constantly
+underestimate decay magnitude. With 25 minutes left and trailing by one goal, decay
+is real and measurable over five minutes, not ignorable noise.
+
+**Time decay is NOT linear.** It accelerates as time runs out:
+- 40+ minutes left: ~0-0.5c per 5 minutes (often undetectable)
+- 25-35 minutes left: ~0.5-1.5c per 5 minutes (real but gradual)
+- 15-25 minutes left: ~1-3c per 5 minutes (the main event)
+- Under 15 minutes: ~2-5c per 5 minutes (rapid collapse)
+
+**But:** Example 8 shows that even at 65' (25 min left), PHI trailing 0-1, predicted
+-2c decay, the price was **flat** over five minutes. Why? Because five minutes is short
+relative to 25 minutes remaining. The decay that happens over five minutes when 25
+minutes remain is small enough to be swamped by bid-ask noise, order flow, and the
+discrete nature of tick sizes.
+
+**The key insight:** Time decay over a five-minute window is only detectable when
+urgency is high (under 20 minutes) OR when the book is thin/stable enough that sub-cent
+forces can move the mid. At 65' with 25 minutes left, even a trailing team's decay
+might be only 0.3-0.8c over five minutes—easily masked by a 1-cent spread and
+normal flow.
+
+**Revised heuristic for time decay:**
+- Over 30 minutes left: predict zero decay unless the book is drifting already
+- 20-30 minutes left: predict 0-1c decay for trailing teams, only if book is quiet
+- 15-20 minutes left: predict 1-2c decay for trailing teams
+- 10-15 minutes left: predict 2-4c decay for trailing teams
+- Under 10 minutes: predict 3-6c decay for trailing teams
+
+**Critical:** If the book has been flat for 10+ bars and you're outside the final
+20 minutes, predict zero even if theory says decay exists. The five-minute window
+is too short to reliably see it.
+
+## When to predict zero (and when NOT to)
+
+**Predict zero when:**
+- Score is level and more than 25 minutes remain (no decay driver, no recent shock)
+- Book has been flat for 10+ minutes with balanced two-way flow
+- Early in the match (first 20 minutes, 0-0) with a stable book
+- The contract team is trailing but more than 30 minutes remain and book is stable
+
+**DO NOT predict zero when:**
+- A goal happened in the last 5-10 minutes and candlesticks show ongoing drift
+- The contract team is trailing with under 20 minutes left (decay is real)
+- Recent trades show one-sided flow at a new level (ongoing absorption or drift-back)
+- The book just moved and hasn't stabilized (multiple bars at different levels)
+
+**Common error from feedback:** Predicting zero "because the book looks stable" when
+actually the book has been DRIFTING slowly over 10-20 bars. Stable means the mid is
+unchanged for 5+ bars, not that it moved gradually and stopped one minute ago.
+
+## Thin books and quote artifacts
+
+**Example 4 teaches a critical lesson:** The exchange mid was 28c but the last trade
+was 32c and all recent trades were at 31-32c. The harness correctly predicted +2.5c
+drift back toward the trade price (realized +3.5c).
+
+**When trade price and mid diverge:**
+- Recent trades at 32c, mid at 28c with 6-cent spread: the mid is a quote artifact
+- Predict drift toward the trade price, not the mid (but remember: delta_cents applies
+  to the exchange mid, so you predict the mid moving toward where trades are)
+- Wide spreads (4+ cents) on low volume often mean the mid is unreliable
+
+**How to spot a thin book:**
+- Spread above 3 cents
+- Candlestick volume near zero for multiple bars
+- Last trade price far from mid
+- When these align, the mid is a phantom—predict where it will drift to match reality
+
+## Early-match stability vs. late-match urgency
+
+**First 30 minutes, 0-0 or close score:** Even with volume and flow, price moves are
+often mean-reverting noise. Example 3 and Example 7 show early-game predictions of
+zero being correct even when there's moderate trading activity. Unless there's a
+clear post-goal drift or one-sided flow that persists across multiple bars, predict
+zero early.
+
+**Final 20 minutes, any score gap:** Price moves become directional. Decay dominates
+for trailing teams, and even leading teams' "lock it in" premium grows. The same
+1-goal gap that does nothing at 60' can drive 2-3c over five minutes at 75'.
+
+## The "flat for how long?" test
+
+Before predicting zero, count how many consecutive bars the mid has been at the
+current level:
+- 1-2 bars: too soon, might still be drifting
+- 3-5 bars: probably stable if flow is balanced
+- 6+ bars: definitely stable, predict zero unless time decay is urgent (under 20 min)
+
+Example 1: 17 flat bars at 60.5c after halftime, balanced flow → correctly predicted zero.
+
+Example 8: 12 bars at ~50.5c, but still 25 min left → predicted -2c, realized 0c.
+The book WAS flat and decay over five minutes was undetectable.
+
+## Absorption after a goal
+
+A goal causes a spike (5-15c jump), then the price drifts over 5-15 minutes as the
+book absorbs the new information. 
+
+**How to tell if absorption is ongoing:**
+- Spike visible in candlesticks 3-10 minutes ago
+- Mid has been drifting (changing by 0.5-1c every few bars) since
+- Trade flow is one-sided (takers keep lifting the same side)
+
+**How to tell if absorption is complete:**
+- Mid has been flat for 5+ bars
+- Trade flow is balanced (yes and no takers alternating)
+- Volume has returned to normal levels
+
+Example 1: Goal at ~45', halftime break, then 17 flat bars at 60.5c → absorption
+complete, correctly predicted zero.
+
+## Checking your own prediction
+
+Before you finalize:
+
+1. **Did I check the ticker?** Which team does this contract pay on?
+2. **Does the score favor or oppose that team?** Home 1 - Away 0, ticker ends in
+   away-team code → contract is LOSING.
+3. **How much time is left?** Under 20 minutes = decay matters. Over 30 = probably not.
+4. **Has the mid been flat for 5+ bars?** If yes and no urgency, predict zero.
+5. **Is there a wide spread with trades far from mid?** If yes, predict drift toward
+   trade price.
+6. **Did a goal happen in the last 10 minutes?** Check if drift is ongoing (changing
+   mid across bars) or complete (flat for 5+ bars).
+7. **Am I predicting decay in the right direction?** Trailing team → negative.
+   Leading team or draw when leading → positive. Level score → zero.
+
+## Your two numbers
+
+**Delta_cents: where it goes, not where it is.** Zero is real and often right when
+nothing is happening. But if the game state is actively driving the price (time decay
+with under 20 minutes left, post-goal drift still ongoing), you must call it. The
+error in Example 8 was predicting -2c when the book had been flat for 12 bars with
+25 minutes left—the five-minute window was too short to see that decay.
+
+**Half_width_cents: what you'd actually trade.** Two cents means you buy at your
+prediction minus 2 and sell at plus 2, and you honor both sides. If you're unsure,
+widen the quote, but remember: fees are 2-3 cents, so a 10-cent-wide market is too
+wide to be useful. Quote 1.5-3 cents when you're confident, 3-5 cents when uncertain,
+wider only when genuinely lost.
+
+## Common errors to avoid
+
+1. **Predicting decay when the book is flat and time isn't urgent.** Example 8: -2c
+   predicted at 65' with a flat book, realized 0c. If the mid has been stable for
+   10+ bars and more than 25 minutes remain, predict zero.
+
+2. **Predicting zero when drift is ongoing.** If the mid has changed over the last
+   3-5 bars, it's probably still moving. Don't call it stable prematurely.
+
+3. **Ignoring the trade tape when the mid is wide.** Example 4: trades at 32c, mid
+   at 28c with a 6-cent spread. The mid is fake; predict drift to 32c.
+
+4. **Overestimating decay magnitude.** Even under 20 minutes, decay over five minutes
+   is 1-3c for most situations, not 5-10c. Only in the final 10 minutes does it
+   accelerate to 3-6c per five-minute window.
+
+5. **Forgetting to check ticker vs. score.** If the contract is on the trailing team,
+   decay is negative. If on the leading team, decay is positive. Get this wrong and
+   you predict the opposite of reality.
+
+6. **Predicting zero "by default."** Zero is not a fallback; it's a specific prediction
+   that the mid will be unchanged. Only predict it when you have evidence: flat book,
+   balanced flow, no urgency, no ongoing drift. Otherwise, call the direction even if
+   small.
+Iteration 1: Accepted candidate (subsample score 3.975 -> 4.075); running full eval.
+Iteration 1: Found a better program on the valset with score 0.4975520833333334.
+Iteration 1: Valset score for new program: 0.4975520833333334 (coverage 240 / 240)
+Iteration 1: Val aggregate for new program: 0.4975520833333334
+Iteration 1: Individual valset scores for new program: {0: 0.5, 1: 0.475, 2: 0.525, 3: 0.475, 4: 0.5, 5: 0.525, 6: 0.525, 7: 0.56, 8: 0.5, 9: 0.54, 10: 0.475, 11: 0.5499999999999999, 12: 0.475, 13: 0.515, 14: 0.5, 15: 0.525, 16: 0.475, 17: 0.5, 18: 0.475, 19: 0.475, 20: 0.525, 21: 0.44999999999999996, 22: 0.525, 23: 0.44999999999999996, 24: 0.44999999999999996, 25: 0.485, 26: 0.5, 27: 0.475, 28: 0.5, 29: 0.51, 30: 0.475, 31: 0.475, 32: 0.525, 33: 0.55, 34: 0.54, 35: 0.475, 36: 0.525, 37: 0.5, 38: 0.46249999999999997, 39: 0.3999999999999999, 40: 0.525, 41: 0.5750000000000001, 42: 0.525, 43: 0.525, 44: 0.475, 45: 0.515, 46: 0.44999999999999996, 47: 0.5, 48: 0.5, 49: 0.475, 50: 0.5, 51: 0.525, 52: 0.475, 53: 0.525, 54: 0.55, 55: 0.525, 56: 0.475, 57: 0.575, 58: 0.525, 59: 0.44999999999999996, 60: 0.5, 61: 0.5, 62: 0.475, 63: 0.475, 64: 0.525, 65: 0.475, 66: 0.5, 67: 0.7500000000000002, 68: 0.515, 69: 0.475, 70: 0.47500000000000003, 71: 0.47500000000000003, 72: 0.5, 73: 0.525, 74: 0.525, 75: 0.475, 76: 0.525, 77: 0.5, 78: 0.475, 79: 0.475, 80: 0.475, 81: 0.44999999999999996, 82: 0.5, 83: 0.5, 84: 0.5, 85: 0.5, 86: 0.475, 87: 0.525, 88: 0.485, 89: 0.475, 90: 0.55, 91: 0.475, 92: 0.525, 93: 0.42499999999999993, 94: 0.525, 95: 0.475, 96: 0.5, 97: 0.5, 98: 0.525, 99: 0.525, 100: 0.475, 101: 0.515, 102: 0.525, 103: 0.525, 104: 0.475, 105: 0.475, 106: 0.44999999999999996, 107: 0.42499999999999993, 108: 0.475, 109: 0.49, 110: 0.475, 111: 0.475, 112: 0.475, 113: 0.475, 114: 0.475, 115: 0.5374999999999998, 116: 0.5, 117: 0.5, 118: 0.515, 119: 0.0, 120: 0.5, 121: 0.5, 122: 0.525, 123: 0.525, 124: 0.485, 125: 0.525, 126: 0.5, 127: 0.45, 128: 0.5, 129: 0.5, 130: 0.485, 131: 0.475, 132: 0.475, 133: 0.51, 134: 0.475, 135: 0.525, 136: 0.44999999999999996, 137: 0.475, 138: 0.5, 139: 0.525, 140: 0.525, 141: 0.525, 142: 0.5, 143: 0.5750000000000001, 144: 0.475, 145: 0.475, 146: 0.525, 147: 0.525, 148: 0.5, 149: 0.5, 150: 0.5249999999999989, 151: 0.525, 152: 0.5, 153: 0.485, 154: 0.525, 155: 0.525, 156: 0.5, 157: 0.475, 158: 0.55, 159: 0.485, 160: 0.475, 161: 0.485, 162: 0.525, 163: 0.5, 164: 0.5750000000000001, 165: 0.475, 166: 0.525, 167: 0.525, 168: 0.475, 169: 0.475, 170: 0.55, 171: 0.475, 172: 0.48750000000000027, 173: 0.44999999999999996, 174: 0.475, 175: 0.525, 176: 0.55, 177: 0.5, 178: 0.475, 179: 0.475, 180: 0.5, 181: 0.5, 182: 0.5750000000000001, 183: 0.475, 184: 0.5, 185: 0.475, 186: 0.525, 187: 0.475, 188: 0.485, 189: 0.525, 190: 0.55, 191: 0.5, 192: 0.5, 193: 0.525, 194: 0.55, 195: 0.475, 196: 0.475, 197: 0.525, 198: 0.56, 199: 0.0749999999999999, 200: 0.5, 201: 0.5750000000000001, 202: 0.475, 203: 0.5, 204: 0.525, 205: 0.525, 206: 0.485, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.6000000000000001, 211: 0.46499999999999997, 212: 0.475, 213: 0.525, 214: 0.5, 215: 0.0, 216: 0.5, 217: 0.525, 218: 0.47500000000000003, 219: 0.47500000000000003, 220: 0.5, 221: 0.515, 222: 0.44999999999999996, 223: 1.0, 224: 0.525, 225: 0.515, 226: 0.475, 227: 0.475, 228: 0.515, 229: 0.525, 230: 0.5, 231: 0.525, 232: 0.525, 233: 0.5, 234: 0.5, 235: 0.5, 236: 0.5, 237: 0.515, 238: 0.475, 239: 0.475}
+Iteration 1: Objective aggregate scores for new program: {'skill': 0.4975520833333334, 'cost': 0.0}
+Iteration 1: New valset pareto front scores: {0: 0.5, 1: 0.475, 2: 0.525, 3: 0.475, 4: 0.5, 5: 0.525, 6: 0.55, 7: 0.6000000000000001, 8: 0.5, 9: 0.55, 10: 0.5499999999999999, 11: 0.5499999999999999, 12: 0.475, 13: 0.525, 14: 0.5, 15: 0.525, 16: 0.475, 17: 0.525, 18: 0.475, 19: 0.475, 20: 0.525, 21: 0.44999999999999996, 22: 0.525, 23: 0.65, 24: 0.44999999999999996, 25: 0.485, 26: 0.515, 27: 0.475, 28: 0.5, 29: 0.525, 30: 0.475, 31: 0.475, 32: 0.525, 33: 0.5750000000000001, 34: 0.54, 35: 0.475, 36: 0.525, 37: 0.5, 38: 0.46249999999999997, 39: 0.3999999999999999, 40: 0.525, 41: 0.5750000000000001, 42: 0.525, 43: 0.525, 44: 0.5, 45: 0.525, 46: 0.44999999999999996, 47: 0.525, 48: 0.5, 49: 0.475, 50: 0.525, 51: 0.525, 52: 0.525, 53: 0.525, 54: 0.55, 55: 0.5750000000000001, 56: 0.475, 57: 0.575, 58: 0.525, 59: 0.44999999999999996, 60: 0.515, 61: 0.525, 62: 0.475, 63: 0.475, 64: 0.525, 65: 0.475, 66: 0.525, 67: 0.7500000000000002, 68: 0.515, 69: 0.525, 70: 0.5, 71: 0.47500000000000003, 72: 0.55, 73: 0.5499999999999995, 74: 0.525, 75: 0.475, 76: 0.525, 77: 0.525, 78: 0.475, 79: 0.475, 80: 0.5, 81: 0.475, 82: 0.515, 83: 0.5, 84: 0.5, 85: 0.5, 86: 0.525, 87: 0.525, 88: 0.5, 89: 0.475, 90: 0.55, 91: 0.475, 92: 0.525, 93: 0.42499999999999993, 94: 0.525, 95: 0.475, 96: 0.5, 97: 0.5, 98: 0.54, 99: 0.54, 100: 0.55, 101: 0.55, 102: 0.525, 103: 0.525, 104: 0.475, 105: 0.475, 106: 0.44999999999999996, 107: 0.42499999999999993, 108: 0.525, 109: 0.525, 110: 0.475, 111: 0.475, 112: 0.5, 113: 0.525, 114: 0.475, 115: 0.54, 116: 0.5, 117: 0.5, 118: 0.55, 119: 0.14999999999999997, 120: 0.5, 121: 0.5, 122: 0.525, 123: 0.5750000000000001, 124: 0.515, 125: 0.525, 126: 0.525, 127: 0.45, 128: 0.5, 129: 0.5, 130: 0.485, 131: 0.475, 132: 0.515, 133: 0.515, 134: 0.475, 135: 0.55, 136: 0.44999999999999996, 137: 0.525, 138: 0.5, 139: 0.525, 140: 0.525, 141: 0.525, 142: 0.525, 143: 0.5750000000000001, 144: 0.475, 145: 0.525, 146: 0.525, 147: 0.55, 148: 0.5, 149: 0.5, 150: 0.5249999999999989, 151: 0.54, 152: 0.5, 153: 0.485, 154: 0.55, 155: 0.5750000000000001, 156: 0.5, 157: 0.475, 158: 0.55, 159: 0.485, 160: 0.525, 161: 0.5, 162: 0.525, 163: 0.5, 164: 0.5750000000000001, 165: 0.475, 166: 0.525, 167: 0.55, 168: 0.485, 169: 0.5, 170: 0.55, 171: 0.475, 172: 0.5, 173: 0.475, 174: 0.5, 175: 0.525, 176: 0.55, 177: 0.5, 178: 0.5, 179: 0.475, 180: 0.5, 181: 0.525, 182: 0.6000000000000001, 183: 0.475, 184: 0.5, 185: 0.5, 186: 0.55, 187: 0.475, 188: 0.485, 189: 0.55, 190: 0.5750000000000001, 191: 0.5, 192: 0.5, 193: 0.525, 194: 0.55, 195: 0.475, 196: 0.475, 197: 0.525, 198: 0.5750000000000001, 199: 0.0749999999999999, 200: 0.525, 201: 0.5750000000000001, 202: 0.525, 203: 0.5, 204: 0.525, 205: 0.525, 206: 0.485, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.6000000000000001, 211: 0.46499999999999997, 212: 0.475, 213: 0.5750000000000001, 214: 0.5, 215: 0.0, 216: 0.5, 217: 0.535, 218: 0.47500000000000003, 219: 0.47500000000000003, 220: 0.5, 221: 0.525, 222: 0.44999999999999996, 223: 1.0, 224: 0.525, 225: 0.515, 226: 0.475, 227: 0.475, 228: 0.515, 229: 0.525, 230: 0.525, 231: 0.525, 232: 0.525, 233: 0.525, 234: 0.525, 235: 0.5, 236: 0.5, 237: 0.515, 238: 0.475, 239: 0.475}
+Iteration 1: Objective pareto front scores: {'cost': 0.0, 'skill': 0.4975520833333334}
+Iteration 1: Valset pareto front aggregate score: 0.5079479166666667
+Iteration 1: Updated valset pareto front programs: {0: {0, 1}, 1: {0, 1}, 2: {0, 1}, 3: {0, 1}, 4: {0, 1}, 5: {0, 1}, 6: {0}, 7: {0}, 8: {1}, 9: {0}, 10: {0}, 11: {0, 1}, 12: {0, 1}, 13: {0}, 14: {1}, 15: {0, 1}, 16: {0, 1}, 17: {0}, 18: {1}, 19: {1}, 20: {1}, 21: {1}, 22: {1}, 23: {0}, 24: {0, 1}, 25: {1}, 26: {0}, 27: {0, 1}, 28: {0, 1}, 29: {0}, 30: {0, 1}, 31: {0, 1}, 32: {0, 1}, 33: {0}, 34: {0, 1}, 35: {0, 1}, 36: {1}, 37: {1}, 38: {0, 1}, 39: {1}, 40: {1}, 41: {0, 1}, 42: {0, 1}, 43: {0, 1}, 44: {0}, 45: {0}, 46: {0, 1}, 47: {0}, 48: {0, 1}, 49: {0, 1}, 50: {0}, 51: {1}, 52: {0}, 53: {0, 1}, 54: {0, 1}, 55: {0}, 56: {0, 1}, 57: {1}, 58: {0, 1}, 59: {1}, 60: {0}, 61: {0}, 62: {0, 1}, 63: {0, 1}, 64: {1}, 65: {0, 1}, 66: {0}, 67: {1}, 68: {1}, 69: {0}, 70: {0}, 71: {0, 1}, 72: {0}, 73: {0}, 74: {1}, 75: {0, 1}, 76: {0, 1}, 77: {0}, 78: {1}, 79: {1}, 80: {0}, 81: {0}, 82: {0}, 83: {1}, 84: {0, 1}, 85: {1}, 86: {0}, 87: {0, 1}, 88: {0}, 89: {0, 1}, 90: {0, 1}, 91: {1}, 92: {1}, 93: {1}, 94: {0, 1}, 95: {0, 1}, 96: {0, 1}, 97: {1}, 98: {0}, 99: {0}, 100: {0}, 101: {0}, 102: {0, 1}, 103: {0, 1}, 104: {0, 1}, 105: {1}, 106: {1}, 107: {0, 1}, 108: {0}, 109: {0}, 110: {1}, 111: {1}, 112: {0}, 113: {0}, 114: {1}, 115: {0}, 116: {0, 1}, 117: {1}, 118: {0}, 119: {0}, 120: {0, 1}, 121: {0, 1}, 122: {1}, 123: {0}, 124: {0}, 125: {0, 1}, 126: {0}, 127: {1}, 128: {0, 1}, 129: {1}, 130: {1}, 131: {0, 1}, 132: {0}, 133: {0}, 134: {0, 1}, 135: {0}, 136: {0, 1}, 137: {0}, 138: {1}, 139: {0, 1}, 140: {0, 1}, 141: {0, 1}, 142: {0}, 143: {1}, 144: {0, 1}, 145: {0}, 146: {1}, 147: {0}, 148: {0, 1}, 149: {1}, 150: {0, 1}, 151: {0}, 152: {0, 1}, 153: {1}, 154: {0}, 155: {0}, 156: {0, 1}, 157: {0, 1}, 158: {1}, 159: {1}, 160: {0}, 161: {0}, 162: {0, 1}, 163: {1}, 164: {1}, 165: {0, 1}, 166: {0, 1}, 167: {0}, 168: {0}, 169: {0}, 170: {1}, 171: {0, 1}, 172: {0}, 173: {0}, 174: {0}, 175: {1}, 176: {1}, 177: {0, 1}, 178: {0}, 179: {1}, 180: {0, 1}, 181: {0}, 182: {0}, 183: {1}, 184: {0, 1}, 185: {0}, 186: {0}, 187: {0, 1}, 188: {1}, 189: {0}, 190: {0}, 191: {1}, 192: {0, 1}, 193: {0, 1}, 194: {1}, 195: {1}, 196: {0, 1}, 197: {1}, 198: {0}, 199: {1}, 200: {0}, 201: {0, 1}, 202: {0}, 203: {1}, 204: {0, 1}, 205: {0, 1}, 206: {1}, 207: {1}, 208: {0, 1}, 209: {0, 1}, 210: {1}, 211: {1}, 212: {0, 1}, 213: {0}, 214: {1}, 215: {0, 1}, 216: {0, 1}, 217: {0}, 218: {0, 1}, 219: {0, 1}, 220: {0, 1}, 221: {0}, 222: {0, 1}, 223: {1}, 224: {1}, 225: {0, 1}, 226: {0, 1}, 227: {0, 1}, 228: {1}, 229: {0, 1}, 230: {0}, 231: {0, 1}, 232: {1}, 233: {0}, 234: {0}, 235: {1}, 236: {0, 1}, 237: {1}, 238: {0, 1}, 239: {0, 1}}
+Iteration 1: Updated objective pareto front programs: {'cost': {0, 1}, 'skill': {1}}
+Iteration 1: Best valset aggregate score so far: 0.4975520833333334
+Iteration 1: Best program as per aggregate score on valset: 1
+Iteration 1: Best score on valset: 0.4975520833333334
+Iteration 1: Linear pareto front program index: 1
+Iteration 1: New program candidate index: 1
+Iteration 2: No merge candidates found
+Iteration 2: Selected program 1 score: 0.4975520833333334
+Iteration 2: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 30
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "velocity",
+      "output_key": "velocity",
+      "tool": "price_velocity",
+      "args": {
+        "ticker": "{{question}}",
+        "minutes": 10
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "goal_timing",
+      "output_key": "goal_timing",
+      "tool": "minutes_since_goal",
+      "args": {
+        "game": "{{game}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "bars",
+      "output_key": "bars",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.5,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}}\nGame: {{game}}\nCurrent book: {{quote}}\nRecent trades (last 30): {{tape}}\nPrice velocity (last 10 min): {{velocity}}\nGoal timing: {{goal_timing}}\nRecent bars: {{bars}}\n\nForecast the 5-minute mid move in cents. Key drivers:\n\n1. **TIME DECAY** (late match only): If <25 minutes remain, the trailing team decays -1 to -3c per 5min, leader rises +1 to +3c. Calculate: (minutes_left / 90) * score_advantage gives rough direction. Only strong when <20 min left.\n\n2. **POST-GOAL SPIKE REVERSION**: If goal_timing shows <2 minutes since goal, check bars for spike. If mid jumped >3c in one bar and has been flat 1-2 bars, expect -1 to -2c reversion as book digests.\n\n3. **MOMENTUM FROM TAPE**: Check last 20 trades:\n   - If >80% are same taker_side AND prices are walking up/down (not bouncing), momentum is real\n   - If yes-takers dominate and prices climbed (e.g., 0.48→0.49→0.51), expect +0.5 to +1.5c continuation\n   - If no-takers dominate and prices fell, expect -0.5 to -1.5c continuation\n   - If tape is mixed or all at one price, no momentum signal\n\n4. **VELOCITY CONFIRMATION**: If velocity tool shows +2c/10min or more, that's +1c/5min baseline. Use it.\n\n5. **EARLY MATCH NOISE**: Before minute 60 with score close, most moves are noise or un-scored events. But if tape shows strong one-sided flow (criterion 3), respect it - markets see things we don't.\n\n**Decision logic**:\n- Start with velocity as baseline (divide by 2 for 5-min forecast)\n- Add time-decay if <25 min (small) or <15 min (material)\n- Subtract reversion if post-goal spike unabsorbed\n- If tape shows 80%+ one-sided AND walking prices, add momentum continuation\n- If all signals near zero AND early in match, predict 0 but use wide spread (2-3c)\n\n**Confidence → half_width**:\n- Tight (1-1.5c): Late match time decay, clear direction, tight spread\n- Medium (2-2.5c): Momentum confirmed by multiple signals\n- Wide (3-4c): Early match, conflicting signals, or very thin book\n\nPredict the CHANGE (delta_cents), not the price. Negative for down, positive for up, 0 is valid.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "Expected move in cents over next 5 minutes. Negative for down, 0 for flat."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half-width of two-sided quote in cents. 1-1.5 for high confidence, 2-2.5 for medium, 3-4 for low."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0-1 scale"
+          },
+          "driver": {
+            "type": "string",
+            "description": "Primary reason for the forecast: which signal dominates"
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would prove this wrong"
+          }
+        },
+        "required": [
+          "delta_cents",
+          "half_width_cents",
+          "confidence",
+          "driver",
+          "falsifier"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 2: New subsample score 3.6000000000000005 is not better than old score 4.035, skipping
+Iteration 3: Selected program 1 score: 0.4975520833333334
+Iteration 3: Proposed new text for tools: market_quote, candlesticks, previous_trades, game_state, minutes_since_goal, price_velocity, settlement_countdown, coherence_check, volume_profile
+Iteration 3: New subsample score 3.875 is not better than old score 3.875, skipping
+Iteration 4: Selected program 0 score: 0.4959062499999998
+Iteration 4: Proposed new text for plan: {
+  "steps": [
+    {
+      "type": "tool",
+      "name": "quote",
+      "output_key": "quote",
+      "tool": "market_quote",
+      "args": {
+        "ticker": "{{question}}"
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "path",
+      "output_key": "path",
+      "tool": "candlesticks",
+      "args": {
+        "ticker": "{{question}}",
+        "hours_back": 0.5,
+        "hourly": false
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "tape",
+      "output_key": "tape",
+      "tool": "previous_trades",
+      "args": {
+        "ticker": "{{question}}",
+        "limit": 30
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "velocity",
+      "output_key": "velocity",
+      "tool": "price_velocity",
+      "args": {
+        "ticker": "{{question}}",
+        "windows": [2, 5, 10]
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "tool",
+      "name": "recent_action",
+      "output_key": "recent_action",
+      "tool": "recent_plays",
+      "args": {
+        "limit": 10
+      },
+      "fail_ok": true
+    },
+    {
+      "type": "prompt",
+      "name": "decode_contract",
+      "output_key": "contract_type",
+      "prompt": "Contract ticker: {{question}}\n\nParse the ticker to determine:\n1. What outcome does YES pay on? (team X wins, team Y wins, draw/tie, total goals over/under, etc.)\n2. Current game state: {{game}}\n3. Does the current score favor YES or NO settling, or is it neutral?\n\nBe precise about what event makes this contract resolve to YES=100c.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "contract_pays_on": {
+            "type": "string",
+            "description": "What outcome pays YES. E.g. 'Toronto wins', 'Draw', 'Pumas wins', etc."
+          },
+          "current_score_favors": {
+            "type": "string",
+            "enum": ["yes", "no", "neutral"],
+            "description": "Does the current score favor YES settling (yes), NO settling (no), or neither (neutral, e.g. 0-0 for a win contract)"
+          },
+          "reasoning": {
+            "type": "string"
+          }
+        },
+        "required": ["contract_pays_on", "current_score_favors", "reasoning"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "analyze_context",
+      "output_key": "context",
+      "prompt": "Game: {{game}}\nContract: {{contract_type}}\nRecent minute bars: {{path}}\nPrice velocity: {{velocity}}\nRecent plays: {{recent_action}}\n\nAnalyze:\n\n1. TIME REMAINING: Parse the clock. Period={{game.period}}, clock={{game.clock}}. For most soccer: period 1 is first half (0-45min), period 2 is second half (45-90min). Estimate minutes remaining in the match.\n\n2. GOAL TIMING: Scan recent_events in {{game}} and look for goal spikes in candlesticks. If a goal was scored in the last 1-3 minutes, the price likely spiked and may still be drifting back. If >5 min since last goal, it's absorbed.\n\n3. PRICE MOMENTUM: Look at the last 5-10 minute bars. Is the mid trending up, down, or flat? Check velocity for confirmation. A steady trend may continue; a spike followed by flat bars suggests absorption is complete.\n\n4. TIME DECAY DIRECTION: \n   - If <25 minutes remain and current_score_favors=\"yes\", the clock helps YES and price should drift UP (trailing team running out of time)\n   - If <25 minutes remain and current_score_favors=\"no\", the clock hurts YES and price should drift DOWN\n   - If current_score_favors=\"neutral\" (0-0 for a win contract), scoreless minutes shift probability TOWARD the draw, AWAY from either team winning, so both team-win contracts drift DOWN\n   - If >25 minutes remain, time decay is weak\n\n5. BOOK DEPTH: Check recent trade sizes in {{tape}}. Large trades (>100 units) suggest deep liquidity. Tiny trades (<20 units) suggest a thin book prone to drift.\n\nBe quantitative with minutes and price levels.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "minutes_remaining": {
+            "type": "number"
+          },
+          "minutes_since_last_goal": {
+            "type": "number",
+            "description": "Minutes since most recent goal, or 999 if no recent goal or match just started"
+          },
+          "price_trend_last_5min": {
+            "type": "string",
+            "enum": ["rising", "falling", "flat", "spike_then_flat", "volatile"],
+            "description": "Price behavior in last 5-10 bars"
+          },
+          "time_decay_direction": {
+            "type": "string",
+            "enum": ["up", "down", "neutral"],
+            "description": "Does the clock push this contract's price up, down, or neither"
+          },
+          "book_depth": {
+            "type": "string",
+            "enum": ["deep", "moderate", "thin"],
+            "description": "Based on recent trade sizes"
+          },
+          "reasoning": {
+            "type": "string"
+          }
+        },
+        "required": ["minutes_remaining", "minutes_since_last_goal", "price_trend_last_5min", "time_decay_direction", "book_depth", "reasoning"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "type": "prompt",
+      "name": "predict",
+      "output_key": "prediction",
+      "prompt": "Contract: {{question}} ({{contract_type.contract_pays_on}})\nCurrent book: {{quote}}\nContext: {{context}}\nTape: {{tape}}\n\nForecast the 5-minute price CHANGE (delta_cents). Key patterns:\n\n**1. TIME DECAY (most reliable when <25 min remain):**\n- If clock favors YES (context.time_decay_direction=\"up\"): predict +1 to +3c per 5min, stronger as clock winds down\n- If clock hurts YES (context.time_decay_direction=\"down\"): predict -1 to -3c per 5min, stronger as clock winds down  \n- If 0-0 late in match and this is a TEAM-WIN contract: both teams' win probabilities decay toward draw, so predict -1 to -2c\n- Time decay is CONTINUOUS and PREDICTABLE in final 20 minutes\n\n**2. POST-GOAL MEAN REVERSION:**\n- If minutes_since_last_goal < 3 AND price_trend=\"spike_then_flat\", the spike is still absorbing: predict -1 to -3c reversion\n- If minutes_since_last_goal > 5, absorption is complete, ignore this pattern\n\n**3. MOMENTUM CONTINUATION:**\n- If price_trend=\"rising\" or \"falling\" for 5+ minutes with clear velocity, it may continue +0.5 to -1c\n- But if the trend contradicts time decay or fundamentals, bet on mean reversion instead\n\n**4. THIN BOOK DRIFT:**\n- If book_depth=\"thin\" and recent tape shows one-sided flow that moved the mid, predict -0.5 to -1c drift back\n\n**5. EARLY MATCH / NO PATTERN:**\n- If minutes_remaining > 60 and no recent goal and price_trend=\"flat\", predict 0\n- Early in match with balanced book: 0 is often correct\n\n**RULES:**\n- Time decay dominates when <20 min remain\n- A 0-0 scoreline late in a team-win contract reliably decays\n- Don't predict 0 just to be safe; predict 0 only when analysis says no move\n- In final 10 minutes, time decay can be 2-4c per 5min\n- If you see a clear pattern (time decay, post-goal reversion), predict it boldly\n\n**HALF-WIDTH:**\n- Tight (1-2c) when pattern is strong (time decay in final 15 min, clear post-goal absorption)\n- Medium (2-3c) for moderate confidence\n- Wide (3-4c) when uncertain or conflicting signals\n\nYour forecast is the CHANGE in cents over the next 5 minutes, not an absolute price.",
+      "tools": [],
+      "max_tool_iterations": 0,
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "delta_cents": {
+            "type": "number",
+            "description": "Predicted price CHANGE in cents over next 5 minutes. Negative for down, positive for up, 0 for no move. Typical range: -4 to +4."
+          },
+          "half_width_cents": {
+            "type": "number",
+            "description": "Half-width of two-sided quote in cents. 1-2 for high confidence, 3-4 for low confidence."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "0 to 1"
+          },
+          "driver": {
+            "type": "string",
+            "description": "Primary reason for the forecast. Name the specific pattern."
+          },
+          "falsifier": {
+            "type": "string",
+            "description": "What would prove this forecast wrong"
+          }
+        },
+        "required": ["delta_cents", "half_width_cents", "confidence", "driver", "falsifier"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+Iteration 4: New subsample score 3.6000000000000005 is not better than old score 3.8249999999999997, skipping
+Iteration 5: Selected program 1 score: 0.4975520833333334
+Iteration 5: Proposed new text for context: You forecast the short-term path of a Kalshi sports contract while the match
+is being played.
+
+You are not asked who wins. You are asked where this contract's mid price will be in a
+few minutes: delta_cents (how many cents it moves) and half_width_cents (half the
+width of a two-sided quote you would stand behind).
+
+## What moves prices on this horizon
+
+**Goals and cards the market hasn't absorbed yet.** A goal 2-3 minutes ago may still be
+moving the price as the book digests it. Look at candlestick patterns: a spike followed
+by drift means absorption is ongoing.
+
+**Time decay.** When a team is behind and the clock runs, their win probability decays
+toward zero. The rate accelerates as time runs out: -1c per 5 minutes with 30 minutes
+left becomes -2 to -4c per 5 minutes with 15 minutes left. A draw contract decays
+toward certainty (100) when the leading team protects their lead late.
+
+**Thin books drifting.** A single large order moves the mid, then it drifts back over
+minutes. Recent trades show if this is happening: one-sided flow at a new level that
+doesn't hold.
+
+**Score changes.** Not just that a goal happened, but whether the price has fully
+adjusted. A trailing team's contract drops when they concede, but may continue drifting
+down for several minutes after.
+
+## What does not move prices
+
+Your view on team quality. The market prices that already. A yellow card in minute 15
+when the score is 0-0. Substitutions unless they coincide with other events.
+
+## Critical facts about these contracts
+
+**Ticker format:** KXEPLGAME-[DATE][HOMECODE][AWAYCODE]-[WINNING_TEAM_CODE]
+
+The last segment tells you which team the contract pays on. KXEPLGAME-26SEP06EVEMUN-MUN
+is a contract on Manchester United (MUN) winning. If United leads 1-0, this contract is
+in the money and rises with time decay. If Everton leads 1-0, this contract decays
+toward zero.
+
+**Always check:** Does the score favor the contract team or oppose it? A 0-1 scoreline
+where away is winning means very different things for a home-team contract versus an
+away-team contract.
+
+## Time decay: massively overestimated in the examples
+
+**The central lesson from feedback:** The harness predicted decay in Examples 3, 7, and 8,
+and was wrong every time. The market did not move. Why?
+
+**Five minutes is a very short window.** Even when time decay exists in theory, it may
+produce less than 0.5 cents of movement over five minutes, which is below the noise
+floor of bid-ask bounce, order flow randomness, and tick discretization.
+
+**When decay is actually invisible over five minutes:**
+- More than 20 minutes remain in the match
+- The contract is already at a low price (under 15 cents)
+- The book has been flat for 5+ bars
+
+Example 3: Everton trailing 0-1 at 65' (25 min left), price 11.5c, predicted -0.5c,
+realized 0c. The book was flat for 18 bars. Decay exists but is undetectable over five minutes.
+
+Example 7: Seattle trailing 0-4 at 65' (25 min left), price 22.5c, predicted -1.5c,
+realized 0c. Multi-goal deficit, but the book had stabilized. Decay over five minutes
+was swamped by noise.
+
+Example 8: 0-0 at 65' (25 min left), Santos contract at 13.5c, predicted -0.5c decay
+toward the draw, realized 0c. The book was flat for 12+ bars.
+
+**Revised heuristic for time decay:**
+- **Over 25 minutes left:** Predict zero unless the book is actively drifting already.
+  Five minutes is too short to see decay.
+- **20-25 minutes left:** Predict zero unless the book shows clear directional movement.
+  Decay may exist but is likely under 0.5c over five minutes.
+- **15-20 minutes left:** Predict 0.5-1.5c decay only if the book is thin or you see
+  gradual drift. If flat for 5+ bars, predict zero.
+- **10-15 minutes left:** Predict 1-2c decay for trailing teams if the book is moving.
+  If flat, predict 0.5-1c at most.
+- **Under 10 minutes:** Predict 2-4c decay for trailing teams. This is when urgency
+  finally dominates noise.
+
+**The "flat book" rule:** If the mid has been at the same level (±0.5c) for 5+ consecutive
+bars, predict zero regardless of the theoretical decay, unless under 15 minutes remain.
+The book is telling you that five-minute movements are below the noise floor.
+
+## When to predict zero (the most common correct answer)
+
+**Examples 3, 4, 7, 8 all had realized delta of zero.** The harness predicted non-zero
+in all four and was penalized. What do they have in common?
+
+1. **Flat book for many bars:** The mid was stable for 10-18 bars before the forecast
+2. **No ongoing absorption:** No recent goal with visible drift
+3. **More than 20 minutes remaining:** Not in the final urgency window
+4. **Balanced or quiet flow:** No persistent one-sided tape
+
+**Predict zero when:**
+- The mid has been at the same level for 5+ bars
+- No goal in the last 10 minutes, or goal absorption is complete (stable for 5+ bars)
+- More than 20 minutes remain, OR price is very low (under 15c) and book is stable
+- Trade flow is balanced (yes and no takers alternating roughly equally)
+- Early in match (first 30 minutes) with level score and no shock
+
+**The bar-counting test:** Before predicting non-zero, count consecutive bars at the
+current mid level. If 5+, you need a very strong reason (ongoing drift, thin book
+artifact, under 15 minutes left) to predict movement. Otherwise predict zero.
+
+## Thin books and quote artifacts: the one reliable non-zero signal
+
+**Example 5 is the success case:** Mid at 19c, last trade at 21c, all recent trades at
+20-21c with persistent yes-takers. Predicted +1c drift back toward trade price,
+realized +1.5c. This is the pattern that actually works.
+
+**When the mid is a phantom:**
+- Spread is wide (3+ cents, especially 4+ cents on a 2-cent spread)
+- Last trade is 2+ cents away from mid
+- All recent trades (last 5-10) are on one side of the mid
+- Volume is very low (many bars with zero or near-zero volume)
+
+**In this case:** The mid is a quote artifact. The real market is where trades happen.
+Predict drift from the quoted mid toward the trade price.
+
+**How to quantify:** If trades are at 32c and mid is at 28c, predict +3 to +4c (the
+mid moving toward where the market actually cleared). But be conservative—quote +2 to +3c
+with wider half-width.
+
+## Absorption after a goal: wait for evidence of ongoing drift
+
+**The error pattern:** Seeing a goal 5-15 minutes ago and assuming absorption is still
+happening, when actually the book has been flat for multiple bars.
+
+**Example 7:** Goal at 62', now 65' (3 minutes later), book shows 30+ bars of "lower
+highs and lows" but the mid has been at 22.5c for the last several bars. Predicted
+-1.5c, realized 0c. Absorption was already complete.
+
+**How to tell if absorption is ongoing:**
+- The mid is changing every 1-3 bars (not stable for 5+ bars)
+- Candlesticks show a staircase pattern (gradual drift in one direction)
+- Trade flow is persistently one-sided (same taker direction for multiple bars)
+
+**How to tell if absorption is complete:**
+- The mid has been flat for 5+ consecutive bars
+- Trade flow is balanced or light
+- No visible drift in recent candlesticks
+
+**The rule:** A goal 10+ minutes ago is irrelevant unless you see ongoing drift in the
+last 5-10 bars. If the book stabilized, absorption is done. Predict zero (or decay if
+under 15 minutes left).
+
+## Early match vs. late match: when urgency actually matters
+
+**First 30 minutes, any score:** Predict zero unless you see a clear thin-book artifact
+or ongoing post-goal drift. Even moderate trading activity and flow imbalances are
+usually noise. Examples 2 and 6 show early-match movements that look like signals but
+are mostly mean reversion.
+
+**30-65 minutes, any score:** Predict zero if the book is flat for 5+ bars, regardless
+of score or theoretical decay. Five minutes is too short to see movement. This is the
+regime where Examples 3, 7, 8 all failed by predicting non-zero.
+
+**65-80 minutes (under 25 min left):** Start considering decay if the book is moving
+or thin. But if flat for 5+ bars, still predict zero. Under 20 minutes is when decay
+starts to be visible over five minutes.
+
+**Final 15 minutes:** Decay finally dominates. A trailing team's contract will visibly
+decline over five minutes. A leading team's contract will rise. But even here, if the
+book is flat for 5+ bars, the movement may be slower than you think.
+
+## Checking your own prediction
+
+Before you finalize:
+
+1. **Count the bars:** How many consecutive bars has the mid been at this level?
+   If 5+, default to zero unless you have strong evidence otherwise.
+
+2. **Is there a thin-book artifact?** Last trade 2+ cents from mid, wide spread,
+   persistent one-sided tape? This is the main legitimate non-zero signal.
+
+3. **Is absorption ongoing or complete?** If a goal happened, is the mid still drifting
+   (changing every few bars) or has it been flat?
+
+4. **How much time is left?** Over 20 minutes = predict zero unless artifact or ongoing
+   drift. Under 15 minutes = decay becomes visible if book is moving.
+
+5. **Am I predicting decay because I think it "should" happen, or because the book is
+   actually moving?** Theory is not enough. The book must show movement.
+
+6. **Did I check ticker vs. score?** Trailing team = negative decay, leading team =
+   positive decay, level score toward draw = opposite decay for both win contracts.
+
+## Your two numbers
+
+**Delta_cents:** Zero is the most common right answer in the feedback. Predict non-zero
+only when:
+- You see ongoing drift (mid changing every 1-3 bars), OR
+- There's a thin-book artifact (trades far from mid with wide spread), OR
+- Under 15 minutes remain AND the book is moving (not flat for 5+ bars)
+
+Do not predict non-zero just because time decay "should" exist theoretically.
+
+**Half_width_cents:** 
+- 1.5-2.5 cents when you see a clear thin-book artifact and are confident in direction
+- 2-3 cents when you see ongoing drift or late-match decay with under 15 min left
+- 3-5 cents when the book is flat but you think there's mild pressure
+- When predicting zero, quote 2-3 cents (you're saying "flat, but could wiggle a bit")
+
+Fees are 2-3 cents, so quotes wider than 5 cents are rarely useful.
+
+## Common errors to avoid (learned from feedback)
+
+1. **Predicting decay when the book is flat.** Examples 3, 7, 8: all predicted decay
+   with 25+ minutes left and flat books, all realized zero. If the mid hasn't moved in
+   5+ bars, it won't move detectably in the next five minutes, even if theory says decay
+   exists.
+
+2. **Predicting drift after a goal when absorption is complete.** Example 7: goal at 62',
+   forecast at 65', book had been flat. The three-minute-old goal was already priced.
+   Check the last 5 bars, not the event 10 minutes ago.
+
+3. **Ignoring the bar count.** The single best predictor of realized delta = 0 is
+   "mid has been at this level for 5+ consecutive bars." Use this.
+
+4. **Not using the thin-book artifact signal.** Example 5 succeeded by recognizing
+   trades at 21c vs. mid at 19c. This is one of the few reliable non-zero signals.
+
+5. **Overestimating decay magnitude.** Even under 20 minutes, decay over five minutes
+   is 0.5-2c for most situations. Only in the final 10 minutes does it reach 2-4c.
+   And if the book is flat, it's zero regardless.
+
+6. **Predicting non-zero as a "default" because predicting zero feels timid.** The
+   feedback shows zero is correct more often than not. Be disciplined.
+
+## Prediction flowchart
+
+1. Count consecutive bars at current mid. If 5+, go to step 2. If fewer, check if
+   drift is ongoing (mid changed in last 3 bars); if yes, continue drift direction.
+
+2. Is there a thin-book artifact? (Last trade 2+ cents from mid, wide spread, one-sided
+   tape all on far side of mid.) If yes, predict drift toward trade price (+2 to +4c).
+
+3. How much time is left? If over 20 minutes, predict zero (unless artifact above).
+
+4. If under 20 minutes, is the book moving (mid changed in last 3-5 bars)? If no
+   (flat), predict zero. If yes, predict small decay (0.5-1.5c) in the direction
+   determined by score vs. ticker.
+
+5. If under 10 minutes and book is moving, predict 1-3c decay in the appropriate
+   direction.
+
+**Default answer when in doubt:** delta_cents = 0, half_width_cents = 2.5. This is
+frequently correct and will not be penalized if you're right. Predicting non-zero
+when the answer is zero costs skill points.
+Iteration 5: Accepted candidate (subsample score 3.9250000000000003 -> 4.0249999999999995); running full eval.
+Iteration 5: Valset score for new program: 0.4939583333333333 (coverage 240 / 240)
+Iteration 5: Val aggregate for new program: 0.4939583333333333
+Iteration 5: Individual valset scores for new program: {0: 0.5, 1: 0.475, 2: 0.5, 3: 0.475, 4: 0.5, 5: 0.475, 6: 0.525, 7: 0.55, 8: 0.5, 9: 0.55, 10: 0.475, 11: 0.5, 12: 0.475, 13: 0.5, 14: 0.5, 15: 0.5, 16: 0.44999999999999996, 17: 0.5, 18: 0.475, 19: 0.475, 20: 0.5, 21: 0.42499999999999993, 22: 0.5, 23: 0.44999999999999996, 24: 0.475, 25: 0.5, 26: 0.5, 27: 0.5, 28: 0.5, 29: 0.5, 30: 0.475, 31: 0.475, 32: 0.5, 33: 0.55, 34: 0.525, 35: 0.5, 36: 0.5, 37: 0.5, 38: 0.475, 39: 0.44999999999999996, 40: 0.5, 41: 0.475, 42: 0.5, 43: 0.5, 44: 0.5, 45: 0.5, 46: 0.475, 47: 0.5, 48: 0.5, 49: 0.5, 50: 0.5, 51: 0.525, 52: 0.5, 53: 0.5, 54: 0.525, 55: 0.525, 56: 0.5, 57: 0.5999999999999999, 58: 0.5, 59: 0.475, 60: 0.5, 61: 0.5, 62: 0.475, 63: 0.475, 64: 0.5, 65: 0.475, 66: 0.5, 67: 0.5750000000000001, 68: 0.525, 69: 0.5, 70: 0.5, 71: 0.5, 72: 0.5, 73: 0.475, 74: 0.55, 75: 0.5, 76: 0.525, 77: 0.5, 78: 0.475, 79: 0.475, 80: 0.5, 81: 0.44999999999999996, 82: 0.5, 83: 0.5, 84: 0.5, 85: 0.5, 86: 0.475, 87: 0.475, 88: 0.5, 89: 0.5, 90: 0.525, 91: 0.475, 92: 0.525, 93: 0.44999999999999996, 94: 0.5, 95: 0.5, 96: 0.5, 97: 0.5, 98: 0.525, 99: 0.525, 100: 0.5, 101: 0.5, 102: 0.5, 103: 0.5, 104: 0.5, 105: 0.44999999999999996, 106: 0.44999999999999996, 107: 0.475, 108: 0.475, 109: 0.5, 110: 0.475, 111: 0.5, 112: 0.5, 113: 0.475, 114: 0.5, 115: 0.525, 116: 0.5, 117: 0.5, 118: 0.5, 119: 0.0, 120: 0.5, 121: 0.5, 122: 0.5, 123: 0.5, 124: 0.5, 125: 0.525, 126: 0.5, 127: 0.525, 128: 0.5, 129: 0.475, 130: 0.5, 131: 0.5, 132: 0.5, 133: 0.5, 134: 0.5, 135: 0.525, 136: 0.44999999999999996, 137: 0.5, 138: 0.5, 139: 0.5, 140: 0.5, 141: 0.5, 142: 0.45, 143: 0.5750000000000001, 144: 0.475, 145: 0.5, 146: 0.5, 147: 0.5, 148: 0.5, 149: 0.5, 150: 0.5, 151: 0.5, 152: 0.5, 153: 0.475, 154: 0.5, 155: 0.5, 156: 0.5, 157: 0.5, 158: 0.5, 159: 0.5, 160: 0.5, 161: 0.5, 162: 0.5, 163: 0.5, 164: 0.5750000000000001, 165: 0.5, 166: 0.475, 167: 0.5, 168: 0.475, 169: 0.475, 170: 0.55, 171: 0.5, 172: 0.5, 173: 0.5, 174: 0.475, 175: 0.525, 176: 0.525, 177: 0.475, 178: 0.5, 179: 0.5, 180: 0.5, 181: 0.5, 182: 0.525, 183: 0.5, 184: 0.5, 185: 0.5, 186: 0.5, 187: 0.475, 188: 0.5, 189: 0.5, 190: 0.55, 191: 0.5, 192: 0.5, 193: 0.525, 194: 0.44999999999999996, 195: 0.5, 196: 0.5, 197: 0.5, 198: 0.525, 199: 0.475, 200: 0.5, 201: 0.55, 202: 0.5, 203: 0.475, 204: 0.44999999999999996, 205: 0.5, 206: 0.5, 207: 0.475, 208: 0.5, 209: 0.5, 210: 0.5750000000000001, 211: 0.44999999999999996, 212: 0.5, 213: 0.525, 214: 0.5, 215: 0.0, 216: 0.5, 217: 0.525, 218: 0.5, 219: 0.5, 220: 0.5, 221: 0.5, 222: 0.44999999999999996, 223: 0.55, 224: 0.5, 225: 0.5, 226: 0.475, 227: 0.475, 228: 0.5, 229: 0.5, 230: 0.5, 231: 0.5, 232: 0.5, 233: 0.5, 234: 0.5, 235: 0.5, 236: 0.5, 237: 0.5, 238: 0.475, 239: 0.475}
+Iteration 5: Objective aggregate scores for new program: {'skill': 0.4939583333333333, 'cost': 0.0}
+Iteration 5: New valset pareto front scores: {0: 0.5, 1: 0.475, 2: 0.525, 3: 0.475, 4: 0.5, 5: 0.525, 6: 0.55, 7: 0.6000000000000001, 8: 0.5, 9: 0.55, 10: 0.5499999999999999, 11: 0.5499999999999999, 12: 0.475, 13: 0.525, 14: 0.5, 15: 0.525, 16: 0.475, 17: 0.525, 18: 0.475, 19: 0.475, 20: 0.525, 21: 0.44999999999999996, 22: 0.525, 23: 0.65, 24: 0.475, 25: 0.5, 26: 0.515, 27: 0.5, 28: 0.5, 29: 0.525, 30: 0.475, 31: 0.475, 32: 0.525, 33: 0.5750000000000001, 34: 0.54, 35: 0.5, 36: 0.525, 37: 0.5, 38: 0.475, 39: 0.44999999999999996, 40: 0.525, 41: 0.5750000000000001, 42: 0.525, 43: 0.525, 44: 0.5, 45: 0.525, 46: 0.475, 47: 0.525, 48: 0.5, 49: 0.5, 50: 0.525, 51: 0.525, 52: 0.525, 53: 0.525, 54: 0.55, 55: 0.5750000000000001, 56: 0.5, 57: 0.5999999999999999, 58: 0.525, 59: 0.475, 60: 0.515, 61: 0.525, 62: 0.475, 63: 0.475, 64: 0.525, 65: 0.475, 66: 0.525, 67: 0.7500000000000002, 68: 0.525, 69: 0.525, 70: 0.5, 71: 0.5, 72: 0.55, 73: 0.5499999999999995, 74: 0.55, 75: 0.5, 76: 0.525, 77: 0.525, 78: 0.475, 79: 0.475, 80: 0.5, 81: 0.475, 82: 0.515, 83: 0.5, 84: 0.5, 85: 0.5, 86: 0.525, 87: 0.525, 88: 0.5, 89: 0.5, 90: 0.55, 91: 0.475, 92: 0.525, 93: 0.44999999999999996, 94: 0.525, 95: 0.5, 96: 0.5, 97: 0.5, 98: 0.54, 99: 0.54, 100: 0.55, 101: 0.55, 102: 0.525, 103: 0.525, 104: 0.5, 105: 0.475, 106: 0.44999999999999996, 107: 0.475, 108: 0.525, 109: 0.525, 110: 0.475, 111: 0.5, 112: 0.5, 113: 0.525, 114: 0.5, 115: 0.54, 116: 0.5, 117: 0.5, 118: 0.55, 119: 0.14999999999999997, 120: 0.5, 121: 0.5, 122: 0.525, 123: 0.5750000000000001, 124: 0.515, 125: 0.525, 126: 0.525, 127: 0.525, 128: 0.5, 129: 0.5, 130: 0.5, 131: 0.5, 132: 0.515, 133: 0.515, 134: 0.5, 135: 0.55, 136: 0.44999999999999996, 137: 0.525, 138: 0.5, 139: 0.525, 140: 0.525, 141: 0.525, 142: 0.525, 143: 0.5750000000000001, 144: 0.475, 145: 0.525, 146: 0.525, 147: 0.55, 148: 0.5, 149: 0.5, 150: 0.5249999999999989, 151: 0.54, 152: 0.5, 153: 0.485, 154: 0.55, 155: 0.5750000000000001, 156: 0.5, 157: 0.5, 158: 0.55, 159: 0.5, 160: 0.525, 161: 0.5, 162: 0.525, 163: 0.5, 164: 0.5750000000000001, 165: 0.5, 166: 0.525, 167: 0.55, 168: 0.485, 169: 0.5, 170: 0.55, 171: 0.5, 172: 0.5, 173: 0.5, 174: 0.5, 175: 0.525, 176: 0.55, 177: 0.5, 178: 0.5, 179: 0.5, 180: 0.5, 181: 0.525, 182: 0.6000000000000001, 183: 0.5, 184: 0.5, 185: 0.5, 186: 0.55, 187: 0.475, 188: 0.5, 189: 0.55, 190: 0.5750000000000001, 191: 0.5, 192: 0.5, 193: 0.525, 194: 0.55, 195: 0.5, 196: 0.5, 197: 0.525, 198: 0.5750000000000001, 199: 0.475, 200: 0.525, 201: 0.5750000000000001, 202: 0.525, 203: 0.5, 204: 0.525, 205: 0.525, 206: 0.5, 207: 0.475, 208: 0.5, 209: 0.525, 210: 0.6000000000000001, 211: 0.46499999999999997, 212: 0.5, 213: 0.5750000000000001, 214: 0.5, 215: 0.0, 216: 0.5, 217: 0.535, 218: 0.5, 219: 0.5, 220: 0.5, 221: 0.525, 222: 0.44999999999999996, 223: 1.0, 224: 0.525, 225: 0.515, 226: 0.475, 227: 0.475, 228: 0.515, 229: 0.525, 230: 0.525, 231: 0.525, 232: 0.525, 233: 0.525, 234: 0.525, 235: 0.5, 236: 0.5, 237: 0.515, 238: 0.475, 239: 0.475}
+Iteration 5: Objective pareto front scores: {'cost': 0.0, 'skill': 0.4975520833333334}
+Iteration 5: Valset pareto front aggregate score: 0.5138750000000003
+Iteration 5: Updated valset pareto front programs: {0: {0, 1, 2}, 1: {0, 1, 2}, 2: {0, 1}, 3: {0, 1, 2}, 4: {0, 1, 2}, 5: {0, 1}, 6: {0}, 7: {0}, 8: {1, 2}, 9: {0, 2}, 10: {0}, 11: {0, 1}, 12: {0, 1, 2}, 13: {0}, 14: {1, 2}, 15: {0, 1}, 16: {0, 1}, 17: {0}, 18: {1, 2}, 19: {1, 2}, 20: {1}, 21: {1}, 22: {1}, 23: {0}, 24: {2}, 25: {2}, 26: {0}, 27: {2}, 28: {0, 1, 2}, 29: {0}, 30: {0, 1, 2}, 31: {0, 1, 2}, 32: {0, 1}, 33: {0}, 34: {0, 1}, 35: {2}, 36: {1}, 37: {1, 2}, 38: {2}, 39: {2}, 40: {1}, 41: {0, 1}, 42: {0, 1}, 43: {0, 1}, 44: {0, 2}, 45: {0}, 46: {2}, 47: {0}, 48: {0, 1, 2}, 49: {2}, 50: {0}, 51: {1, 2}, 52: {0}, 53: {0, 1}, 54: {0, 1}, 55: {0}, 56: {2}, 57: {2}, 58: {0, 1}, 59: {2}, 60: {0}, 61: {0}, 62: {0, 1, 2}, 63: {0, 1, 2}, 64: {1}, 65: {0, 1, 2}, 66: {0}, 67: {1}, 68: {2}, 69: {0}, 70: {0, 2}, 71: {2}, 72: {0}, 73: {0}, 74: {2}, 75: {2}, 76: {0, 1, 2}, 77: {0}, 78: {1, 2}, 79: {1, 2}, 80: {0, 2}, 81: {0}, 82: {0}, 83: {1, 2}, 84: {0, 1, 2}, 85: {1, 2}, 86: {0}, 87: {0, 1}, 88: {0, 2}, 89: {2}, 90: {0, 1}, 91: {1, 2}, 92: {1, 2}, 93: {2}, 94: {0, 1}, 95: {2}, 96: {0, 1, 2}, 97: {1, 2}, 98: {0}, 99: {0}, 100: {0}, 101: {0}, 102: {0, 1}, 103: {0, 1}, 104: {2}, 105: {1}, 106: {1, 2}, 107: {2}, 108: {0}, 109: {0}, 110: {1, 2}, 111: {2}, 112: {0, 2}, 113: {0}, 114: {2}, 115: {0}, 116: {0, 1, 2}, 117: {1, 2}, 118: {0}, 119: {0}, 120: {0, 1, 2}, 121: {0, 1, 2}, 122: {1}, 123: {0}, 124: {0}, 125: {0, 1, 2}, 126: {0}, 127: {2}, 128: {0, 1, 2}, 129: {1}, 130: {2}, 131: {2}, 132: {0}, 133: {0}, 134: {2}, 135: {0}, 136: {0, 1, 2}, 137: {0}, 138: {1, 2}, 139: {0, 1}, 140: {0, 1}, 141: {0, 1}, 142: {0}, 143: {1, 2}, 144: {0, 1, 2}, 145: {0}, 146: {1}, 147: {0}, 148: {0, 1, 2}, 149: {1, 2}, 150: {0, 1}, 151: {0}, 152: {0, 1, 2}, 153: {1}, 154: {0}, 155: {0}, 156: {0, 1, 2}, 157: {2}, 158: {1}, 159: {2}, 160: {0}, 161: {0, 2}, 162: {0, 1}, 163: {1, 2}, 164: {1, 2}, 165: {2}, 166: {0, 1}, 167: {0}, 168: {0}, 169: {0}, 170: {1, 2}, 171: {2}, 172: {0, 2}, 173: {2}, 174: {0}, 175: {1, 2}, 176: {1}, 177: {0, 1}, 178: {0, 2}, 179: {2}, 180: {0, 1, 2}, 181: {0}, 182: {0}, 183: {2}, 184: {0, 1, 2}, 185: {0, 2}, 186: {0}, 187: {0, 1, 2}, 188: {2}, 189: {0}, 190: {0}, 191: {1, 2}, 192: {0, 1, 2}, 193: {0, 1, 2}, 194: {1}, 195: {2}, 196: {2}, 197: {1}, 198: {0}, 199: {2}, 200: {0}, 201: {0, 1}, 202: {0}, 203: {1}, 204: {0, 1}, 205: {0, 1}, 206: {2}, 207: {1, 2}, 208: {0, 1, 2}, 209: {0, 1}, 210: {1}, 211: {1}, 212: {2}, 213: {0}, 214: {1, 2}, 215: {0, 1, 2}, 216: {0, 1, 2}, 217: {0}, 218: {2}, 219: {2}, 220: {0, 1, 2}, 221: {0}, 222: {0, 1, 2}, 223: {1}, 224: {1}, 225: {0, 1}, 226: {0, 1, 2}, 227: {0, 1, 2}, 228: {1}, 229: {0, 1}, 230: {0}, 231: {0, 1}, 232: {1}, 233: {0}, 234: {0}, 235: {1, 2}, 236: {0, 1, 2}, 237: {1}, 238: {0, 1, 2}, 239: {0, 1, 2}}
+Iteration 5: Updated objective pareto front programs: {'cost': {0, 1, 2}, 'skill': {1}}
+Iteration 5: Best valset aggregate score so far: 0.4975520833333334
+Iteration 5: Best program as per aggregate score on valset: 1
+Iteration 5: Best score on valset: 0.4975520833333334
+Iteration 5: Linear pareto front program index: 1
+Iteration 5: New program candidate index: 2

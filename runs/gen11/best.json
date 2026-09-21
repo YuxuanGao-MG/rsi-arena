@@ -1,0 +1,160 @@
+{
+  "name": "kalshi-horizon-5m+gen11",
+  "description": "Predicts this contract's mid price 5 minutes ahead.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes: delta_cents (how many cents it moves) and half_width_cents (half the\nwidth of a two-sided quote you would stand behind).\n\n## What moves prices on this horizon\n\n**Goals and cards the market hasn't absorbed yet.** A goal 2-3 minutes ago may still be\nmoving the price as the book digests it. Look at candlestick patterns: a spike followed\nby drift means absorption is ongoing.\n\n**Time decay.** When a team is behind and the clock runs, their win probability decays\ntoward zero. The rate accelerates as time runs out: -1c per 5 minutes with 30 minutes\nleft becomes -2 to -4c per 5 minutes with 15 minutes left. A draw contract decays\ntoward certainty (100) when the leading team protects their lead late.\n\n**Thin books drifting.** A single large order moves the mid, then it drifts back over\nminutes. Recent trades show if this is happening: one-sided flow at a new level that\ndoesn't hold.\n\n**Score changes.** Not just that a goal happened, but whether the price has fully\nadjusted. A trailing team's contract drops when they concede, but may continue drifting\ndown for several minutes after.\n\n## What does not move prices\n\nYour view on team quality. The market prices that already. A yellow card in minute 15\nwhen the score is 0-0. Substitutions unless they coincide with other events.\n\n## Critical facts about these contracts\n\n**Ticker format:** KXEPLGAME-[DATE][HOMECODE][AWAYCODE]-[WINNING_TEAM_CODE]\n\nThe last segment tells you which team the contract pays on. KXEPLGAME-26SEP06EVEMUN-MUN\nis a contract on Manchester United (MUN) winning. If United leads 1-0, this contract is\nin the money and rises with time decay. If Everton leads 1-0, this contract decays\ntoward zero.\n\n**Always check:** Does the score favor the contract team or oppose it? A 0-1 scoreline\nwhere away is winning means very different things for a home-team contract versus an\naway-team contract.\n\n## Time decay: the dominant driver and most common error\n\n**Time decay is NOT always negligible.** The feedback shows harnesses constantly\nunderestimate decay magnitude. With 25 minutes left and trailing by one goal, decay\nis real and measurable over five minutes, not ignorable noise.\n\n**Time decay is NOT linear.** It accelerates as time runs out:\n- 40+ minutes left: ~0-0.5c per 5 minutes (often undetectable)\n- 25-35 minutes left: ~0.5-1.5c per 5 minutes (real but gradual)\n- 15-25 minutes left: ~1-3c per 5 minutes (the main event)\n- Under 15 minutes: ~2-5c per 5 minutes (rapid collapse)\n\n**But:** Example 8 shows that even at 65' (25 min left), PHI trailing 0-1, predicted\n-2c decay, the price was **flat** over five minutes. Why? Because five minutes is short\nrelative to 25 minutes remaining. The decay that happens over five minutes when 25\nminutes remain is small enough to be swamped by bid-ask noise, order flow, and the\ndiscrete nature of tick sizes.\n\n**The key insight:** Time decay over a five-minute window is only detectable when\nurgency is high (under 20 minutes) OR when the book is thin/stable enough that sub-cent\nforces can move the mid. At 65' with 25 minutes left, even a trailing team's decay\nmight be only 0.3-0.8c over five minutes\u2014easily masked by a 1-cent spread and\nnormal flow.\n\n**Revised heuristic for time decay:**\n- Over 30 minutes left: predict zero decay unless the book is drifting already\n- 20-30 minutes left: predict 0-1c decay for trailing teams, only if book is quiet\n- 15-20 minutes left: predict 1-2c decay for trailing teams\n- 10-15 minutes left: predict 2-4c decay for trailing teams\n- Under 10 minutes: predict 3-6c decay for trailing teams\n\n**Critical:** If the book has been flat for 10+ bars and you're outside the final\n20 minutes, predict zero even if theory says decay exists. The five-minute window\nis too short to reliably see it.\n\n## When to predict zero (and when NOT to)\n\n**Predict zero when:**\n- Score is level and more than 25 minutes remain (no decay driver, no recent shock)\n- Book has been flat for 10+ minutes with balanced two-way flow\n- Early in the match (first 20 minutes, 0-0) with a stable book\n- The contract team is trailing but more than 30 minutes remain and book is stable\n\n**DO NOT predict zero when:**\n- A goal happened in the last 5-10 minutes and candlesticks show ongoing drift\n- The contract team is trailing with under 20 minutes left (decay is real)\n- Recent trades show one-sided flow at a new level (ongoing absorption or drift-back)\n- The book just moved and hasn't stabilized (multiple bars at different levels)\n\n**Common error from feedback:** Predicting zero \"because the book looks stable\" when\nactually the book has been DRIFTING slowly over 10-20 bars. Stable means the mid is\nunchanged for 5+ bars, not that it moved gradually and stopped one minute ago.\n\n## Thin books and quote artifacts\n\n**Example 4 teaches a critical lesson:** The exchange mid was 28c but the last trade\nwas 32c and all recent trades were at 31-32c. The harness correctly predicted +2.5c\ndrift back toward the trade price (realized +3.5c).\n\n**When trade price and mid diverge:**\n- Recent trades at 32c, mid at 28c with 6-cent spread: the mid is a quote artifact\n- Predict drift toward the trade price, not the mid (but remember: delta_cents applies\n  to the exchange mid, so you predict the mid moving toward where trades are)\n- Wide spreads (4+ cents) on low volume often mean the mid is unreliable\n\n**How to spot a thin book:**\n- Spread above 3 cents\n- Candlestick volume near zero for multiple bars\n- Last trade price far from mid\n- When these align, the mid is a phantom\u2014predict where it will drift to match reality\n\n## Early-match stability vs. late-match urgency\n\n**First 30 minutes, 0-0 or close score:** Even with volume and flow, price moves are\noften mean-reverting noise. Example 3 and Example 7 show early-game predictions of\nzero being correct even when there's moderate trading activity. Unless there's a\nclear post-goal drift or one-sided flow that persists across multiple bars, predict\nzero early.\n\n**Final 20 minutes, any score gap:** Price moves become directional. Decay dominates\nfor trailing teams, and even leading teams' \"lock it in\" premium grows. The same\n1-goal gap that does nothing at 60' can drive 2-3c over five minutes at 75'.\n\n## The \"flat for how long?\" test\n\nBefore predicting zero, count how many consecutive bars the mid has been at the\ncurrent level:\n- 1-2 bars: too soon, might still be drifting\n- 3-5 bars: probably stable if flow is balanced\n- 6+ bars: definitely stable, predict zero unless time decay is urgent (under 20 min)\n\nExample 1: 17 flat bars at 60.5c after halftime, balanced flow \u2192 correctly predicted zero.\n\nExample 8: 12 bars at ~50.5c, but still 25 min left \u2192 predicted -2c, realized 0c.\nThe book WAS flat and decay over five minutes was undetectable.\n\n## Absorption after a goal\n\nA goal causes a spike (5-15c jump), then the price drifts over 5-15 minutes as the\nbook absorbs the new information. \n\n**How to tell if absorption is ongoing:**\n- Spike visible in candlesticks 3-10 minutes ago\n- Mid has been drifting (changing by 0.5-1c every few bars) since\n- Trade flow is one-sided (takers keep lifting the same side)\n\n**How to tell if absorption is complete:**\n- Mid has been flat for 5+ bars\n- Trade flow is balanced (yes and no takers alternating)\n- Volume has returned to normal levels\n\nExample 1: Goal at ~45', halftime break, then 17 flat bars at 60.5c \u2192 absorption\ncomplete, correctly predicted zero.\n\n## Checking your own prediction\n\nBefore you finalize:\n\n1. **Did I check the ticker?** Which team does this contract pay on?\n2. **Does the score favor or oppose that team?** Home 1 - Away 0, ticker ends in\n   away-team code \u2192 contract is LOSING.\n3. **How much time is left?** Under 20 minutes = decay matters. Over 30 = probably not.\n4. **Has the mid been flat for 5+ bars?** If yes and no urgency, predict zero.\n5. **Is there a wide spread with trades far from mid?** If yes, predict drift toward\n   trade price.\n6. **Did a goal happen in the last 10 minutes?** Check if drift is ongoing (changing\n   mid across bars) or complete (flat for 5+ bars).\n7. **Am I predicting decay in the right direction?** Trailing team \u2192 negative.\n   Leading team or draw when leading \u2192 positive. Level score \u2192 zero.\n\n## Your two numbers\n\n**Delta_cents: where it goes, not where it is.** Zero is real and often right when\nnothing is happening. But if the game state is actively driving the price (time decay\nwith under 20 minutes left, post-goal drift still ongoing), you must call it. The\nerror in Example 8 was predicting -2c when the book had been flat for 12 bars with\n25 minutes left\u2014the five-minute window was too short to see that decay.\n\n**Half_width_cents: what you'd actually trade.** Two cents means you buy at your\nprediction minus 2 and sell at plus 2, and you honor both sides. If you're unsure,\nwiden the quote, but remember: fees are 2-3 cents, so a 10-cent-wide market is too\nwide to be useful. Quote 1.5-3 cents when you're confident, 3-5 cents when uncertain,\nwider only when genuinely lost.\n\n## Common errors to avoid\n\n1. **Predicting decay when the book is flat and time isn't urgent.** Example 8: -2c\n   predicted at 65' with a flat book, realized 0c. If the mid has been stable for\n   10+ bars and more than 25 minutes remain, predict zero.\n\n2. **Predicting zero when drift is ongoing.** If the mid has changed over the last\n   3-5 bars, it's probably still moving. Don't call it stable prematurely.\n\n3. **Ignoring the trade tape when the mid is wide.** Example 4: trades at 32c, mid\n   at 28c with a 6-cent spread. The mid is fake; predict drift to 32c.\n\n4. **Overestimating decay magnitude.** Even under 20 minutes, decay over five minutes\n   is 1-3c for most situations, not 5-10c. Only in the final 10 minutes does it\n   accelerate to 3-6c per five-minute window.\n\n5. **Forgetting to check ticker vs. score.** If the contract is on the trailing team,\n   decay is negative. If on the leading team, decay is positive. Get this wrong and\n   you predict the opposite of reality.\n\n6. **Predicting zero \"by default.\"** Zero is not a fallback; it's a specific prediction\n   that the mid will be unchanged. Only predict it when you have evidence: flat book,\n   balanced flow, no urgency, no ongoing drift. Otherwise, call the direction even if\n   small.",
+  "config": {
+    "model": "anthropic/claude-opus-5",
+    "temperature": null,
+    "max_tokens": null,
+    "max_usd": 0.2,
+    "max_calls": 200
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "analyze_context",
+        "output_key": "context",
+        "skip_if": null,
+        "prompt": "Game: {{game}}\nRecent minute bars: {{path}}\n\nAnalyze:\n1. Time remaining: what minute is it, how many minutes left (90min match, account for period)\n2. Recent price momentum: compare last 3-5 minute bars - is price trending up, down, or stable?\n3. Goal timing: when was the most recent goal (check game events and candlestick spikes)? Has it been >5 min since a goal (absorbed) or <3 min (still spiking)?\n4. Score situation: who's winning, and does time decay favor them or opponent?\n\nBe specific with numbers and timing.",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 0,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "minutes_remaining": {
+              "type": "number",
+              "description": "Approximate minutes left in match"
+            },
+            "recent_trend": {
+              "type": "string",
+              "enum": [
+                "rising",
+                "falling",
+                "stable",
+                "post_spike_drift"
+              ],
+              "description": "Price momentum from last few minute bars"
+            },
+            "minutes_since_last_goal": {
+              "type": "number",
+              "description": "Minutes since most recent goal, or 999 if no recent goal"
+            },
+            "time_decay_direction": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "neutral"
+              ],
+              "description": "Does running clock favor this outcome (up) or opponent (down) or neutral"
+            },
+            "reasoning": {
+              "type": "string",
+              "description": "Brief explanation of the analysis"
+            }
+          },
+          "required": [
+            "minutes_remaining",
+            "recent_trend",
+            "minutes_since_last_goal",
+            "time_decay_direction",
+            "reasoning"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "prediction",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nCurrent book: {{quote}}\nGame state: {{game}}\nRecent prints: {{tape}}\nContext analysis: {{context}}\n\nForecast the 5-minute price move. Key patterns to consider:\n\n1. TIME DECAY (most reliable): If <20 minutes remain and one team leads, the trailing team's price decays -1 to -3c per 5min. The leading team's price rises +1 to +3c per 5min. This is continuous and predictable.\n\n2. POST-GOAL MEAN REVERSION: If a goal was scored <3 minutes ago (check spike in candlesticks), the price likely spiked and will drift back -1 to -2c as the book digests.\n\n3. MOMENTUM CONTINUATION: If price has been trending consistently for 5+ minutes, it may continue another +1 to -1c unless there's a clear reason to reverse.\n\n4. STALE BOOK DRIFT: On very thin books (small recent volume), a single large order may have moved the mid artificially; it drifts back -1 to +1c.\n\n5. QUIET PERIODS: If none of the above apply (early in match, stable score, no recent action), predict 0.\n\nBe willing to predict non-zero moves when patterns are clear. Time decay in final 20 minutes is especially reliable. Quote tighter spreads (1-2c half-width) when confident in the pattern, wider (3-4c) when uncertain.\n\nYour forecast is the CHANGE in cents, not the absolute price. Negative for down, positive for up.",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 0,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "delta_cents": {
+              "type": "number",
+              "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price \u2014 state the change."
+            },
+            "half_width_cents": {
+              "type": "number",
+              "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents. Narrow (1-2c) when pattern is clear, wide (3-4c) when uncertain."
+            },
+            "confidence": {
+              "type": "number",
+              "description": "0-1. How sure, given how thin and noisy this book is."
+            },
+            "driver": {
+              "type": "string",
+              "description": "The one thing you expect to move it, or why nothing will. Name the specific pattern."
+            },
+            "falsifier": {
+              "type": "string",
+              "description": "What would show this call was wrong, before settlement."
+            }
+          },
+          "required": [
+            "delta_cents",
+            "half_width_cents",
+            "confidence",
+            "driver",
+            "falsifier"
+          ],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
