@@ -79,8 +79,10 @@ _cap = s.per_fixture or 10 ** 6
 check("windows per match respect --per-fixture", max(groups.values()) <= _cap,
       f"max {max(groups.values())}, cap {s.per_fixture or 'none'}")
 # Measured, not assumed: gen5 paid $12.08 for 357 windows that reached the model.
-# The docs said $0.013 a window for a year, which was a different model.
-PER_WINDOW = 0.034
+# The docs said $0.013 a window for a year, which was a different model. One
+# number, on the settings object, so the run's reserve and this prediction
+# cannot drift apart again.
+PER_WINDOW = s.window_usd
 _probe = min(s.cascade or len(tg), len(tg)) * (s.per_fixture or 8)
 # Priced against what is already owned. The incumbent's half of a generation is
 # the same harness on the same windows every time until something is promoted,
@@ -90,19 +92,32 @@ from rsi_arena.loop.generation import fingerprint
 _board = Scoreboard.load(Path(s.run_dir).parent / SCOREBOARD) if s.reuse_scores else Scoreboard()
 _inc = fingerprint(h)
 _owned = sum(1 for w in hold if _board.get(_inc, w) is not None) if len(_board) else 0
-# max_metric_calls plus one full valset evaluation: GEPA's stopper is checked
-# between steps, so an accepted candidate near the line still gets its full
-# eval - gen10 spent 800 calls of a 600 budget that way, and the ceiling
-# (rightly) cut it mid-probe for a $53 incomplete. Charge the overrun.
-_cold = ((_probe + len(hold)) * 2 + s.max_metric_calls + s.valset) * PER_WINDOW
+# Priced the way the run spends it, which is in three shares.
+#
+# The judgment - probe and held-out on the candidate - is reserved before the
+# search at the most the gate lets a candidate cost, because a candidate that
+# costs more is rejected on cost at the probe and never reaches held-out. The
+# search gets max_metric_calls plus one valset pass at the incumbent's rate,
+# and the run stops it on dollars, so this share is a cap on it rather than a
+# guess about it. The incumbent's own half is whatever the scoreboard does not
+# already own. gen11 priced all three at the incumbent's rate, in one pot,
+# and the pot ran dry $6.50 into a $22 held-out set.
+_judge = (_probe + len(hold)) * PER_WINDOW * s.max_cost_ratio
+_search = (s.max_metric_calls + s.valset) * PER_WINDOW
+_cold = (_probe + len(hold)) * PER_WINDOW + _judge + _search
 _next = _cold - _owned * PER_WINDOW
 check("a generation has a ceiling", s.max_generation_usd > 0, f"${s.max_generation_usd:.2f}")
+check("the judgment fits under the ceiling", _judge < s.max_generation_usd,
+      f"reserve ${_judge:.0f} (x{s.max_cost_ratio:.1f}) under ${s.max_generation_usd:.0f}; "
+      f"the workflow raises the ceiling to what is predicted")
 # Reported, not asserted. Whether the money is there is the caller's question and
 # it can answer it better than this can — it knows the balance and what the day
 # has already spent. What this knows is what the split costs, and it is the only
 # thing that does.
-print(f"  COST  about ${_next:.0f} to run ({len(_board)} answers on file save "
-      f"${_owned * PER_WINDOW:.0f} of a ${_cold:.0f} cold generation)")
+print(f"  COST  about ${_next:.0f} to run: ${_judge:.0f} reserved to judge, ${_search:.0f} "
+      f"for the search, ${(_probe + len(hold) - _owned) * PER_WINDOW:.0f} for the baseline "
+      f"({len(_board)} answers on file save ${_owned * PER_WINDOW:.0f} of a ${_cold:.0f} "
+      f"cold generation)")
 _emit = os.environ.get("GITHUB_OUTPUT")
 if _emit:
     with open(_emit, "a") as fh:

@@ -115,7 +115,8 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
            candidate_holdout: list[Rollout], incumbent_holdout: list[Rollout],
            max_cost_ratio: float = 2.0, seed: int = 0,
            unchanged: bool = False, min_groups: int = MIN_GROUPS,
-           stopped_early: bool = False, exhausted: bool = False) -> Decision:
+           stopped_early: bool = False, exhausted: bool = False,
+           stop_reason: str = "", incomplete: str = "") -> Decision:
     """Promote a candidate, or say why not.
 
     ``unchanged`` is for the case the first real run hit: GEPA's best was the
@@ -136,6 +137,13 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         return Decision(accepted=False, holdout=hold, train=train,
                         reasons=["the search returned the incumbent unchanged; "
                                  "nothing was proposed to gate"])
+    if incomplete:
+        # Held-out was never bought - not refused mid-way, never started - so
+        # there is no comparison, fabricated or otherwise. The search's
+        # candidates were scored in full and belong in the archive; only the
+        # judgment is missing, and the sentence says which.
+        return Decision(accepted=False, holdout=hold, train=train,
+                        reasons=[f"incomplete: {incomplete}"])
     if exhausted:
         # Running out of money and being rejected by the cascade both stop the
         # run before held-out, and for a while they produced the same sentence.
@@ -156,7 +164,8 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         return Decision(accepted=False, holdout=hold, train=train,
                         reasons=[f"the cascade rejected it on {train.get('groups', 0)} "
                                  f"train matches ({train.get('diff', 0.0):+.3f}), so "
-                                 f"held-out was never paid for"])
+                                 f"held-out was never paid for"
+                                 + (f": {stop_reason}" if stop_reason else "")])
     # Per side, not pooled across both: a candidate that is 40% refusals against
     # a clean incumbent averages to 20% and would slip a combined threshold,
     # while being exactly the comparison the guard exists to refuse.

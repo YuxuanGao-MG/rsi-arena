@@ -34,6 +34,12 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
         #: the one chokepoint every candidate evaluation passes through.
         self.progress = progress
         self.model_choices = tuple(model_choices)
+        #: What the search is paying a window, over windows it actually ran.
+        #: Candidates are not priced like the incumbent - a second prompt step
+        #: is 1.7x, a model swap is 14x either way - and the dollar stopper
+        #: needs the going rate, not the baseline's.
+        self._fresh_usd = 0.0
+        self._fresh_windows = 0
         # Resolved once. The tools prompt needs to know what was *not* called as
         # much as what was, and asking the topic per trajectory would cost the
         # question set each time.
@@ -68,11 +74,20 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
                                          fingerprint=fp))
             if self.memo is not None and fp:
                 self.memo.absorb(fp, rollouts)
+            for r in rollouts:
+                if r.run is not None:
+                    self._fresh_usd += r.run.cost_usd
+                    self._fresh_windows += 1
         return EvaluationBatch(
             outputs=[_as_dict(r.output) for r in rollouts],
             scores=[r.outcome.value for r in rollouts],
             trajectories=[self._trajectory(r) for r in rollouts] if capture_traces else None,
             objective_scores=[r.outcome.objectives or {"value": r.outcome.value} for r in rollouts])
+
+    @property
+    def rate(self) -> float:
+        """Dollars a window the search has been paying; zero until it has run one."""
+        return self._fresh_usd / self._fresh_windows if self._fresh_windows else 0.0
 
     @staticmethod
     def _trajectory(r: Rollout) -> dict[str, Any]:

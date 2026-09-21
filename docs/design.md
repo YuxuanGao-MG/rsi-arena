@@ -91,6 +91,25 @@ fully solve: even all 485 matches as held-out would only resolve 0.007. What
 closes the gap is evidence accumulated across generations, which is what the
 archive is for, not a larger single experiment.
 
+### The judgment is paid for before the search spends (2026-09-21)
+
+gen11 spent $64.48 of a $64.26 ceiling and produced no verdict. The ceiling
+was one pot priced at the incumbent's 3.3 cents a window; the search ran on
+candidates that carried a second prompt step at 5.5 cents, the cascade paid at
+that price too, and held-out got $6.50 of the $22 it needed. 339 of 400
+windows scored as silence and the gate refused to read the comparison. The
+money was short by about $8, and the order of payment turned $8 into $64.
+
+The pot is now split before the search sees it (`loop/budget.py`). Once the
+baseline is scored, judging a candidate is priced at the incumbent's measured
+rate over probe and held-out, at the most the gate lets a candidate cost
+(`max_cost_ratio`, 2x) - and the cascade now rejects on cost at the probe, so
+nothing that reaches held-out costs more than was kept back for it. The search
+gets the remainder and stops on dollars, one accepted candidate early, at the
+rate it is actually paying. Held-out is bought whole or not at all. Preflight
+prices the same three shares; the workflow's margin drops from 1.35 to 1.1
+because two of the three are now caps rather than guesses.
+
 ### The model is a bigger lever than the harness, so far
 
 Measured on the same sixty-eight held-out windows, under the corrected metric:

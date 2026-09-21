@@ -21,6 +21,8 @@ from .harness import Harness, OpenRouter, SyncLLM
 from .loop import (ARCHIVE, SCOREBOARD, Archive, Entry, Generation, Progress, Scoreboard, Rollout, Settings, TaskAdapter, accept,
                    evaluate, from_gepa_state, lineage, probe_sample, reflection_templates,
                    render_lineage, split_by_group, summarise, three_way_split)
+from .loop.budget import (SpendStopper, cascade_verdict, fresh_rate, holdout_shortfall,
+                          judgment_reserve)
 from .loop.gate import MAX_UNSCORED
 from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
 from .topics import TOPICS, load_topic
@@ -68,6 +70,9 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
                     help="a probe below this is rejected without confirming")
     ap.add_argument("--max-generation-usd", type=float, default=d.max_generation_usd,
                     help="a backstop on the whole generation; 0 removes it")
+    ap.add_argument("--window-usd", type=float, default=d.window_usd,
+                    help="dollars a window before anything is measured; prices the "
+                         "judgment reserve when the baseline reports no cost")
 
 
 def _settings(args: argparse.Namespace) -> Settings:
@@ -351,9 +356,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         # cannot afford its own baseline has not produced a weak result, it has
         # produced no result, and the difference has to be recorded rather than
         # inferred.
-        gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits,
-                   "spent_usd": round(llm.spent_usd, 4),
-                   "budget_usd": s.max_generation_usd or None, "exhausted": True}
+        gen.llm.update({"calls": llm.calls, "cache_hits": llm.cache_hits,
+                        "spent_usd": round(llm.spent_usd, 4),
+                        "budget_usd": s.max_generation_usd or None, "exhausted": True})
         gen.decision = {"accepted": False, "reasons": [
             f"the budget went in the baseline: ${llm.spent_usd:.2f} of "
             f"${s.max_generation_usd:.2f} before the search began. Nothing was "
@@ -366,6 +371,40 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         log(f"budget exhausted during the baseline (${llm.spent_usd:.2f} of "
             f"${s.max_generation_usd:.2f}). Stopping before the search, because a "
             f"baseline that is half refusals is not a baseline.")
+        print("INCOMPLETE " + gen.decision["reasons"][0])
+        return 0
+
+    # The judgment is paid for before the search spends.
+    #
+    # `loop/budget.py` has the argument; gen11 is the evidence. The ceiling is
+    # split here into what judging a candidate can cost - the incumbent's
+    # measured rate, over probe and held-out, at the most the gate lets a
+    # candidate cost - and what is left for the search, which stops on dollars.
+    # A ceiling that cannot cover the judgment at all is found out now, for
+    # nothing, rather than after the search has spent it.
+    reserve = judgment_reserve(base_train + base_hold, len(probe) + len(hold),
+                               s.max_cost_ratio, s.window_usd)
+    ceiling = s.max_generation_usd or None
+    search_ceiling = (ceiling - reserve.usd) if ceiling else None
+    gen.llm = {"reserved_usd": round(reserve.usd, 2), "reserve": reserve.describe(),
+               "search_ceiling_usd": round(search_ceiling, 2) if search_ceiling else None}
+    log(f"  reserved {reserve.describe()}")
+    if ceiling and ceiling - llm.spent_usd < reserve.usd:
+        left = ceiling - llm.spent_usd
+        gen.llm.update({"calls": llm.calls, "cache_hits": llm.cache_hits,
+                        "spent_usd": round(llm.spent_usd, 4), "budget_usd": ceiling,
+                        "exhausted": llm.over_budget})
+        gen.decision = {"accepted": False, "reasons": [
+            f"incomplete: the ceiling cannot pay for a verdict. Judging a candidate "
+            f"reserves {reserve.describe()}, and ${left:.2f} of ${ceiling:.2f} remains "
+            f"after the baseline. Nothing was searched, because a search whose winner "
+            f"cannot be judged is the generation gen11 already paid for."]}
+        gen.save()
+        asyncio.run(llm.close())
+        beat.done("incomplete", reason="the ceiling cannot pay for a verdict",
+                  spent_usd=round(llm.spent_usd, 2))
+        log(f"the ceiling cannot pay for a verdict: {reserve.describe()}; "
+            f"${left:.2f} remains. Stopping before the search.")
         print("INCOMPLETE " + gen.decision["reasons"][0])
         return 0
 
@@ -425,6 +464,18 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                spent_usd=round(llm.spent_usd, 2))
     adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency, memo=memo,
                           progress=beat, model_choices=s.model_choices)
+    # The search's share of the ceiling, enforced in dollars. GEPA's own stopper
+    # counts calls, and calls are not money once candidates may change their
+    # plan or their model; and it is consulted between iterations, after an
+    # accepted candidate has already been scored on the whole valset. So the
+    # line is one iteration early: stop when one more accepted candidate, at
+    # what the search is actually paying a window, would eat into the reserve.
+    stopper = (SpendStopper(llm, search_ceiling,
+                            lookahead_windows=len(valset) + 2 * s.minibatch,
+                            rate_of=adapter, fallback_rate=reserve.rate)
+               if search_ceiling is not None else None)
+    if search_ceiling is not None:
+        log(f"  the search may spend up to ${search_ceiling:.2f}; the rest is the reserve")
     result = gepa.optimize(
         seed_candidate=seed_components, trainset=train, valset=valset, adapter=adapter,
         reflection_lm=SyncLLM(llm, s.reflection_model),
@@ -439,6 +490,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         # itself did not run until gen7. Bounded by max_merge_invocations and
         # the same call budget as everything else.
         use_merge=True, max_merge_invocations=3,
+        stop_callbacks=[stopper] if stopper is not None else None,
         run_dir=str(run_dir / "gepa"), seed=s.seed, raise_on_exception=False,
         # Only when someone is watching. GEPA raises ImportError if tqdm is
         # missing and the bar is asked for, and tqdm is not a declared
@@ -454,6 +506,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                        "best_idx": result.best_idx,
                        "best_train_value": round(result.val_aggregate_scores[result.best_idx], 4)})
     log(f"search: {gen.search['candidates']} candidates, best mean value {gen.search['best_train_value']:.3f}")
+    if stopper is not None and stopper.fired:
+        gen.search["stopped_for_money"] = stopper.describe()
+        log(f"  {stopper.describe()}")
 
     # Cascade: a cheap look before the expensive one.
     #
@@ -467,6 +522,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # look properly is peeking, and the held-out split exists so that nothing
     # the optimizer touches can reach it.
     stopped_early = False
+    stop_reason = ""
     cand_train: list = []
     cand_hold: list = []
     if s.cascade > 0:
@@ -482,30 +538,39 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                - task.statistic([r.outcome for r in base_train]))
         log(f"  cascade: {len(probe)} windows over {len(probe_groups)} matches, "
             f"{gap:+.3f} against the incumbent")
-        # A candidate that mostly cannot run has nothing to confirm. gen7's
-        # rewrite failed every probe window, which pooled to silence, which beat
-        # an incumbent below silence - so the cascade waved a broken harness
-        # through to a twelve-dollar held-out evaluation whose only possible
-        # verdict was the fabrication guard's refusal. The gate's threshold,
-        # applied here, keeps the money.
-        unscored = sum(1 for r in cand_train if not r.outcome.details.get("scored"))
-        if unscored / max(1, len(cand_train)) > MAX_UNSCORED:
-            log(f"  stopping here: {unscored} of {len(cand_train)} probe windows never "
-                f"ran; held-out would be paying to confirm a broken harness")
-            stopped_early = True
-        elif gap < s.cascade_floor:
-            log(f"  stopping here: {gap:+.3f} is below {s.cascade_floor:+.3f}, and "
-                f"held-out would only confirm it")
-            stopped_early = True
+        # Broken, worse, or too dear: each is known from the probe, and each
+        # would only be confirmed by held-out at five times the price. The
+        # cost check is the gate's own, asked early, and it is what makes the
+        # reserve sufficient: nothing reaching held-out costs more than was
+        # kept back for it.
+        why = cascade_verdict(cand_train, base_train, gap=gap, floor=s.cascade_floor,
+                              max_unscored=MAX_UNSCORED, max_cost_ratio=s.max_cost_ratio)
+        if why:
+            log(f"  stopping here: {why}")
+            stopped_early, stop_reason = True, why
     else:
         cand_train = _bench(task, candidate, train, llm, s,
                             memo=memo, fingerprint=gen.candidate_fingerprint)
 
     exhausted = llm.over_budget
+    incomplete = ""
     if exhausted and not stopped_early:
         log("  not scoring held-out: the generation's budget is already gone, and a "
             "half-paid held-out set is worse than none")
     if not stopped_early and not exhausted:
+        # Priced at what the candidate just cost on the probe, over the windows
+        # the scoreboard does not already own; a candidate seen before pays
+        # nothing. The reserve should make this unreachable, and it stays
+        # because the reserve is priced off a rate a scoreboard may remember
+        # from a different model.
+        rate = fresh_rate(cand_train) or reserve.rate * s.max_cost_ratio
+        unowned = sum(1 for w in hold
+                      if memo is None or memo.get(gen.candidate_fingerprint, w) is None)
+        incomplete = holdout_shortfall(unowned, rate,
+                                       (ceiling - llm.spent_usd) if ceiling else None) or ""
+        if incomplete:
+            log(f"  not scoring held-out: {incomplete}")
+    if not stopped_early and not exhausted and not incomplete:
         beat.phase("holdout", spent_usd=round(llm.spent_usd, 2))
         cand_hold = _bench(task, candidate, hold, llm, s,
                            memo=memo, fingerprint=gen.candidate_fingerprint)
@@ -518,7 +583,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                       candidate_holdout=cand_hold, incumbent_holdout=base_hold,
                       max_cost_ratio=s.max_cost_ratio, seed=s.seed,
                       unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint,
-                      stopped_early=stopped_early, exhausted=exhausted)
+                      stopped_early=stopped_early, exhausted=exhausted,
+                      stop_reason=stop_reason, incomplete=incomplete)
     # Keep the losers. Six of the seven candidates a search proposes have been
     # deleted at this line every generation so far, along with the per-instance
     # matrix that says what each of them was uniquely good at — which is the one
@@ -579,8 +645,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                 f"{gen.audit['baseline']['statistic']:+.3f}")
 
     gen.decision = decision.to_dict()
-    gen.llm = {"calls": llm.calls, "cache_hits": llm.cache_hits, "spent_usd": round(llm.spent_usd, 4),
-               "budget_usd": s.max_generation_usd or None, "exhausted": llm.over_budget}
+    gen.llm.update({"calls": llm.calls, "cache_hits": llm.cache_hits,
+                    "spent_usd": round(llm.spent_usd, 4),
+                    "budget_usd": s.max_generation_usd or None, "exhausted": llm.over_budget})
     gen.save()
     if llm.over_budget:
         # Said out loud rather than inferred from a number, because a generation

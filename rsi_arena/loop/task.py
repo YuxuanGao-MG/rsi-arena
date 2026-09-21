@@ -228,7 +228,11 @@ def summarise(task: Task, rollouts: list[Rollout]) -> dict[str, Any]:
     out = {"instances": n,
            "statistic": round(task.statistic([r.outcome for r in rollouts]), 4) if n else 0.0,
            "mean_value": round(sum(r.outcome.value for r in rollouts) / n, 4) if n else 0.0,
-           "failed_runs": sum(1 for r in rollouts if r.run is None or not r.run.ok),
+           # Runs that ran and broke. A remembered rollout has no run and used
+           # to count here, so a baseline served entirely from the scoreboard
+           # reported 400 failed runs of 400 beside a perfectly good score.
+           # Whether an answer exists at all is `unscored`, from the outcome.
+           "failed_runs": sum(1 for r in rollouts if r.run is not None and not r.run.ok),
            "cost_usd": round(cost, 4), "cost_per_instance": round(cost / n, 5) if n else 0.0}
     out.update(task.summary([r.outcome for r in rollouts]))
     return out

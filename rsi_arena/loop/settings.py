@@ -85,6 +85,11 @@ class Settings:
     # still cached - is nearer $35. Sixty is a backstop, and `scripts/preflight.py`
     # now refuses to run a split the ceiling cannot buy.
     max_generation_usd: float = 60.0
+    # Dollars a window before anything in this generation has been measured:
+    # what preflight prices the split at, and what the judgment reserve falls
+    # back to when the baseline was served from a scoreboard that recorded no
+    # cost. Measured, from gen5: $12.08 for 357 windows that reached Opus 5.
+    window_usd: float = 0.034
     # Train matches the candidate is scored on. Doubles as the regression
     # check, so the full train set is never re-scored: the gate asks of train
     # only "did this get worse", which twenty matches answer as well as a
