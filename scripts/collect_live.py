@@ -232,6 +232,11 @@ async def main() -> int:
     ap.add_argument("--minutes", type=int, default=120, help="how long to keep collecting")
     ap.add_argument("--poll", type=int, default=300, help="seconds between sweeps")
     ap.add_argument("--max-contracts", type=int, default=6, help="markets per sweep")
+    ap.add_argument("--window-usd", type=float, default=0.60,
+                    help="per-forecast ceiling. The harness file says twenty cents, which is "
+                         "right for replay and starved the first in-play window at a dollar "
+                         "sixty-five - in-match tool payloads are an order larger than "
+                         "pre-match ones, and in-play forecasts are the ones worth having")
     ap.add_argument("--max-usd", type=float, default=0.5,
                     help="ceiling on this invocation's model spend; 0 removes it")
     ap.add_argument("--max-unidentified", type=float, default=0.10,
@@ -241,6 +246,8 @@ async def main() -> int:
 
     client, hist = KalshiClient(), History()
     harness = Harness.load(args.harness)
+    if args.window_usd:
+        harness.config.max_usd = args.window_usd
     # A ceiling per invocation, because this runs on a cron and nothing else
     # stops it. The default is fifty cents: the key is down to about twelve
     # dollars of its original 5,626, the evolution loop has first claim on what
@@ -315,19 +322,30 @@ async def main() -> int:
                         markets = client.get(f"/events/{ticker}")["markets"]
                     except Exception:
                         continue
+                    # Is the match on right now? The whole reason to collect
+                    # live is prices that can still move, and ninety-four of the
+                    # first ninety-seven forecasts were on pre-match books
+                    # pinned days from kickoff. A timeline answers without
+                    # another network call.
+                    line = match_timeline(league, game)
+                    in_play = False
+                    if line is not None:
+                        state = line.state_at(datetime.now(timezone.utc))
+                        in_play = state.get("status") == "in_progress"
                     for m in markets[:2]:
                         if m.get("status") == "active":
-                            targets.append((league, game, m["ticker"]))
+                            targets.append((league, game, m["ticker"], in_play))
 
             if not targets:
                 print(f"  nothing live across {', '.join(leagues)}; waiting")
-            # Least-forecast first, and stable, so ties keep the order the
-            # leagues were swept in. Taking the head of the list every sweep
-            # spent the whole ceiling on whichever league sorts first — with two
-            # contracts a sweep and thirty markets live, that is one match
-            # watched closely and the card ignored.
-            targets.sort(key=lambda t: forecasts_on[t[2]])
-            for league, game, ticker in targets[:args.max_contracts]:
+            # In-play first, then least-forecast, and stable. A market whose
+            # match is being played can move; a pre-match book two days out is
+            # pinned by construction, and ninety-four of the first ninety-seven
+            # live forecasts were spent proving that. Within each class,
+            # least-forecast keeps the ceiling spread over the card instead of
+            # on whichever league sorts first.
+            targets.sort(key=lambda t: (not t[3], forecasts_on[t[2]]))
+            for league, game, ticker, in_play in targets[:args.max_contracts]:
                 if llm.over_budget:
                     break
                 # Counted on the attempt, not the forecast. A market with no
