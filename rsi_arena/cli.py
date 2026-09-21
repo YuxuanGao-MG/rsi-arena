@@ -18,14 +18,15 @@ from pathlib import Path
 from typing import Any
 
 from .harness import Harness, OpenRouter, SyncLLM
-from .loop import (ARCHIVE, SCOREBOARD, Archive, Entry, Generation, Progress, Scoreboard, Rollout, Settings, TaskAdapter, accept,
+from .loop import (Archive, Entry, Generation, Progress, Scoreboard, Rollout, Settings, TaskAdapter, accept,
                    evaluate, from_gepa_state, lineage, probe_sample, reflection_templates,
                    render_lineage, split_by_group, summarise, three_way_split)
 from .loop.budget import (SpendStopper, cascade_verdict, fresh_rate, holdout_shortfall,
                           judgment_reserve)
 from .loop.gate import MAX_UNSCORED
 from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
-from .topics import TOPICS, load_topic
+from .topics import TOPICS, load_topic, spec_of
+from .topics._common.metric import Metric
 
 
 def log(message: str) -> None:
@@ -40,12 +41,23 @@ def _has_tqdm() -> bool:
     return True
 
 
+def _model_list(text: str) -> tuple:
+    return tuple(x.strip() for x in text.split(",") if x.strip())
+
+
 def _settings_args(ap: argparse.ArgumentParser) -> None:
     d = Settings()
     ap.add_argument("--topic", default=d.topic, choices=sorted(TOPICS))
-    ap.add_argument("--harness", default=d.harness, help="a harness file, or a run directory to continue from")
-    ap.add_argument("--benchmark", default=d.benchmark)
-    ap.add_argument("--windows-dir", default=d.windows_dir)
+    # The flags whose default is the topic's, not the dataclass's: left unset
+    # they are None here and filled in by ``_settings`` from ``TOPICS``. For the
+    # first topic the two agree, which ``test_cli.py`` holds them to.
+    ap.add_argument("--harness", default=None, help="a harness file, or a run directory to continue from")
+    ap.add_argument("--benchmark", default=None)
+    ap.add_argument("--windows-dir", default=None)
+    ap.add_argument("--runs-dir", default=None,
+                    help="where the archive, the scoreboard and run directories live")
+    ap.add_argument("--model-choices", type=_model_list, default=None,
+                    help="comma-separated models the search may put in a rewrite")
     ap.add_argument("--holdout", type=int, default=d.holdout, help="fixtures the optimizer never sees")
     ap.add_argument("--audit", type=int, default=d.audit,
                     help="fixtures shown to nothing until a promotion needs confirming")
@@ -55,7 +67,7 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
                     help="generations before the held-out matches are redrawn")
     ap.add_argument("--seed", type=int, default=d.seed)
     ap.add_argument("--every", type=int, default=d.every, help="minutes between windows")
-    ap.add_argument("--per-fixture", type=int, default=d.per_fixture,
+    ap.add_argument("--per-fixture", type=int, default=None,
                     help="cap windows kept per match; 0 keeps all. Power comes from "
                          "matches, not windows within one")
     ap.add_argument("--model", default=d.model, help="override the harness model")
@@ -70,7 +82,7 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
                     help="a probe below this is rejected without confirming")
     ap.add_argument("--max-generation-usd", type=float, default=d.max_generation_usd,
                     help="a backstop on the whole generation; 0 removes it")
-    ap.add_argument("--window-usd", type=float, default=d.window_usd,
+    ap.add_argument("--window-usd", type=float, default=None,
                     help="dollars a window before anything is measured; prices the "
                          "judgment reserve when the baseline reports no cost")
 
@@ -95,7 +107,10 @@ def _settings(args: argparse.Namespace) -> Settings:
     # turn back on, so the switch is phrased as the negative.
     if getattr(args, "no_llm_cache", False):
         s.llm_cache = False
-    return s
+    # A flag left unset is the topic's to answer: which harness, which
+    # benchmark, what a window costs. The dataclass default is the first
+    # topic's answer and stays so; the spec is where a second topic gives its own.
+    return spec_of(s.topic).fill(s)
 
 
 def _llm(s: Settings) -> OpenRouter:
@@ -147,30 +162,71 @@ def _dump_rollouts(path: Path, rollouts: list[Rollout], *, trace: bool = False) 
 
 # -- windows ----------------------------------------------------------------
 
+def _metric_of(task) -> Metric:
+    """``task.metric``, or Kalshi's for a task that has not said."""
+    return getattr(task, "metric", None) or Metric.KALSHI
+
+
+def _moved_by(task) -> Any:
+    """``task.moved``, or the metric's rule for a task that has not said."""
+    named = getattr(task, "moved", None)
+    if callable(named):
+        return named
+    metric = _metric_of(task)
+    return lambda w: metric.moved(w.mid_now, w.realised)
+
+
+def _percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    ranked = sorted(values)
+    return ranked[min(len(ranked) - 1, int(round(p * (len(ranked) - 1))))]
+
+
 def cmd_windows(args: argparse.Namespace) -> int:
     """Build the question set from the exchange and the fixture feed. Needs no model key."""
     s = _settings(args)
     task = load_topic(s)
     instances = task.instances()
     train, hold = split_by_group(instances, s.holdout, s.seed)
+    moved_by, metric = _moved_by(task), _metric_of(task)
     groups: dict[str, list[Any]] = {}
     for i in instances:
         groups.setdefault(i.group, []).append(i)
     rows = []
     for group, items in sorted(groups.items()):
-        moved = sum(1 for w in items if abs(w.realised - w.mid_now) >= 0.01)
+        moved = sum(1 for w in items if moved_by(w))
+        sizes = [abs(metric.move(w.mid_now, w.realised)) for w in items]
         rows.append({"group": group, "windows": len(items), "moved": moved,
+                     "move_p50": round(_percentile(sizes, 0.5), 2),
+                     "move_p95": round(_percentile(sizes, 0.95), 2),
                      "split": "holdout" if items[0] in hold else "train"})
-    report = {"topic": task.name, "windows_dir": s.windows_dir, "instances": len(instances),
-              "train": len(train), "holdout": len(hold), "groups": rows}
+    report = {"topic": task.name, "unit": metric.unit, "windows_dir": s.windows_dir,
+              "instances": len(instances), "train": len(train), "holdout": len(hold), "groups": rows}
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         print(f"{task.name}: {len(instances)} windows ({len(train)} train, {len(hold)} held out) "
-              f"in {s.windows_dir}")
+              f"in {s.windows_dir}; moves in {metric.unit}")
+        floor = f"{metric.tick:g} {metric.unit}"
         for r in rows:
-            print(f"  {r['group']:34} {r['windows']:>4} windows  {r['moved']:>4} moved >=1c  {r['split']}")
+            print(f"  {r['group']:34} {r['windows']:>4} windows  {r['moved']:>4} moved >={floor}  {r['split']}")
     return 0 if instances else 1
+
+
+# -- topic ------------------------------------------------------------------
+
+def cmd_topic(args: argparse.Namespace) -> int:
+    """What a topic runs on, so a workflow can read it rather than repeat it."""
+    spec = spec_of(args.topic)
+    if args.json:
+        print(json.dumps(spec.to_dict(), indent=2))
+    elif args.shell:
+        print(spec.shell())
+    else:
+        for key, value in spec.to_dict().items():
+            print(f"{key}={','.join(value) if isinstance(value, list) else value}")
+    return 0
 
 
 # -- next -------------------------------------------------------------------
@@ -304,7 +360,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # The heartbeat: one row in rsi.progress the reader polls, so a person can
     # see which phase a ninety-minute run is in while it is in it. Fail-open by
     # construction - it must never be the reason a paid generation dies.
-    beat = Progress(run_dir.name)
+    beat = Progress(run_dir.name, topic=task.name)
     beat.phase("baseline", train=len(train), holdout=len(hold), audit=len(audit))
 
     # The probe is chosen before anything is paid for, not after the search.
@@ -325,7 +381,11 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     log(f"baseline: {incumbent.name} ({gen.incumbent_fingerprint})")
     log(f"  scoring {len(probe)} probe windows over {len(probe_groups)} matches "
         f"and {len(hold)} held-out windows")
-    memo = Scoreboard.load(Path("runs") / SCOREBOARD) if s.reuse_scores else None
+    # One archive and one scoreboard per topic, flat in the runs directory; the
+    # first topic keeps the names its committed files already have.
+    board_path = Scoreboard.path_for(s.runs_dir, task.name)
+    archive_path = Archive.path_for(s.runs_dir, task.name)
+    memo = Scoreboard.load(board_path) if s.reuse_scores else None
     if memo is not None:
         log(f"  {len(memo)} answers already paid for are on file")
     base_train = _bench(task, incumbent, probe, llm, s,
@@ -419,7 +479,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # ground has been deleted. So the parent is drawn from everything ever found,
     # weighted by how much of the instance space it uniquely owns and discounted
     # by how often it has already been mined.
-    archive = Archive.load(Path(args.runs_dir if hasattr(args, "runs_dir") else "runs") / ARCHIVE)
+    archive = Archive.load(archive_path)
     seed_entry = None
     if len(archive) > 1:
         picked = archive.sample_parents(1, seed=s.seed + len(archive))
@@ -606,9 +666,9 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         archive.add(Entry(id=gen.incumbent_fingerprint, components=incumbent.to_components(),
                           generation=str(parent or "seed"), promoted=True,
                           note="the harness this generation started from"))
-    archive.save(Path("runs") / ARCHIVE)
+    archive.save(archive_path)
     if memo is not None:
-        memo.save(Path("runs") / SCOREBOARD)
+        memo.save(board_path)
         gen.llm["reused"] = memo.summary()
     gen.search["archive_after"] = archive.summary()
     log(f"archive: {len(archive)} candidates, {len(archive.frontier())} on the frontier, "
@@ -724,6 +784,13 @@ def build_parser() -> argparse.ArgumentParser:
     sh.add_argument("run_dir")
     sh.add_argument("--json", action="store_true")
     sh.set_defaults(fn=cmd_show)
+
+    t = sub.add_parser("topic", help="what a topic runs on: harness, benchmark, prices")
+    t.add_argument("--topic", default=d.topic, choices=sorted(TOPICS))
+    form = t.add_mutually_exclusive_group()
+    form.add_argument("--json", action="store_true")
+    form.add_argument("--shell", action="store_true", help="one export line a workflow can eval")
+    t.set_defaults(fn=cmd_topic)
     return ap
 
 

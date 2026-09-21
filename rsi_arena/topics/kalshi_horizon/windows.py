@@ -44,8 +44,11 @@ class Window:
         return self.event
 
     def to_dict(self) -> dict[str, Any]:
+        # "group" beside "event": the loop and the publisher read the split's
+        # unit by that name, and another topic's instance has no event.
         return {"ticker": self.ticker, "at": self.at.isoformat(), "mid_now": self.mid_now,
-                "realised": self.realised, "game": self.game, "event": self.event}
+                "realised": self.realised, "game": self.game, "event": self.event,
+                "group": self.group}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Window":

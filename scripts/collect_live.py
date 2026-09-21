@@ -26,7 +26,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import sys
 import time
 from collections import defaultdict
@@ -47,6 +46,9 @@ from rsi_arena.kalshi.replay import (HORIZON_MINUTES,             # noqa: E402
                                      fresh_quote, live_tools,
                                      match_timeline, realised_mid)
 from rsi_arena.topics.kalshi_horizon import score_output          # noqa: E402
+from rsi_arena.topics._common.live import report                  # noqa: E402
+from rsi_arena.topics._common.live import resolve as _resolve     # noqa: E402
+from rsi_arena.topics._common.live import write_resolved as _write_resolved  # noqa: E402
 
 #: Same spread the discovery script uses, for the same measured reason.
 DATE_SPREAD = 3
@@ -172,57 +174,29 @@ async def one(harness: Harness, llm: OpenRouter, league: str, game: str,
             "ok": run.ok, "error": run.error}
 
 
+def _realised_for(hist: History):
+    """The Kalshi answer to "what did the market print at the horizon".
+
+    Looks ``realised_mid`` up on this module at call time, so a test that
+    replaces it here still reaches the grading.
+    """
+    return lambda ticker, at: realised_mid(ticker, at, HORIZON_MINUTES, hist)
+
+
 def resolve(row: dict, hist: History) -> bool:
     """Score a forecast once the horizon has printed. False while it has not.
 
-    A live forecast is only worth keeping if it eventually meets a number, and
-    the number arrives five minutes after the fact. Until then the row stays
-    pending; it is never scored against the price it was given.
+    The grading itself is :func:`rsi_arena.topics._common.live.resolve`; this
+    supplies Kalshi's two answers - the realised mid and the score.
     """
-    at = datetime.fromisoformat(row["at"])
-    if datetime.now(timezone.utc) < at + timedelta(minutes=HORIZON_MINUTES + 1):
-        return False
-    realised = realised_mid(row["ticker"], at, HORIZON_MINUTES, hist)
-    if realised is None:
-        row["scored"] = None
-        row["unscored_because"] = "no quote printed at the horizon"
-        return True
-    score = score_output(row.get("output"), row["mid_now"], realised)
-    row["realised"] = realised
-    if score is None:
-        # The harness never answered - the first live in-play window hit the
-        # twenty-cent ledger with a dollar-sixty prompt (in-match tool payloads
-        # are an order larger than pre-match ones) and this line read .skill off
-        # None, crashing the sweep and taking every still-pending grading with
-        # it. An unanswered quote is a recorded fact, not an exception.
-        row["scored"] = None
-        row["unscored_because"] = "the harness produced no forecast"
-        return True
-    row["scored"] = {"skill": round(score.skill, 4), "value": round(score.value, 4),
-                     "error": round(score.error, 4), "naive_error": round(score.naive_error, 4)}
-    return True
+    return _resolve(row, realised_fn=_realised_for(hist), score_fn=score_output,
+                    horizon_minutes=HORIZON_MINUTES)
 
 
 def write_resolved(pending: list[dict], hist: History, out: Path) -> list[dict]:
     """Write every forecast whose horizon has printed; keep the rest waiting."""
-    still: list[dict] = []
-    with out.open("a") as fh:
-        for row in pending:
-            if resolve(row, hist):
-                fh.write(json.dumps(row, default=str) + "\n")
-            else:
-                still.append(row)
-    return still
-
-
-#: Where a GitHub Actions job writes what a person will read. Empty elsewhere,
-#: and everything here still goes to stdout either way.
-def report(lines: list[str]) -> None:
-    path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if not path:
-        return
-    with open(path, "a") as fh:
-        fh.write("\n".join(lines) + "\n")
+    return _write_resolved(pending, out, realised_fn=_realised_for(hist),
+                           score_fn=score_output, horizon_minutes=HORIZON_MINUTES)
 
 
 async def main() -> int:

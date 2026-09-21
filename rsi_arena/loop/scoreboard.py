@@ -27,10 +27,24 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .settings import Settings
 from .task import Instance, Outcome, Rollout
 
 #: Where it lives, relative to the runs directory.
 SCOREBOARD = "scoreboard.json"
+
+
+def scoreboard_path(runs_root: str | Path, topic: str = "") -> Path:
+    """``runs/scoreboard.json`` for the first topic, ``runs/scoreboard.<topic>.json`` after.
+
+    Flat names in one directory, and the first topic keeps the name it has
+    always had: its scoreboard is committed history that a rename would
+    orphan, and the workflow reads it by that name.
+    """
+    root = Path(runs_root)
+    if not topic or topic == Settings.topic:
+        return root / SCOREBOARD
+    return root / f"scoreboard.{topic}.json"
 
 
 def key(fingerprint: str, instance: Instance) -> str:
@@ -75,6 +89,8 @@ class Scoreboard:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps({"entries": self.entries}, sort_keys=True))
+
+    path_for = staticmethod(scoreboard_path)
 
     def __len__(self) -> int:
         return len(self.entries)

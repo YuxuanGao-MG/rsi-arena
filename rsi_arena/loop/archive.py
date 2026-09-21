@@ -38,8 +38,22 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .settings import Settings
+
 #: Where the archive lives, relative to the runs directory.
 ARCHIVE = "archive.json"
+
+
+def archive_path(runs_root: str | Path, topic: str = "") -> Path:
+    """``runs/archive.json`` for the first topic, ``runs/archive.<topic>.json`` after.
+
+    The first topic keeps its name: sixteen candidates were back-filled into
+    that file from rejected runs, and the workflow commits it by that name.
+    """
+    root = Path(runs_root)
+    if not topic or topic == Settings.topic:
+        return root / ARCHIVE
+    return root / f"archive.{topic}.json"
 
 #: How hard to discount a parent that has already been mined.
 #:
@@ -119,6 +133,8 @@ class Archive:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(
             {"entries": [e.to_dict() for e in self.entries]}, indent=1, sort_keys=True))
+
+    path_for = staticmethod(archive_path)
 
     # -- contents --
 

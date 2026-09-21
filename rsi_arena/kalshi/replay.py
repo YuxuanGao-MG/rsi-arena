@@ -17,14 +17,14 @@ changes and need not be fetched twice.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 from ..harness.tools import FunctionTool, Toolbox, ToolResult
+from ..harness.toolcache import NO_CACHE, ToolCache, _NoCache  # noqa: F401 - re-exported
+from ..harness.toolcache import cached as _cached
 from . import _gamestate as gs
 from ._history import MINUTE, History
 from ._taxonomy import resolve_league
@@ -189,62 +189,9 @@ def realised_mid(ticker: str, at: datetime, minutes: int = HORIZON_MINUTES,
     return None if candle is None else candle.mid
 
 
-class ToolCache:
-    """Answers of frozen tools, on disk. History does not change.
-
-    Keyed on ``{tool, at, **args}`` with no TTL and no eviction, which is sound
-    exactly as far as that sentence is: a settled match's candles at a past
-    instant are the same candles forever. On a market still trading it is false,
-    and nothing in the key says so. Live callers take :data:`NO_CACHE`.
-    """
-
-    def __init__(self, root: str | Path | None) -> None:
-        self.root = Path(root) if root else None
-
-    def get(self, key: dict[str, Any]) -> dict[str, Any] | None:
-        path = self._path(key)
-        if path is not None and path.exists():
-            return json.loads(path.read_text())
-        return None
-
-    def put(self, key: dict[str, Any], value: dict[str, Any]) -> None:
-        path = self._path(key)
-        if path is None:
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(value, default=str))
-
-    def _path(self, key: dict[str, Any]) -> Path | None:
-        if self.root is None:
-            return None
-        digest = hashlib.sha256(json.dumps(key, sort_keys=True, default=str).encode()).hexdigest()
-        return self.root / key.get("tool", "tool") / f"{digest}.json"
-
-
-class _NoCache(ToolCache):
-    """A cache that refuses to remember, for a market that is still moving.
-
-    The live collector reached the same tools through the plain cache and was
-    safe only by accident: ``at`` is ``datetime.now()`` to the microsecond, so
-    two sweeps never landed on one key. Nobody chose that, nothing tested it,
-    and one caller rounding its instant to the minute would have served a
-    ten-minute-old book to a five-minute forecast. Refusing here is cheap;
-    finding that bug in the traces afterwards would not be.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(None)
-
-    def get(self, key: dict[str, Any]) -> dict[str, Any] | None:
-        return None
-
-    def put(self, key: dict[str, Any], value: dict[str, Any]) -> None:
-        return None
-
-
-#: Pass this rather than ``None`` when the instant is now. ``None`` also caches
-#: nothing, but it reads as an omission; this reads as a decision.
-NO_CACHE = _NoCache()
+#: The cache and its refusal live with the harness now, because every frozen
+#: toolbox needs them and only this one is about Kalshi. Re-exported here so
+#: the names a reader and the tests already know keep working.
 
 
 def live_tools(at: datetime, history: History | None = None, *,
@@ -304,13 +251,7 @@ def replay_tools(at: datetime, history: History | None = None,
     stamp = at.astimezone(timezone.utc).isoformat()
 
     def cached(tool: str, args: dict[str, Any], compute) -> ToolResult:
-        key = {"tool": tool, "at": stamp, **args}
-        hit = cache.get(key)
-        if hit is not None:
-            return ToolResult(ok=hit["ok"], text=hit["text"], data=hit["data"], error=hit.get("error"))
-        out = compute()
-        cache.put(key, {"ok": out.ok, "text": out.text, "data": out.data, "error": out.error})
-        return out
+        return _cached(cache, stamp, tool, args, compute)
 
     def quote(ticker: str) -> ToolResult:
         def compute() -> ToolResult:

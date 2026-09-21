@@ -112,6 +112,10 @@ class Settings:
     # evidence rather than noise.
     cascade_floor: float = -0.005
     run_dir: str = "runs/latest"
+    # Where the archive and the scoreboard live, and where run directories are
+    # made. One root for every topic; the files inside it carry the topic's
+    # name once there is more than one (see ``Archive.path_for``).
+    runs_dir: str = "runs"
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
