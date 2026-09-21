@@ -25,7 +25,7 @@ def test_base_harness_loads_from_the_earlier_runtime_format():
 def test_components_round_trip():
     h = Harness.load(BASE)
     parts = h.to_components()
-    assert set(parts) == {"context", "plan", "tools"}
+    assert set(parts) == {"context", "plan", "tools", "model"}
     again = h.from_components(parts)
     assert again.plan.model_dump() == h.plan.model_dump()
     assert again.tools == h.tools and again.context == h.context

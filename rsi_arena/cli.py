@@ -424,12 +424,21 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     beat.phase("search", valset=len(valset), budget_calls=s.max_metric_calls,
                spent_usd=round(llm.spent_usd, 2))
     adapter = TaskAdapter(task, incumbent, llm, concurrency=s.concurrency, memo=memo,
-                          progress=beat)
+                          progress=beat, model_choices=s.model_choices)
     result = gepa.optimize(
         seed_candidate=seed_components, trainset=train, valset=valset, adapter=adapter,
         reflection_lm=SyncLLM(llm, s.reflection_model),
-        reflection_prompt_template=reflection_templates(task, incumbent),
+        reflection_prompt_template=reflection_templates(task, incumbent, s.model_choices),
         reflection_minibatch_size=s.minibatch, max_metric_calls=s.max_metric_calls,
+        # System-Aware Merge: combine the best module versions from two Pareto
+        # lineages instead of only mutating one. The archive is full of
+        # specialists - candidates uniquely best on 41, 36, 34 instances while
+        # losing on average - which is precisely the shape merge exists to
+        # exploit, and GEPA's paper prices it at up to +5% on top of mutation.
+        # Off by default in the library; off here until now because the search
+        # itself did not run until gen7. Bounded by max_merge_invocations and
+        # the same call budget as everything else.
+        use_merge=True, max_merge_invocations=3,
         run_dir=str(run_dir / "gepa"), seed=s.seed, raise_on_exception=False,
         # Only when someone is watching. GEPA raises ImportError if tqdm is
         # missing and the bar is asked for, and tqdm is not a declared
@@ -517,8 +526,11 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # A generation that ran out of money found nothing; filing its candidates
     # would file its refusals. The gate already refuses to read them as a
     # verdict — the archive has to refuse to read them as evidence.
+    # A candidate carries its own model now, so its fingerprint must use the
+    # model it names, not the one the winner happens to run.
     found = [] if exhausted else from_gepa_state(run_dir, run_dir.name, [i.id for i in valset],
-                            lambda c: fingerprint_components(c, candidate.config.model),
+                            lambda c: fingerprint_components(
+                                c, c.get("model") or candidate.config.model),
                             promoted_id=gen.candidate_fingerprint if decision.accepted else None)
     for entry in found:
         archive.add(entry)

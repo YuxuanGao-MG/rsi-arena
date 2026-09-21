@@ -95,7 +95,10 @@ def test_adapter_speaks_gepa(t0, history):
 
 def test_reflection_templates_state_the_task_once_per_component():
     t = reflection_templates(KalshiHorizon(windows=[]), Harness.load(BASE))
-    assert set(t) == {"context", "plan", "tools"}
+    # "model" joined the components when it turned out to be the largest
+    # measured lever - one swap moved held-out skill twelve points where the
+    # best rewrite moved under one.
+    assert set(t) == {"context", "plan", "tools", "model"}
     for text in t.values():
         assert "<curr_param>" in text and "<side_info>" in text and "delta_cents" in text
     assert '"type": "loop"' in t["plan"]
@@ -534,3 +537,19 @@ def test_the_cascade_stops_a_candidate_that_mostly_cannot_run():
     assert would_stop(broken)
     assert not would_stop(healthy)
     assert not would_stop(healthy[:60] + broken[:20] + healthy[:0])  # exactly 25%: allowed
+
+
+def test_a_rewrite_naming_an_unavailable_model_fails_by_name(t0, history):
+    """The allowlist is enforced where every candidate passes, with a message
+    that tells the rewriter what it may choose instead - an invented model
+    should score like any other breakage, not crash the search."""
+    tk = task(history, t0)
+    adapter = TaskAdapter(tk, Harness.load(BASE), FakeLLM(oracle),
+                          model_choices=("anthropic/claude-opus-5", "openai/gpt-5-mini"))
+    good = adapter.evaluate(tk.instances()[:1],
+                            {**adapter.base.to_components(), "model": "openai/gpt-5-mini"}, True)
+    assert good.scores[0] > 0.45, "an allowed model runs"
+    bad = adapter.evaluate(tk.instances()[:1],
+                           {**adapter.base.to_components(), "model": "made/up-model"}, True)
+    assert bad.scores == [0.45], "an invented model is a breakage"
+    assert "choose one of" in bad.trajectories[0]["feedback"]

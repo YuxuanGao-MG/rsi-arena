@@ -80,7 +80,7 @@ def main() -> int:
             model = Harness.load(best).config.model if best.exists() else None
         found = from_gepa_state(
             run_dir, run_dir.name, ids,
-            lambda c, m=model: fingerprint_components(c, m),
+            lambda c, m=model: fingerprint_components(c, c.get("model") or m),
             promoted_id=gen.candidate_fingerprint if (gen.decision or {}).get("accepted") else None)
         scored = sum(1 for e in found if e.scores)
         print(f"  {run_dir.name}: {len(found)} candidates, {scored} with per-instance scores, "

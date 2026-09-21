@@ -27,6 +27,14 @@ class Settings:
     every: int = 5                                 # minutes between windows
     per_fixture: int = 0                           # cap windows kept per match; 0 keeps all
     model: str | None = None                       # override the harness model
+    # Models the search may put in a rewrite. Measured on the same 68 held-out
+    # windows before any of this ran on a schedule: Opus 5 +0.106 at $0.035 a
+    # window, gpt-5-mini -0.008 at $0.0025, Sonnet 4.5 -0.011 at $0.013. Three
+    # entries, all under the per-window ledger; a name outside the list fails
+    # the harness before a call is made, and scores like any other breakage.
+    model_choices: tuple = ("anthropic/claude-opus-5",
+                            "anthropic/claude-sonnet-4.5",
+                            "openai/gpt-5-mini")
     # The model that reads traces and rewrites harnesses. Deliberately the
     # strongest available and deliberately not the one under test: it runs tens
     # of times a generation against the task model's thousands, so it is under

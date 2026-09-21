@@ -204,13 +204,19 @@ class Harness(BaseModel):
 
     # -- components, for the optimizer --
 
-    COMPONENTS: ClassVar[tuple[str, ...]] = ("context", "plan", "tools")
+    COMPONENTS: ClassVar[tuple[str, ...]] = ("context", "plan", "tools", "model")
 
     def to_components(self) -> dict[str, str]:
         return {
             "context": self.context,
             "plan": json.dumps(self.plan.model_dump(exclude_none=True), indent=2),
             "tools": ", ".join(self.tools),
+            # The model is a component because it is the largest measured lever:
+            # swapping it once moved held-out skill by twelve points where the
+            # best rewrite ever found moved it by under one. A search told to
+            # improve a harness while barred from its biggest dial was
+            # optimising the small knobs on principle.
+            "model": self.config.model or "",
         }
 
     def from_components(self, components: dict[str, str]) -> "Harness":
@@ -220,6 +226,9 @@ class Harness(BaseModel):
             data["context"] = components["context"]
         if "tools" in components:
             data["tools"] = [t.strip() for t in components["tools"].split(",") if t.strip()]
+        if "model" in components:
+            data.setdefault("config", {})
+            data["config"]["model"] = components["model"].strip()
         if "plan" in components:
             try:
                 plan = json.loads(components["plan"])

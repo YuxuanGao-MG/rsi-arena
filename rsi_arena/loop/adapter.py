@@ -21,7 +21,8 @@ from .task import Instance, Rollout, Task, evaluate
 
 class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
     def __init__(self, task: Task, base: Harness, llm: LLM, *, concurrency: int = 4,
-                 memo: Any = None, progress: Any = None) -> None:
+                 memo: Any = None, progress: Any = None,
+                 model_choices: tuple = ()) -> None:
         self.task, self.base, self.llm, self.concurrency = task, base, llm, concurrency
         self.evaluations = 0
         #: Outcomes already paid for. The search is the largest line in a
@@ -32,6 +33,7 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
         #: The heartbeat, if the run has one. Ticked per batch because this is
         #: the one chokepoint every candidate evaluation passes through.
         self.progress = progress
+        self.model_choices = tuple(model_choices)
         # Resolved once. The tools prompt needs to know what was *not* called as
         # much as what was, and asking the topic per trajectory would cost the
         # question set each time.
@@ -45,6 +47,11 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
                                spent_usd=round(getattr(self.llm, "spent_usd", 0.0), 2))
         try:
             harness = self.base.from_components(candidate)
+            if (self.model_choices and harness.config.model
+                    and harness.config.model not in self.model_choices):
+                raise HarnessError(
+                    f"model {harness.config.model!r} is not available; choose one of: "
+                    f"{', '.join(self.model_choices)}")
         except HarnessError as exc:
             rollouts = [Rollout(instance=i, run=None, outcome=self.task.failed(i, str(exc))) for i in batch]
         else:
@@ -152,7 +159,8 @@ def _available(task: Task, base: Harness) -> list[str]:
     return list(base.tools)
 
 
-def reflection_templates(task: Task, base: Harness) -> dict[str, str]:
+def reflection_templates(task: Task, base: Harness,
+                         model_choices: tuple = ()) -> dict[str, str]:
     """One reflection prompt per component, with the task stated once.
 
     GEPA's default prompt asks for "a new instruction", which is right for the
@@ -180,6 +188,15 @@ def reflection_templates(task: Task, base: Harness) -> dict[str, str]:
                 "unlisted tool cannot run at all, which scores below saying nothing. The last "
                 "step's output is the harness's answer and must keep the output contract "
                 "described in the task. Provide the JSON within ``` blocks.",
+        "model": head + "The model currently doing the forecasting:\n```\n<curr_param>\n```\n\n"
+                 + examples
+                 + "Choose the model. Pick exactly one of: " + ", ".join(model_choices or ("<unchanged>",))
+                 + ". Measured on this task: anthropic/claude-opus-5 was the only one above "
+                 "silence (+0.106) at about 3.5 cents a window; openai/gpt-5-mini was near "
+                 "silence at a fourteenth of the price; anthropic/claude-sonnet-4.5 echoed the "
+                 "market often. A cheaper model that stays quiet at the right times can beat an "
+                 "expensive one that speaks badly - the gate charges for cost as well as error. "
+                 "Reply with the model name alone within ``` blocks.",
         "tools": head + "The current tool list:\n```\n<curr_param>\n```\n\n" + examples
                  + "Write the new tool list as comma-separated names drawn only from the tools "
                  "named above — including ones the current list leaves out, if the feedback "
