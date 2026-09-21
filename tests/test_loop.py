@@ -553,3 +553,28 @@ def test_a_rewrite_naming_an_unavailable_model_fails_by_name(t0, history):
                            {**adapter.base.to_components(), "model": "made/up-model"}, True)
     assert bad.scores == [0.45], "an invented model is a breakage"
     assert "choose one of" in bad.trajectories[0]["feedback"]
+
+
+async def test_the_gate_prices_a_cheap_incumbent_at_the_floor(t0, history):
+    """A candidate at two cents a window against an incumbent at two
+    hundredths of a cent is a hundred times dearer and, with the floor, twice
+    a penny: allowed. Without it the delegation the model tools enable could
+    never be promoted."""
+    tk = task(history, t0)
+    inst = tk.instances()
+    base = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(silent, cost=0.0002))
+    good = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle, cost=0.02))
+    without = accept(tk, candidate_train=good[:3], incumbent_train=base[:3],
+                     candidate_holdout=good[3:], incumbent_holdout=base[3:], min_groups=1)
+    assert not without.accepted and any("100.0x" in r for r in without.reasons), without.reasons
+    with_floor = accept(tk, candidate_train=good[:3], incumbent_train=base[:3],
+                        candidate_holdout=good[3:], incumbent_holdout=base[3:], min_groups=1,
+                        cost_floor=0.01)
+    assert with_floor.accepted, with_floor.reasons
+    # Past twice the floor it is refused again, and the reason names the floor.
+    dear = await evaluate(tk, Harness.load(BASE), inst, FakeLLM(oracle, cost=0.05))
+    refused = accept(tk, candidate_train=dear[:3], incumbent_train=base[:3],
+                     candidate_holdout=dear[3:], incumbent_holdout=base[3:], min_groups=1,
+                     cost_floor=0.01)
+    assert not refused.accepted
+    assert any("5.0x" in r and "floor" in r for r in refused.reasons), refused.reasons

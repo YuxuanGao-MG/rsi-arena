@@ -79,6 +79,14 @@ class Settings:
     valset: int = 240
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
+    # The least an incumbent is priced at when the ratio is applied. A Jev
+    # incumbent runs at about $0.00015 a window, and twice nothing is nothing:
+    # any candidate that asks Opus a single question (about $0.03) would fail
+    # on cost by construction, which forbids exactly the delegation the model
+    # tools exist for. A penny a window is the price the gate compares against
+    # when the incumbent is cheaper than that; an incumbent dearer than the
+    # floor is priced at its own rate as before.
+    cost_floor_usd: float = 0.01
     # What a whole generation may spend. The per-window ledger caps one run at
     # twenty cents; until today nothing capped the thousand runs around it, so
     # the real ceiling was `max_metric_calls` times whatever a window happened

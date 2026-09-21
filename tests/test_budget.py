@@ -154,3 +154,54 @@ def test_a_remembered_answer_is_not_a_failed_run():
 
     rollouts = [roll(0, remembered=0.03), roll(1, cost=0.03, ok=True), roll(2, cost=0.0, ok=False)]
     assert summarise(T(), rollouts)["failed_runs"] == 1
+
+
+def test_the_ratio_is_applied_to_a_floored_incumbent():
+    """A Jev incumbent runs a window for a hundredth of a cent, and twice
+    nothing is nothing: any candidate that asks Opus once (about three cents)
+    fails on cost by construction, which forbids exactly the delegation the
+    model tools exist for. The floor prices such an incumbent at a penny."""
+    jev = [roll(i, remembered=0.0002) for i in range(8)]
+    asks_once = [roll(i, cost=0.02) for i in range(8)]
+    why = cascade_verdict(asks_once, jev, gap=0.2, floor=-0.005, max_unscored=0.25,
+                          max_cost_ratio=2.0)
+    assert why and "100.0x" in why, "without the floor the ratio is absurd"
+    assert cascade_verdict(asks_once, jev, gap=0.2, floor=-0.005, max_unscored=0.25,
+                           max_cost_ratio=2.0, cost_floor=0.01) is None
+
+    # Dearer than twice the floor is still refused, and the sentence says the
+    # floor was what it was measured against.
+    why = cascade_verdict([roll(i, cost=0.03) for i in range(8)], jev, gap=0.2, floor=-0.005,
+                          max_unscored=0.25, max_cost_ratio=2.0, cost_floor=0.01)
+    assert why and "3.0x" in why and "floor" in why and "$0.0002" in why
+
+    # An incumbent above the floor is priced at its own rate, as before.
+    opus = [roll(i, remembered=0.034) for i in range(8)]
+    why = cascade_verdict([roll(i, cost=0.09) for i in range(8)], opus, gap=0.2, floor=-0.005,
+                          max_unscored=0.25, max_cost_ratio=2.0, cost_floor=0.01)
+    assert why and "2.6x" in why and "floor" not in why
+
+    # The floor lifts a cheap incumbent; it does not price an unrecorded one.
+    free = [roll(i, remembered=None) for i in range(8)]
+    assert cascade_verdict(asks_once, free, gap=0.2, floor=-0.005, max_unscored=0.25,
+                           max_cost_ratio=2.0, cost_floor=0.01) is None
+
+
+def test_the_reserve_for_a_jev_incumbent_is_priced_at_the_floor():
+    """The gate lets a candidate cost twice the floored incumbent, so the
+    reserve has to be priced there too, or a Jev baseline keeps back a few
+    cents for a judgment that may legitimately cost twenty dollars of Opus."""
+    jev = [roll(i, remembered=0.00015) for i in range(10)]
+    r = judgment_reserve(jev, windows=480, ratio=2.0, fallback_rate=0.034, cost_floor=0.01)
+    assert r.rate == 0.01 and r.floored
+    assert abs(r.usd - 480 * 0.01 * 2.0) < 1e-9
+    assert "floor" in r.describe()
+
+    opus = [roll(i, remembered=0.034) for i in range(10)]
+    r = judgment_reserve(opus, windows=480, ratio=2.0, fallback_rate=0.034, cost_floor=0.01)
+    assert abs(r.rate - 0.034) < 1e-9 and not r.floored and "floor" not in r.describe()
+
+    # No recorded cost falls back first, then the floor applies to the fallback.
+    free = [roll(i, remembered=None) for i in range(10)]
+    r = judgment_reserve(free, windows=100, ratio=2.0, fallback_rate=0.005, cost_floor=0.01)
+    assert r.rate == 0.01 and r.floored

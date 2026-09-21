@@ -33,6 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from .gate import cost_verdict
 from .task import Rollout
 
 
@@ -61,8 +62,9 @@ class Reserve:
     """What judging one candidate may cost, kept back from the search."""
 
     windows: int          # probe plus held-out
-    rate: float           # the incumbent's dollars a window
+    rate: float           # the incumbent's dollars a window, or the floor if it is under
     ratio: float          # the most a candidate may cost relative to it
+    floored: bool = False # the rate is the floor, not the incumbent's own
 
     @property
     def usd(self) -> float:
@@ -70,19 +72,27 @@ class Reserve:
 
     def describe(self) -> str:
         return (f"${self.usd:.2f} to judge a candidate: {self.windows} windows at "
-                f"${self.rate:.4f} each, up to {self.ratio:.1f}x the incumbent")
+                f"${self.rate:.4f} each, up to {self.ratio:.1f}x the incumbent"
+                + (" (priced at the cost floor, which the incumbent is under)" if self.floored else ""))
 
 
 def judgment_reserve(rollouts: Sequence[Rollout], windows: int, ratio: float,
-                     fallback_rate: float) -> Reserve:
+                     fallback_rate: float, cost_floor: float = 0.0) -> Reserve:
     """Price the judgment off the incumbent's own rollouts.
 
     ``fallback_rate`` covers a baseline that reports no cost at all - every
     answer remembered from a scoreboard written before costs were recorded -
     because a reserve of zero is the old behaviour under a new name.
+
+    ``cost_floor`` is the gate's: a candidate is allowed ``ratio`` times the
+    floored incumbent, so the reserve has to be priced at the floor too or a
+    Jev incumbent reserves a few cents for a judgment that may legitimately
+    cost twenty dollars of Opus.
     """
     rate = any_rate(rollouts)
-    return Reserve(windows=windows, rate=rate if rate > 0 else fallback_rate, ratio=ratio)
+    rate = rate if rate > 0 else fallback_rate
+    return Reserve(windows=windows, rate=max(rate, cost_floor), ratio=ratio,
+                   floored=cost_floor > rate)
 
 
 class SpendStopper:
@@ -133,7 +143,7 @@ class SpendStopper:
 
 def cascade_verdict(candidate: Sequence[Rollout], incumbent: Sequence[Rollout], *,
                     gap: float, floor: float, max_unscored: float,
-                    max_cost_ratio: float) -> str | None:
+                    max_cost_ratio: float, cost_floor: float = 0.0) -> str | None:
     """Why the probe alone is enough to stop, or None to go on to held-out.
 
     Three ways a candidate can be refused before held-out is paid for, in the
@@ -151,11 +161,10 @@ def cascade_verdict(candidate: Sequence[Rollout], incumbent: Sequence[Rollout], 
                 f"be paying to confirm a broken harness")
     if gap < floor:
         return f"{gap:+.3f} is below {floor:+.3f}, and held-out would only confirm it"
-    cand_rate, inc_rate = fresh_rate(candidate), any_rate(incumbent)
-    if inc_rate > 0 and cand_rate > max_cost_ratio * inc_rate:
-        return (f"it costs {cand_rate / inc_rate:.1f}x the incumbent a window on the probe "
-                f"(limit {max_cost_ratio:.1f}x), so the gate would refuse it on cost "
-                f"whatever held-out said")
+    too_dear = cost_verdict(fresh_rate(candidate), any_rate(incumbent), max_cost_ratio,
+                            cost_floor, where="a window on the probe")
+    if too_dear:
+        return f"it {too_dear}, so the gate would refuse it on cost whatever held-out said"
     return None
 
 

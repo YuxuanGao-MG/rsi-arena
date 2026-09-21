@@ -73,6 +73,10 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--window-usd", type=float, default=d.window_usd,
                     help="dollars a window before anything is measured; prices the "
                          "judgment reserve when the baseline reports no cost")
+    ap.add_argument("--cost-floor-usd", type=float, default=d.cost_floor_usd,
+                    help="the least an incumbent is priced at when the cost ratio is "
+                         "applied, so a near-free incumbent does not forbid every "
+                         "candidate that asks a chat model once")
 
 
 def _settings(args: argparse.Namespace) -> Settings:
@@ -383,7 +387,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     # A ceiling that cannot cover the judgment at all is found out now, for
     # nothing, rather than after the search has spent it.
     reserve = judgment_reserve(base_train + base_hold, len(probe) + len(hold),
-                               s.max_cost_ratio, s.window_usd)
+                               s.max_cost_ratio, s.window_usd, cost_floor=s.cost_floor_usd)
     ceiling = s.max_generation_usd or None
     search_ceiling = (ceiling - reserve.usd) if ceiling else None
     gen.llm = {"reserved_usd": round(reserve.usd, 2), "reserve": reserve.describe(),
@@ -544,7 +548,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         # reserve sufficient: nothing reaching held-out costs more than was
         # kept back for it.
         why = cascade_verdict(cand_train, base_train, gap=gap, floor=s.cascade_floor,
-                              max_unscored=MAX_UNSCORED, max_cost_ratio=s.max_cost_ratio)
+                              max_unscored=MAX_UNSCORED, max_cost_ratio=s.max_cost_ratio,
+                              cost_floor=s.cost_floor_usd)
         if why:
             log(f"  stopping here: {why}")
             stopped_early, stop_reason = True, why
@@ -581,7 +586,7 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                    trace=args.trace)
     decision = accept(task, candidate_train=cand_train, incumbent_train=base_train,
                       candidate_holdout=cand_hold, incumbent_holdout=base_hold,
-                      max_cost_ratio=s.max_cost_ratio, seed=s.seed,
+                      max_cost_ratio=s.max_cost_ratio, cost_floor=s.cost_floor_usd, seed=s.seed,
                       unchanged=gen.candidate_fingerprint == gen.incumbent_fingerprint,
                       stopped_early=stopped_early, exhausted=exhausted,
                       stop_reason=stop_reason, incomplete=incomplete)
@@ -629,7 +634,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         cand_audit = _bench(task, candidate, audit, llm, s)
         confirm = accept(task, candidate_train=cand_train, incumbent_train=base_train,
                          candidate_holdout=cand_audit, incumbent_holdout=base_audit,
-                         max_cost_ratio=s.max_cost_ratio, seed=s.seed)
+                         max_cost_ratio=s.max_cost_ratio, cost_floor=s.cost_floor_usd,
+                         seed=s.seed)
         gen.audit = {"baseline": summarise(task, base_audit),
                      "candidate": summarise(task, cand_audit),
                      "decision": confirm.to_dict()}

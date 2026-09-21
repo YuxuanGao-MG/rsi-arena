@@ -113,7 +113,7 @@ class Decision:
 
 def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[Rollout],
            candidate_holdout: list[Rollout], incumbent_holdout: list[Rollout],
-           max_cost_ratio: float = 2.0, seed: int = 0,
+           max_cost_ratio: float = 2.0, cost_floor: float = 0.0, seed: int = 0,
            unchanged: bool = False, min_groups: int = MIN_GROUPS,
            stopped_early: bool = False, exhausted: bool = False,
            stop_reason: str = "", incomplete: str = "") -> Decision:
@@ -126,6 +126,12 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
     happened was that there was no rewrite. A loop whose job is to tell an
     improvement from a reshuffle should not report a search that found nothing
     as a near miss.
+
+    ``cost_floor`` is the least the incumbent is priced at for the cost ratio.
+    A decisions model runs a window for a hundredth of a cent, and a ratio
+    over that refuses any candidate that asks a chat model even once - the
+    one thing a plan for such a model can add. The floor prices a cheap
+    incumbent at a penny so the ratio compares against something.
     """
     hold = paired_bootstrap(task, candidate_holdout, incumbent_holdout, seed=seed,
                             min_groups=min_groups)
@@ -206,11 +212,33 @@ def accept(task: Task, *, candidate_train: list[Rollout], incumbent_train: list[
         reasons.append(f"regresses on held-in instances by {train['diff']:+.3f}")
     cand_cost = _cost_per_instance(candidate_holdout)
     inc_cost = _cost_per_instance(incumbent_holdout)
-    if inc_cost > 0 and cand_cost > max_cost_ratio * inc_cost:
+    too_dear = cost_verdict(cand_cost, inc_cost, max_cost_ratio, cost_floor)
+    if too_dear:
         ok = False
-        reasons.append(f"costs {cand_cost / inc_cost:.1f}x the incumbent per instance "
-                       f"(limit {max_cost_ratio:.1f}x)")
+        reasons.append(too_dear)
     return Decision(accepted=ok, reasons=reasons, holdout=hold, train=train)
+
+
+def cost_verdict(cand_rate: float, inc_rate: float, max_cost_ratio: float,
+                 cost_floor: float = 0.0, *, where: str = "per instance") -> str | None:
+    """Why a candidate is too dear against the incumbent, or None if it is not.
+
+    The one arithmetic the gate and the cascade share, so the probe cannot
+    pass a candidate the gate would then refuse. The floor lifts a cheap
+    incumbent's rate; it does not price an unrecorded one. An incumbent with
+    no cost at all cannot support a ratio, and a scoreboard written before
+    costs were recorded would otherwise start refusing the very harness it
+    remembers.
+    """
+    if inc_rate <= 0:
+        return None
+    priced = max(inc_rate, cost_floor)
+    if cand_rate <= max_cost_ratio * priced:
+        return None
+    floored = (f", with the incumbent's ${inc_rate:.4f} priced at the ${cost_floor:.4f} floor"
+               if priced > inc_rate else "")
+    return (f"costs {cand_rate / priced:.1f}x the incumbent {where} "
+            f"(limit {max_cost_ratio:.1f}x{floored})")
 
 
 def _unscored_fraction(rollouts: list[Rollout]) -> float:
