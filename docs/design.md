@@ -110,6 +110,51 @@ rate it is actually paying. Held-out is bought whole or not at all. Preflight
 prices the same three shares; the workflow's margin drops from 1.35 to 1.1
 because two of the three are now caps rather than guesses.
 
+### A model that answers with distributions (2026-09-21)
+
+TypeSafe's Jev (`typesafe/jev-1.13`, on OpenRouter through the alpha
+Decisions API, and on the OpenMesh API at `POST /v1/decisions`) writes no
+text. It takes a state and typed questions and returns calibrated
+probabilities; a `score` question over ordered levels comes back as a
+distribution and its expectation. It answers in a few hundred milliseconds at
+$0.042 a million input tokens, output free: about two thousandths of a cent a
+window, against 3.3 cents for Opus 5.
+
+The harness carries it without a new contract. The plan already runs its
+tools as fixed steps, which is the only way a model that calls nothing can
+have them; the last prompt step carries `questions` in place of an output
+schema - seven levels of cent moves with a value each - and `answers` maps
+the distribution onto the output fields: the mean for `delta_cents`, the
+tightest band holding sixty per cent of the mass for `half_width_cents`.
+Both live in the plan, so the optimizer rewrites the levels and the mapping
+like any other part of it. `harnesses/horizon-5m-jev.json` is the base;
+`rsi_arena/harness/decisions.py` has the arithmetic; the spec refuses a
+decisions model on a text step and a chat model on a questions step at load.
+
+Measured, paired on gen11's four hundred held-out windows against the
+archived Opus 5 answers (`scripts/compare_on_rollouts.py`):
+
+| harness | skill | on moves | echoed | $/window |
+| --- | --- | --- | --- | --- |
+| Opus 5, incumbent | -0.002 | +0.063 | 88/400 | 0.0329 |
+| Jev, first seven levels | -0.013 | +0.002 | 41/400 | 0.0002 |
+
+Difference -0.011, 95% interval -0.049 to +0.022, on a test that resolves
+0.050: not distinguishable, on an untuned question. What is different in kind
+is the price. At two thousandths of a cent a window the whole question set -
+eleven thousand windows - is about two dollars, which is the resolution
+problem the gate has never been able to buy its way out of: every generation
+can be judged on every match, and the interval that could not see a 0.01
+gain at a hundred matches can see it at four hundred and eighty-five.
+
+What Jev cannot do is choose tools or explain itself, so for it the toolbox
+is the whole of what it knows and the plan is the whole of how it looks. The
+next lever is therefore the frozen toolbox itself: more derived tools (price
+velocity, minutes since the last goal, settlement countdown, book depth,
+the tape's imbalance), and plans that branch on a cheap `noul` answer -
+"will this market move at all" - before paying for the rest. Its answers
+are conditions the runner already evaluates in `skip_if`.
+
 ### The model is a bigger lever than the harness, so far
 
 Measured on the same sixty-eight held-out windows, under the corrected metric:

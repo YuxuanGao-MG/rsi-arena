@@ -19,7 +19,10 @@ from rsi_arena.loop.task import Outcome, Rollout
 from rsi_arena.topics.kalshi_horizon import KalshiHorizon, Window
 
 ap = argparse.ArgumentParser()
-ap.add_argument("rollouts")
+ap.add_argument("rollouts", nargs="?", default="")
+ap.add_argument("--scoreboard", default="",
+                help="instead of a dump: a harness fingerprint whose answers runs/scoreboard.json remembers; "
+                     "every window of the question set it has an answer for is compared")
 ap.add_argument("--harness", required=True)
 ap.add_argument("--benchmark", default="benchmarks/soccer-2026.json")
 ap.add_argument("--limit", type=int, default=0)
@@ -28,23 +31,34 @@ ap.add_argument("--max-usd", type=float, default=5.0)
 ap.add_argument("--out", default="")
 a = ap.parse_args()
 
-dump = json.load(open(a.rollouts))
-if a.limit:
-    dump = dump[: a.limit]
-windows, incumbent = [], []
-for r in dump:
-    i = r["instance"]
-    w = Window(ticker=i["ticker"], at=datetime.fromisoformat(i["at"]), mid_now=i["mid_now"],
-               realised=i["realised"], game=i.get("game") or {}, event=i.get("event", ""))
-    o = r["outcome"]
-    windows.append(w)
-    incumbent.append(Rollout(instance=w, run=None,
-                             outcome=Outcome(value=o["value"], feedback=o.get("feedback", ""),
-                                             objectives=o.get("objectives") or {}, details=o.get("details") or {}),
-                             remembered_cost=r.get("cost_usd")))
-
 s = Settings(benchmark=a.benchmark)
 task = KalshiHorizon.from_settings(s)
+windows, incumbent = [], []
+if a.scoreboard:
+    from rsi_arena.loop import SCOREBOARD, Scoreboard
+    board = Scoreboard.load(Path("runs") / SCOREBOARD)
+    for w in task.instances():
+        known = board.get(a.scoreboard, w)
+        if known is None:
+            continue
+        windows.append(w)
+        incumbent.append(Rollout(instance=w, run=None, outcome=known,
+                                 remembered_cost=board.cost_of(a.scoreboard, w)))
+    print(f"scoreboard remembers {len(windows)} answers of {a.scoreboard}")
+else:
+    dump = json.load(open(a.rollouts))
+    for r in dump:
+        i = r["instance"]
+        w = Window(ticker=i["ticker"], at=datetime.fromisoformat(i["at"]), mid_now=i["mid_now"],
+                   realised=i["realised"], game=i.get("game") or {}, event=i.get("event", ""))
+        o = r["outcome"]
+        windows.append(w)
+        incumbent.append(Rollout(instance=w, run=None,
+                                 outcome=Outcome(value=o["value"], feedback=o.get("feedback", ""),
+                                                 objectives=o.get("objectives") or {}, details=o.get("details") or {}),
+                                 remembered_cost=r.get("cost_usd")))
+if a.limit:
+    windows, incumbent = windows[: a.limit], incumbent[: a.limit]
 task._windows = windows
 harness = Harness.load(a.harness)
 llm = OpenRouter(cache_dir=f"{s.cache_dir}/llm", budget_usd=a.max_usd, concurrency=a.concurrency)
