@@ -32,6 +32,7 @@ try:
 except ImportError:                                   # pragma: no cover
     sys.exit("pip install psycopg2-binary")
 
+from rsi_arena.loop.settings import Settings
 from rsi_arena.topics import TOPICS                   # noqa: E402
 
 #: Tool answers are the bulk of a trace and the least re-read part of it.
@@ -168,20 +169,39 @@ def rollout_rows(run_id: str, side: str, split: str, path: Path, *,
     return rows
 
 
+def qualified(path: str | Path | None, topic: str) -> str | None:
+    """A run's id in the reader: ``gen5`` for the first topic, ``gen5@<topic>`` after.
+
+    Every topic numbers its generations from one in its own runs directory,
+    and the reader keys runs by id alone. The crypto loop's first generation
+    was published as ``gen1``: it kept the Kalshi row (the upsert did not
+    touch ``topic``) and replaced Kalshi's gen1 rollouts with its own. The
+    first topic keeps bare names because eleven of them are bookmarked and
+    published; every other topic carries its name in the id, and so does
+    its parent, so a lineage still joins.
+    """
+    if path is None:
+        return None
+    name = Path(path).name
+    return name if topic == Settings.topic else f"{name}@{topic}"
+
+
 def publish(cur, run_dir: Path) -> tuple[int, int]:
     manifest = json.loads((run_dir / "manifest.json").read_text())
-    run_id = run_dir.name
+    run_id = qualified(run_dir, manifest["topic"])
     cur.execute("""
         insert into rsi.runs (id, topic, created, parent, incumbent, incumbent_fp,
                               candidate_fp, accepted, reasons, baseline, candidate,
                               decision, search, llm, split)
         values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         on conflict (id) do update set
+            topic = excluded.topic, parent = excluded.parent,
             accepted = excluded.accepted, reasons = excluded.reasons,
             baseline = excluded.baseline, candidate = excluded.candidate,
             decision = excluded.decision, search = excluded.search,
             llm = excluded.llm, split = excluded.split
-    """, (run_id, manifest["topic"], manifest.get("created"), manifest.get("parent"),
+    """, (run_id, manifest["topic"], manifest.get("created"),
+          qualified(manifest.get("parent"), manifest["topic"]),
           manifest.get("incumbent"), manifest.get("incumbent_fingerprint"),
           manifest.get("candidate_fingerprint"),
           bool(manifest.get("decision", {}).get("accepted")),
