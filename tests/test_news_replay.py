@@ -326,7 +326,7 @@ def test_the_task_reads_its_windows_and_scores_in_bps(tape, tmp_path):
     # The market moved ten basis points (9.96, the drift being linear in the
     # base price); a ten-point call removes all but that.
     good = task.score(w, _Run({"delta_bps": 10.0, "half_width_bps": 5}))
-    assert good.details["skill"] == pytest.approx(1.0, abs=0.01) and good.value == pytest.approx(0.55, abs=1e-3)
+    assert good.details["skill"] == pytest.approx(1.0, abs=0.01) and good.value == pytest.approx(0.6, abs=1e-3)
     assert "+10.0 bps" in good.feedback and "skill +1.00" in good.feedback
     quiet = task.score(w, _Run({"delta_bps": 0}))
     assert quiet.value == pytest.approx(0.5) and "echoed the last close" in quiet.feedback
@@ -347,7 +347,7 @@ def test_bps_metric_cases():
     loud = score_output({"delta_bps": 4}, 100.0, 100.0)
     assert loud.skill < 0 and loud.value < 0.5, "a call on a dead market costs"
     exact = score_output({"delta_bps": 20, "half_width_bps": 3}, 100.0, 100.20)
-    assert exact.skill == pytest.approx(1.0) and exact.value == pytest.approx(0.6) and exact.covered
+    assert exact.skill == pytest.approx(1.0) and exact.value == pytest.approx(0.7) and exact.covered
     assert score_output({"delta_bps": "20"}, 100.0, 100.2) is None
     assert score_output({"delta_bps": 20}, 0.0, 100.2) is None
 
@@ -369,11 +369,11 @@ def test_both_harness_files_load_against_the_box():
     piled = {"move": {"type": "score", "score": 6.0,
                       "probabilities": {str(i): (1.0 if i == 6 else 0.0) for i in range(7)}, "confidence": 0.9}}
     out = answers_to_output(step.questions, piled, step.answers)
-    assert out["delta_bps"] == 150 and out["half_width_bps"] == 2 and out["confidence"] == 0.9
+    assert out["delta_bps"] == 60 and out["half_width_bps"] == 2 and out["confidence"] == 0.9
     spread = {"move": {"type": "score", "score": 3.0,
                        "probabilities": {"2": 0.3, "3": 0.4, "4": 0.3}, "confidence": 0.5}}
     out = answers_to_output(step.questions, spread, step.answers)
-    assert out["delta_bps"] == 0 and out["half_width_bps"] == 20
+    assert out["delta_bps"] == 0 and out["half_width_bps"] == 8
 
 
 async def test_the_runner_carries_both_harnesses_over_a_window(tape, tmp_path):
@@ -403,7 +403,7 @@ def test_the_spec_and_the_cli_know_the_topic(capsys):
     assert spec.benchmark == "benchmarks/news-2026-09.json" and spec.windows_dir == "benchmarks/windows-news"
     assert spec.runs_dir == "runs/news-equity-5m" and spec.per_fixture == 0
     assert spec.window_usd == 0.00005 and spec.model_choices == ("typesafe/jev-1.13", "openai/gpt-5-mini")
-    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset, spec.max_day_usd) == (300, 100, 4800, 400, 15)
+    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset, spec.max_day_usd) == (300, 100, 4800, 400, 60)
     assert main(["topic", "--topic", "news-equity-5m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["harness"] == spec.harness and out["unit"] == "bps" and "factory" not in out

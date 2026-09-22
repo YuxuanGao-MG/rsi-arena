@@ -130,7 +130,13 @@ TOPICS: dict[str, TopicSpec] = {
         # rewriter's bill; the calls just have to be out of its way.
         max_metric_calls=4800,
         valset=400,
-        max_day_usd=15.0,
+        # The cap is checked against the key's spend for the whole UTC day, and
+        # the key is shared by every topic and by anyone benching locally: at
+        # fifteen the first news generation found the day already two-thirds
+        # spent by the crypto generation before it. Sixty leaves the three
+        # topics' expected spend (about seventy, eleven and eleven) under the
+        # key's own hundred.
+        max_day_usd=60.0,
         unit=NewsEquity.metric.unit,
         cost_floor_usd=0.002,
     ),
@@ -160,7 +166,13 @@ TOPICS: dict[str, TopicSpec] = {
         # rewriter's bill; the calls just have to be out of its way.
         max_metric_calls=4800,
         valset=600,
-        max_day_usd=15.0,
+        # The cap is checked against the key's spend for the whole UTC day, and
+        # the key is shared by every topic and by anyone benching locally: at
+        # fifteen the first news generation found the day already two-thirds
+        # spent by the crypto generation before it. Sixty leaves the three
+        # topics' expected spend (about seventy, eleven and eleven) under the
+        # key's own hundred.
+        max_day_usd=60.0,
         unit=CryptoHorizon.metric.unit,
         cost_floor_usd=0.002,
     ),
