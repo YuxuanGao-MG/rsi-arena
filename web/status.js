@@ -19,13 +19,15 @@
  * hold every state without faking clocks globally.
  */
 
-import { q, external, serverNow, ApiError } from "./data.js";
+import { q, external, serverNow, ApiError, topicFilter } from "./data.js";
+import { TOPICS, DEFAULT, currentTopic } from "./topics.js";
 
 /** Mirrors rsi_arena/loop/progress.py:STALE_AFTER_S. */
 export const STALE_AFTER_S = 300;
 
-/** The loop's crons, stated for prose; clock.js computes the countdown. */
-export const NEXT_SCHEDULED = "03:17 UTC (retried 05:47)";
+/** The Kalshi loop's crons, stated for prose; clock.js computes the countdown
+ * and topics.js holds every topic's. */
+export const NEXT_SCHEDULED = TOPICS[DEFAULT].loopWhen;
 
 // Repo-level rather than per-workflow: one request covers both the loop and
 // the live collector, and 60/hr splits badly in two.
@@ -103,6 +105,7 @@ let ghCache = null;
 let ghDown = false;                    // 403: stop asking until the next hour
 let started = false;
 let overviewVisible = false;
+let topic = null;                      // which loop's heartbeat the chrome reads
 
 export function statusNow() {
   return reconnecting ? { ...current, reconnecting: true } : current;
@@ -116,6 +119,21 @@ export function onStatus(fn) {
 
 /** The overview polls GitHub; the rest of the site leaves the budget alone. */
 export function setOverviewVisible(v) { overviewVisible = !!v; }
+
+/**
+ * Which topic's progress rows the chrome reads. Each topic runs its own loop,
+ * so the dot in the header would otherwise say "live" for a generation the
+ * page is not about. Switching resets to "loading" and polls at once rather
+ * than showing the last topic's state under the new topic's name.
+ */
+export function setStatusTopic(id) {
+  if (id === topic) return;
+  topic = id;
+  if (!started) return;
+  current = { kind: "loading" };
+  emit();
+  poll();
+}
 
 function emit() {
   const snapshot = statusNow();
@@ -144,8 +162,20 @@ async function pollGithub() {
 
 async function poll() {
   let rows = null;
+  const mine = topic || currentTopic();
   try {
-    rows = await q("progress?select=*&order=updated_at.desc&limit=5", { fresh: true });
+    try {
+      rows = await q(`progress?select=*${topicFilter(mine)}&order=updated_at.desc&limit=5`,
+                     { fresh: true });
+    } catch (err) {
+      // Before migration 008 the table has no `topic` column and PostgREST
+      // answers 400. Every row there is Kalshi's, so for Kalshi the unfiltered
+      // read is the same question; for any other topic there is nothing yet.
+      if (!(err instanceof ApiError && err.status === 400)) throw err;
+      rows = mine === DEFAULT
+        ? await q("progress?select=*&order=updated_at.desc&limit=5", { fresh: true })
+        : [];
+    }
     reconnecting = false;
   } catch (err) {
     if (err && err.kind === "aborted") return;
@@ -156,6 +186,7 @@ async function poll() {
     return;
   }
   delete current.backoff;
+  if (mine !== (topic || currentTopic())) return;   // a switch mid-flight already re-polled
   const github = await pollGithub();
   current = classify(rows, github);
   emit();

@@ -6,17 +6,18 @@
  * copies of that arithmetic is how the two pages would eventually disagree.
  */
 
-import { qAll, qs } from "./data.js";
+import { qAll, qs, topicFilter } from "./data.js";
 import { groupBy, recompute, metricGap, runStatus } from "./stats.js";
+import { DEFAULT } from "./topics.js";
 
-export const RUN_COLUMNS = "id,created,parent,accepted,reasons,incumbent_fp,candidate_fp," +
+export const RUN_COLUMNS = "id,topic,created,parent,accepted,reasons,incumbent_fp,candidate_fp," +
                            "baseline,candidate,decision,search,llm,split";
 
 /** What a broken record's slot on the chart says instead of a number. */
 export const GAP_LABEL = { exhausted: "ran out of money", incomplete: "crashed" };
 
-export async function loadGenerations({ signal }) {
-  const runs = await qAll(`runs?select=${RUN_COLUMNS}&order=created.desc`,
+export async function loadGenerations({ signal, topic = DEFAULT }) {
+  const runs = await qAll(`runs?select=${RUN_COLUMNS}${topicFilter(topic)}&order=created.desc`,
                           { signal, pageSize: 200, max: 2000 });
   if (!runs.length) {
     return { runs, windows: [], level: new Map(), byRunSide: new Map(),
@@ -34,6 +35,10 @@ export async function loadGenerations({ signal }) {
       `rollouts?select=run_id,side,skill,err,naive_error,unmeasurable,ok,scored` +
       `&split=eq.holdout&run_id=${qs.inList(runs.map(r => r.id))}`,
       { signal, max: 24_000 });
+    // The tick each window is floored at is its topic's. Stamped from the run
+    // rather than selected: the runs were filtered by topic already, and a
+    // window's own `topic` column only exists from migration 008 on.
+    for (const w of windows) w.topic = topic;
   }
   const level = recompute(windows);
   const byRunSide = groupBy(windows, r => `${r.run_id}|${r.side}`);

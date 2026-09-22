@@ -31,6 +31,40 @@ for (const [run, side, split, want] of [
   const rows = FX.rollouts.filter(r => r.run_id === run && r.side === side && r.split === split);
   check(`pooled ${run}/${side}/${split}`, Number(pooled(rows).skill.toFixed(4)), want, 0.0002);
 }
+// A row in basis points is floored at its own tick, five, not at a cent.
+// Three rows, computed by hand: naive 2, 10 and 40 bps; errors 2, 5 and 10.
+// Removed = 0 + 5 + 30 = 35; benchmark at tick 5 = 5 + 10 + 40 = 55; at tick
+// 0.01 it would be 52 — and the quiet row would count as a full window moved.
+const bps = [
+  { topic: "crypto-horizon-5m", unit: "bps", err: 2, naive_error: 2, ok: true, scored: true },
+  { topic: "crypto-horizon-5m", unit: "bps", err: 5, naive_error: 10, ok: true, scored: true },
+  { topic: "crypto-horizon-5m", unit: "bps", err: 10, naive_error: 40, ok: true, scored: true },
+];
+check("pooled floors a crypto row at tick 5", Number(pooled(bps).skill.toFixed(4)), 35 / 55, 0.0002);
+check("a sub-tick bps move counts as moved only from the tick",
+      pooledOnMoves(bps).instances, 2);
+const { tickOf, moveOf, saidOf, fmtMove, predictedOf } = await import(`${W}/topics.js`);
+check("tickOf a bps row", tickOf(bps[0]), 5);
+check("tickOf a row without a topic is Kalshi's", tickOf({ err: 0.01 }), 0.01);
+check("tickOf a topic id", tickOf("news-equity-5m"), 5);
+check("moveOf is relative for bps",
+      Number(moveOf({ topic: "crypto-horizon-5m", mid_now: 65000, realised: 65065 }).toFixed(6)), 10, 1e-6);
+check("moveOf is cents for Kalshi",
+      Number(moveOf({ mid_now: 0.435, realised: 0.365 }).toFixed(6)), -7, 1e-6);
+check("saidOf", Number(saidOf({ topic: "crypto-horizon-5m", mid_now: 100, predicted: 100.25 }).toFixed(6)), 25, 1e-6);
+check("fmtMove cents", fmtMove(3, "kalshi-horizon-5m"), "+3.0c");
+check("fmtMove bps", fmtMove(25, "crypto-horizon-5m"), "+25bps");
+check("predictedOf clamps a contract", predictedOf(0.985, 2, "kalshi-horizon-5m"), 0.99);
+check("predictedOf is relative for bps", Number(predictedOf(200, 50, "news-equity-5m").toFixed(6)), 201, 1e-6);
+// The fixture's synthetic crypto generation pools on tick 5 as well.
+const cg = FX.rollouts.filter(r => r.run_id === "cgen1" && r.side === "candidate" && r.split === "holdout");
+check("the crypto fixture carries its unit", cg.every(r => r.unit === "bps" && r.topic === "crypto-horizon-5m"), true);
+{
+  let removed = 0, bench = 0;
+  for (const r of cg) { removed += r.naive_error - r.err; bench += Math.max(r.naive_error, 5); }
+  check("crypto fixture pooled at tick 5", Number(pooled(cg).skill.toFixed(4)), Number((removed / bench).toFixed(4)), 0.0002);
+}
+
 // skill_on_moves from the same manifest
 const cand = FX.rollouts.filter(r => r.run_id === "gen1-floored" && r.side === "candidate" && r.split === "holdout");
 check("skill_on_moves", Number(pooledOnMoves(cand).skill.toFixed(4)), -0.0135, 0.0002);
@@ -248,6 +282,50 @@ check("live cron after Saturday 15:05 is Sunday 01:05",
       new Date(nextLiveRun(Date.UTC(2026, 8, 19, 16, 0))).toISOString(),
       "2026-09-20T01:05:00.000Z");
 check("countdown text", untilText(wed2am + 4 * 3600e3 + 12 * 60e3, wed2am), "in 4h 12m");
+// The other topics' crons, from topics.js.
+check("crypto loop from 02:00 is 07:17",
+      new Date(nextLoopRun(wed2am, "crypto-horizon-5m")).toISOString(), "2026-09-16T07:17:00.000Z");
+check("crypto live is every four hours at :05",
+      new Date(nextLiveRun(wed2am, "crypto-horizon-5m")).toISOString(), "2026-09-16T04:05:00.000Z");
+check("news loop from 02:00 is 11:17",
+      new Date(nextLoopRun(wed2am, "news-equity-5m")).toISOString(), "2026-09-16T11:17:00.000Z");
+check("news live on a weekday is 13:35",
+      new Date(nextLiveRun(wed2am, "news-equity-5m")).toISOString(), "2026-09-16T13:35:00.000Z");
+check("news live after Friday 20:05 is Monday 13:35",
+      new Date(nextLiveRun(Date.UTC(2026, 8, 18, 21, 0), "news-equity-5m")).toISOString(),
+      "2026-09-21T13:35:00.000Z");
+// The Kalshi live page derives the same errors it always did; a crypto live
+// row derives them in basis points.
+{
+  invalidate();
+  const kl = await liveView({ params: {}, query: {}, signal: new AbortController().signal });
+  const klHTML = toHTML(kl.body);
+  check("Kalshi live still says cents", /move in cents/.test(klHTML) || /forecasts made/.test(klHTML), true);
+  check("Kalshi live shows no crypto row", /binance|BTC/.test(klHTML), false);
+  invalidate();
+  const cl = await liveView({ params: {}, query: {}, topic: "crypto-horizon-5m",
+                              signal: new AbortController().signal });
+  const clHTML = toHTML(cl.body);
+  check("crypto live shows the symbol", /BTC/.test(clHTML), true);
+  check("crypto live says bps", /\+8bps/.test(clHTML), true);
+  check("crypto live shows no league", /EPL/.test(clHTML), false);
+}
+// The crypto generation's page reads in its own unit and words.
+{
+  invalidate();
+  const cgPage = await runView({ params: { id: "cgen1" }, query: {}, topic: "crypto-horizon-5m",
+                                 signal: new AbortController().signal });
+  const cgHTML = toHTML(cgPage.body) + toHTML(cgPage.lead);
+  check("crypto run page says basis points", /basis points/.test(cgHTML), true);
+  check("crypto run page counts days, not matches", /\b1 day\b/.test(cgHTML), true);
+  check("crypto run page never says match", /\bmatch(es)?\b/.test(cgHTML), false);
+  invalidate();
+  const g1 = await runView({ params: { id: "gen1-floored" }, query: {},
+                             signal: new AbortController().signal });
+  const g1HTML = toHTML(g1.body) + toHTML(g1.lead);
+  check("Kalshi run page still says cents", /move in cents/.test(g1HTML), true);
+  check("Kalshi run page still counts matches", /\bmatches\b/.test(g1HTML), true);
+}
 
 // The collection rides along on classify.
 const withLive = { workflow_runs: [
@@ -291,16 +369,19 @@ check("the RPC's human message survives the error path",
 
 // Guess grading, both outcomes, pure.
 const { build } = await import(`${W}/guess.js`);
-const asProphet = build(FX.guesses, FX.runs, "prophet");
+// Graded against the topic's runs only, as the overview loads them: the
+// fixture's crypto generation must not judge a guess about the soccer loop.
+const kalshiRuns = FX.runs.filter(r => r.topic === "kalshi-horizon-5m");
+const asProphet = build(FX.guesses, kalshiRuns, "prophet");
 check("a pre-run 'no' against a rejected run is a hit",
       !!(asProphet.mine && asProphet.myGrade && asProphet.myGrade.hit), true);
-const asOptimist = build(FX.guesses, FX.runs, "optimist");
+const asOptimist = build(FX.guesses, kalshiRuns, "optimist");
 check("a pre-run 'yes' against a rejected run is a miss",
       !!(asOptimist.myGrade && asOptimist.myGrade.hit === false), true);
 check("the crowd hit rate counts both outcomes",
       asProphet.graded >= 2 && asProphet.hitRate > 0 && asProphet.hitRate < 1, true);
 check("an open guess after every run stays ungraded",
-      build(FX.guesses, FX.runs, "hopeful").myGrade, null);
+      build(FX.guesses, kalshiRuns, "hopeful").myGrade, null);
 
 // GH 403: the poller marks the API down and stops asking inside the hour.
 const { external } = await import(`${W}/data.js`);

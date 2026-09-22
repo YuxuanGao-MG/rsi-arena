@@ -157,6 +157,18 @@ nav.main a:hover { background:var(--hair); text-decoration:none; color:var(--ink
 nav.main a[aria-current="page"] { background:var(--brand-soft); color:var(--brand-ink); }
 .spacer { margin-left:auto; }
 
+/* The topic switcher: a segmented control of real links. One segment is the
+   page's topic and says so with aria-current; the rest are places to go. */
+nav.topics ul { display:inline-flex; list-style:none; margin:0; padding:2px;
+                border:1px solid var(--edge); border-radius:999px; background:var(--panel);
+                gap:2px; }
+nav.topics a { display:block; padding:var(--s1) var(--s3); border-radius:999px;
+               font-size:var(--t-xs); font-weight:var(--w-semi); color:var(--soft);
+               white-space:nowrap; }
+nav.topics a:hover { text-decoration:none; color:var(--ink); background:var(--hair); }
+nav.topics a[aria-current="page"] { background:var(--brand); color:#fff; }
+nav.topics a:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+
 .icon-btn {
   display:inline-flex; align-items:center; gap:var(--s2); background:var(--panel);
   border:1px solid var(--edge); border-radius:var(--r1); padding:var(--s2) var(--s3);
@@ -434,6 +446,8 @@ ul.tree ul.tree { margin:0 0 0 var(--s4); padding-left:var(--s4); border-left:1p
              scrollbar-width:none; }
   nav.main::-webkit-scrollbar { display:none; }
   nav.main ul { flex-wrap:nowrap; }
+  nav.topics { flex:none; }
+  nav.topics a { padding:var(--s1) var(--s2); }
   #theme-label { display:none; }
   .icon-btn::before { content:"\25D0"; }
 }

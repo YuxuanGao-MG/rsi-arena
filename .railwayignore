@@ -1,13 +1,15 @@
-# Only web/ is deployed, plus the one file the Dockerfile reaches outside it.
+# Only web/ is deployed, plus the archive files the Dockerfile reaches outside it.
 #
 # `runs/` with a trailing slash excludes the directory itself, and a negation
 # cannot re-include a file inside a directory that is never walked into — so
 # `!runs/archive.json` under `runs/` silently did nothing, the COPY found no
 # file, and the deploy failed while the previous one kept serving. The glob form
 # excludes the contents rather than the directory, which is what makes the
-# negation reachable.
+# negation reachable. One archive per topic, all flat under runs/ for the same
+# reason: a file in a subdirectory would be behind a directory this never
+# walks into.
 runs/*
-!runs/archive.json
+!runs/archive*.json
 benchmarks/
 .cache/
 tests/

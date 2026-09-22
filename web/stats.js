@@ -13,7 +13,11 @@
  * Python is right and this is the bug.
  */
 
-/** One tick. The smallest benchmark error that means anything. */
+import { tickOf } from "./topics.js";
+
+/** One tick on the Kalshi scale. Every row is floored at its own topic's tick
+ * — 0.01 of price for cents, 5 for basis points — via `tickOf`; this constant
+ * is the value the tests and the older pages knew by name. */
 export const TICK = 0.01;
 
 /**
@@ -43,7 +47,7 @@ export const refused = r => r.ok === false || r.scored === false;
 export function windowSkill(r) {
   if (refused(r)) return null;
   if (r.err == null || r.naive_error == null) return r.skill ?? null;
-  return (r.naive_error - r.err) / Math.max(r.naive_error, TICK);
+  return (r.naive_error - r.err) / Math.max(r.naive_error, tickOf(r));
 }
 
 /** The gated statistic: sum the error removed, sum the benchmark, then divide. */
@@ -53,9 +57,12 @@ export function pooled(rows) {
     if (refused(r)) { refusals += 1; continue; }
     if (r.err == null || r.naive_error == null) continue;
     scored += 1;
-    if (r.naive_error < 1e-4) quiet += 1;
+    // A row is floored at its own topic's tick: rows carry `topic` since
+    // migration 008, and a row without one is Kalshi.
+    const tick = tickOf(r);
+    if (r.naive_error < tick / 100) quiet += 1;
     removed += r.naive_error - r.err;
-    benchmark += Math.max(r.naive_error, TICK);
+    benchmark += Math.max(r.naive_error, tick);
   }
   return {
     skill: benchmark ? removed / benchmark : null,
@@ -73,7 +80,7 @@ export function pooled(rows) {
  * number to read beside the pooled one, never instead of it.
  */
 export function pooledOnMoves(rows) {
-  const moved = rows.filter(r => !refused(r) && (r.naive_error ?? 0) >= TICK);
+  const moved = rows.filter(r => !refused(r) && (r.naive_error ?? 0) >= tickOf(r));
   return { ...pooled(moved), instances: moved.length };
 }
 

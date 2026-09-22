@@ -8,22 +8,25 @@
  * shown except the aggregate yes/no split and the crowd's hit rate.
  */
 
-import { q, qAll, rpc, ApiError } from "./data.js";
+import { q, qAll, rpc, ApiError, topicFilter } from "./data.js";
 import { html, raw, toHTML, pct, pill, plural } from "./dom.js";
 import { runStatus } from "./stats.js";
 import { VOTER } from "./voter.js";
+import { DEFAULT } from "./topics.js";
 
-export async function loadGuess({ signal, runs }) {
+/** One open guess per browser per topic: each loop is its own question. */
+export async function loadGuess({ signal, runs, topic = DEFAULT }) {
   // qAll, not q: a single page cuts off at PostgREST's row limit, and a voter
   // past row one thousand would be told they never guessed. "Mine" is fetched
   // by its own filter as well, so it cannot fall off any page at all.
   const [guesses, mineRows] = await Promise.all([
-    qAll("guesses?select=created,guess,voter&order=created.desc",
+    qAll(`guesses?select=created,guess,voter${topicFilter(topic)}&order=created.desc`,
          { signal, fresh: true, max: 50_000 }).catch(() => null),
-    q(`guesses?select=created,guess,voter&voter=eq.${encodeURIComponent(VOTER)}`,
+    q(`guesses?select=created,guess,voter${topicFilter(topic)}` +
+      `&voter=eq.${encodeURIComponent(VOTER)}`,
       { signal, fresh: true }).catch(() => []),
   ]);
-  return build(guesses, runs, VOTER, mineRows && mineRows[0]);
+  return { ...build(guesses, runs, VOTER, mineRows && mineRows[0]), topic };
 }
 
 /** Pure, for the tests: guesses + runs (+ who is asking) → the widget's state. */
@@ -94,8 +97,11 @@ export function wireGuess(panel, addActions, state) {
       const buttons = [...panel.querySelectorAll("button")];
       buttons.forEach(b => { b.disabled = true; });
       try {
+        // The three-argument overload; the two-argument one still exists for
+        // pages published before topics and means Kalshi.
         const out = await rpc("cast_guess",
-          { guess: el.dataset.guess === "true", voter: VOTER });
+          { guess: el.dataset.guess === "true", voter: VOTER,
+            topic: current.topic || DEFAULT });
         current = { ...current, crowd: { yes: 0, no: 0, ...(out && out.crowd || {}) },
                     mine: { guess: el.dataset.guess === "true",
                             created: new Date().toISOString(), voter: VOTER },

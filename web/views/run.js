@@ -11,11 +11,12 @@
 import { q, qAll, qs } from "../data.js";
 import { href } from "../routes.js";
 import {
-  html, raw, stat, pill, n3, usd, price, dir, empty, clock, plural, holdout, skillBar,
+  html, raw, stat, pill, n3, usd, dir, empty, clock, plural, holdout, skillBar,
 } from "../dom.js";
 import { predictedVsRealised, skillHistogram } from "../charts.js";
 import { pooled, pooledOnMoves, windowSkill, refused, runStatus } from "../stats.js";
 import { genName, rewriteLabel, pointsText } from "../labels.js";
+import { topicOf, fmtPrice, wordsOf } from "../topics.js";
 
 const NARROW = "id,fixture,ticker,at,mid_now,realised,predicted,half_width," +
                "err,naive_error,skill,echoed,unmeasurable,cost_usd,ok,scored";
@@ -43,6 +44,13 @@ export async function runView({ params, query, signal }) {
     return { title: "Generation", heading: "No such generation",
              body: empty(html`Nothing published under <code>${id}</code>.`) };
   }
+  // The run's topic, not the route's: a bookmark to a Kalshi generation is a
+  // Kalshi page whatever the reader was last looking at. Every window is
+  // stamped with it so its skill is floored at the right tick.
+  const t = topicOf(run.topic);
+  const w = wordsOf(t.id);
+  for (const r of allRaw) r.topic = t.id;
+  const price = v => fmtPrice(v, t.id);
   if (!allRaw.length) {
     const why = runStatus(run);
     return {
@@ -122,7 +130,7 @@ export async function runView({ params, query, signal }) {
       </details>
     </div></section>` : ""}
 
-    ${power(run, all)}
+    ${power(run, all, w)}
 
     ${drift ? html`<section class="panel"><div class="panel-b prose">
       <p>Two numbers, one generation: the gate recorded ${n3(published.statistic)} on the day;
@@ -173,7 +181,8 @@ export async function runView({ params, query, signal }) {
           </div>
           <figure class="chart">
             <div id="scatter"></div>
-            <figcaption>Both axes are the five-minute move in cents. On the diagonal the
+            <figcaption>Both axes are the five-minute move in ${t.unit === "bps"
+              ? "basis points" : "cents"}. On the diagonal the
               harness called the move exactly; on the horizontal it said nothing, which is what
               the benchmark says everywhere. Inside the wedge between them it removed error;
               outside it added some.</figcaption>
@@ -200,14 +209,16 @@ export async function runView({ params, query, signal }) {
       <div class="panel-h"><h2>Where it lost</h2>
         <span class="pill">worst first — the only thing a rewrite can aim at</span></div>
       <div class="scroll">${windowTable(worst,
-        html`The held-out windows this harness lost the most error on, worst first.${restated(worst)}`)}</div>
+        html`The held-out windows this harness lost the most error on, worst first.${restated(worst)}`,
+        price)}</div>
     </section>
 
     <section class="panel">
       <div class="panel-h"><h2>Where it won</h2>
         <span class="pill">best of all ${plural(all.length, "held-out window")}</span></div>
       <div class="scroll">${windowTable(best,
-        html`The held-out windows it removed the most error on, best first.${restated(best)}`)}</div>
+        html`The held-out windows it removed the most error on, best first.${restated(best)}`,
+        price)}</div>
     </section>`;
 
   return {
@@ -217,13 +228,13 @@ export async function runView({ params, query, signal }) {
       : html`How the original harness did in ${genName(id, allRuns)}`,
     lead: html`${side === "candidate" ? "The rewrite" : "It"}
       ${pointsText(mine.skill)} across ${plural(all.length, "scored moment")}
-      on ${plural(new Set(all.map(r => r.fixture)).size, "match", "matches")} it had never
+      on ${plural(new Set(all.map(r => r.fixture)).size, w.group, w.groups)} it had never
       seen${refusals.length ? html` (${plural(refusals.length, "refusal")} excluded)` : ""}.
       <span class="crumb mono">${id} · ${side}</span>`,
     crumbs: [["generations", href.runs()], [id]],
     body,
     ready: root => {
-      predictedVsRealised(root.querySelector("#scatter"), all);
+      predictedVsRealised(root.querySelector("#scatter"), all, t.id);
       skillHistogram(root.querySelector("#hist"), all);
     },
   };
@@ -239,7 +250,7 @@ export async function runView({ params, query, signal }) {
  * about the sample, and saying so is the difference between a result and an
  * absence of one.
  */
-function power(run, rows) {
+function power(run, rows, w) {
   const h = run.decision?.holdout || {};
   const groups = h.groups ?? new Set(rows.map(r => r.fixture)).size;
   if (h.usable === false) {
@@ -247,25 +258,26 @@ function power(run, rows) {
       <p class="eyebrow warn">no interval could be drawn</p>
       <p>${plural(groups, "held-out fixture")} is too few for the gate to resample from, so no
       gain could have been promoted here no matter how large it was. The interval narrows with
-      the number of <em>matches</em>, not the number of windows: fifty windows on one match are
-      fifty correlated observations of one game.</p>
+      the number of <em>${w.groups}</em>, not the number of ${w.instance}s: fifty
+      ${w.instance}s on one ${w.group} are fifty correlated observations of one
+      ${w.group === "match" ? "game" : w.group}.</p>
     </div></section>`;
   }
   if (!h.detectable) return "";
   return html`<section class="panel ${raw(h.underpowered ? "warnband" : "")}">
     <div class="panel-b prose">
       ${h.underpowered
-        ? html`<p>Too close to call — literally. On ${plural(groups, "match", "matches")} this
+        ? html`<p>Too close to call — literally. On ${plural(groups, w.group, w.groups)} this
             test cannot see a difference smaller than ${n3(h.detectable)}, and it measured
             ${n3(h.diff)}.</p>
             <details class="more"><summary>what that means</summary>
-              <p>The rejection is a fact about the number of matches, not about the rewrite:
+              <p>The rejection is a fact about the number of ${w.groups}, not about the rewrite:
               no candidate this size could have been visible to the test judging it
-              ${h.se ? html`(standard error ${h.se.toFixed(4)})` : ""}. More matches, not a
+              ${h.se ? html`(standard error ${h.se.toFixed(4)})` : ""}. More ${w.groups}, not a
               better rewrite, is what would change it.</p>
             </details>`
         : html`<p>The measurement (${n3(h.diff)}) was large enough for this test to see —
-            its floor on ${plural(groups, "match", "matches")} is ${n3(h.detectable)}.</p>`}
+            its floor on ${plural(groups, w.group, w.groups)} is ${n3(h.detectable)}.</p>`}
     </div></section>`;
 }
 
@@ -322,7 +334,7 @@ function restated(rows) {
     : "";
 }
 
-function windowTable(rows, caption) {
+function windowTable(rows, caption, price) {
   if (!rows.length) return empty("nothing scored");
   return html`<table>
     <caption>${caption}</caption>

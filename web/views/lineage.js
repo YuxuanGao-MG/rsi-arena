@@ -14,12 +14,13 @@
  * repeat and says so.
  */
 
-import { qAll, qs } from "../data.js";
+import { qAll, qs, topicFilter } from "../data.js";
 import { href } from "../routes.js";
 import { html, raw, pill, n3, n2, dir, empty, day, plural } from "../dom.js";
 import { loadArchive, contested, instanceBest, wins, frontier, tree } from "../archive.js";
 import { recompute, runStatus } from "../stats.js";
 import { sparkline } from "../charts.js";
+import { DEFAULT } from "../topics.js";
 
 /**
  * `manifest["parent"]` is a run *directory* — "runs/gen4" — while `id` is the
@@ -31,12 +32,13 @@ const parentId = r => (r.parent || "").replace(/^runs\//, "") || null;
 const COLUMNS = "id,created,parent,accepted,reasons,incumbent_fp,candidate_fp," +
                 "baseline,candidate,decision,search";
 
-export async function lineageView({ signal }) {
+export async function lineageView({ signal, topic = DEFAULT }) {
   const [runs, entries] = await Promise.all([
-    qAll(`runs?select=${COLUMNS}&order=created.asc`, { signal, pageSize: 200, max: 2000 }),
+    qAll(`runs?select=${COLUMNS}${topicFilter(topic)}&order=created.asc`,
+         { signal, pageSize: 200, max: 2000 }),
     // The archive is a file this server holds. Its absence is a deployment
     // state, not a failure of this page.
-    loadArchive({ signal }).catch(() => null),
+    loadArchive({ signal, topic }).catch(() => null),
   ]);
   // The published held-out figures are on whatever metric ran that week; one
   // click away, the front page shows the recomputed levels. Two pages one
@@ -48,6 +50,7 @@ export async function lineageView({ signal }) {
       `rollouts?select=run_id,side,err,naive_error,ok,scored` +
       `&split=eq.holdout&run_id=${qs.inList(runs.map(r => r.id))}`,
       { signal, max: 24_000 }).catch(() => []);
+    for (const w of windows) w.topic = topic;      // floored at this topic's tick
     level = recompute(windows);
   }
   if (!runs.length && !entries) {

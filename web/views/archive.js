@@ -18,16 +18,19 @@ import { href } from "../routes.js";
 import { html, raw, stat, pill, n2, pct, empty, plural } from "../dom.js";
 import { archiveFrontier } from "../charts.js";
 import { loadArchive, contested, instanceBest, wins, frontier, byFixture, SILENCE } from "../archive.js";
+import { topicOf, DEFAULT, wordsOf } from "../topics.js";
 
-export async function archiveView({ signal }) {
+export async function archiveView({ signal, topic = DEFAULT }) {
+  const t = topicOf(topic);
+  const w = wordsOf(t.id);
   let entries;
   try {
-    entries = await loadArchive({ signal });
+    entries = await loadArchive({ signal, topic: t.id });
   } catch (err) {
-    if (err instanceof ApiError && err.kind === "notfound") return notShipped();
+    if (err instanceof ApiError && err.kind === "notfound") return notShipped(t);
     throw err;
   }
-  if (!entries.length) return notShipped();
+  if (!entries.length) return notShipped(t, true);
 
   const disputed = contested(entries);
   const best = instanceBest(entries, disputed);
@@ -49,7 +52,7 @@ export async function archiveView({ signal }) {
   // The candidates the whole design is for: they would be thrown away by a
   // best-mean rule, and they are the only thing that works somewhere.
   const stepping = points.filter(p => p.onFrontier && p.wins > 0 && p.mean < (topMean?.mean ?? 0));
-  const owned = byFixture(entries);
+  const owned = byFixture(entries, t.id);
 
   const body = html`
     <div class="cards">
@@ -78,7 +81,7 @@ export async function archiveView({ signal }) {
           <div id="frontier"></div>
           <figcaption>Right of the line beat silence on average. The dots worth studying are
             the ones that lose on average and still sit high — the only thing that ever worked
-            on some particular match.</figcaption>
+            on some particular ${w.group}.</figcaption>
         </figure>
         <details class="table-view">
           <summary>Every candidate as a table</summary>
@@ -115,7 +118,7 @@ export async function archiveView({ signal }) {
       <div class="panel-h"><h2>Kept in spite of the average</h2></div>
       <div class="panel-b prose">
         <p>${plural(stepping.length, "candidate")} lose on average and are still the best thing
-        anyone has found on some match. They stay.</p>
+        anyone has found on some ${w.group}. They stay.</p>
         <details class="more"><summary>which ones, and why keep losers</summary>
           <p>${stepping.map(p => `${p.id} (mean ${n2(p.mean)}, best on ${p.wins})`).join("; ")}.
           Keeping only the best-scoring agent deletes the stepping stones back to solid ground;
@@ -125,13 +128,13 @@ export async function archiveView({ signal }) {
       </div></section>` : ""}
 
     <section class="panel">
-      <div class="panel-h"><h2>Who owns which match</h2></div>
+      <div class="panel-h"><h2>Who owns which ${w.group}</h2></div>
       <div class="scroll"><table>
-        <caption>For each match in the archive, the candidate with the highest mean score on its
-          windows. A match whose owner is not the best overall candidate is a match the frontier
-          is paying for.</caption>
-        <thead><tr><th scope="col">match</th><th scope="col">best candidate</th>
-          <th scope="col" class="n">its mean there</th><th scope="col" class="n">windows</th></tr></thead>
+        <caption>For each ${w.group} in the archive, the candidate with the highest mean score
+          on its ${w.instance}s. A ${w.group} whose owner is not the best overall candidate is a
+          ${w.group} the frontier is paying for.</caption>
+        <thead><tr><th scope="col">${w.group}</th><th scope="col">best candidate</th>
+          <th scope="col" class="n">its mean there</th><th scope="col" class="n">${w.instance}s</th></tr></thead>
         <tbody>${[...owned.entries()].slice(0, 40).map(([fixture, per]) => {
           let bestId = null, bestMean = -Infinity, windows = 0;
           for (const [id, cell] of per) {
@@ -164,12 +167,22 @@ export async function archiveView({ signal }) {
   };
 }
 
-function notShipped() {
+function notShipped(t, emptyFile = false) {
+  const file = t.archive === "/archive.json" ? "runs/archive.json"
+    : `runs/archive.${t.id}.json`;
+  if (emptyFile) {
+    return {
+      title: "Archive", heading: "The archive is empty",
+      lead: html`${t.title}'s search has not remembered a candidate yet.`,
+      body: empty(html`<code>${file}</code> is deployed and holds no entries: the first
+        generation on this topic has not run, or has not committed what it found.`),
+    };
+  }
   return {
     title: "Archive", heading: "The archive is not deployed here",
     body: html`<section class="panel"><div class="panel-b prose">
-      <p>This page reads <code>/archive.json</code>, which the server copies out of
-      <code>runs/archive.json</code>. This deployment does not have it: either the loop has not
+      <p>This page reads <code>${t.archive}</code>, which the server copies out of
+      <code>${file}</code>. This deployment does not have it: either the loop has not
       written an archive yet, or the image was built without copying it in.</p>
       <p class="note">It is a file rather than a table on purpose — it records what the search
       found, which carries no claim, and Supabase holds only what the gate decided.</p>

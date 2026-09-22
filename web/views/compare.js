@@ -8,10 +8,10 @@
  * browser then posted as the record of what the arithmetic said.
  */
 
-import { q, qAll, rpc, count, invalidate, ApiError } from "../data.js";
+import { q, qAll, rpc, count, invalidate, ApiError, topicFilter } from "../data.js";
 import { href } from "../routes.js";
 import {
-  html, raw, mount, pill, n3, dir, empty, clock, cents, price, plural, stat,
+  html, raw, mount, pill, n3, dir, empty, clock, plural, stat,
 } from "../dom.js";
 import { addActions } from "../actions.js";
 import { groupBy } from "../stats.js";
@@ -19,6 +19,9 @@ import { groupBy } from "../stats.js";
 import { VOTER } from "../voter.js";
 import { genName, fateOf, rewriteLabel, incumbentLabel } from "../labels.js";
 import { runStatus } from "../stats.js";
+import {
+  topicOf, DEFAULT, forecastOf, fmtMove, fmtWidth, fmtPrice, wordsOf,
+} from "../topics.js";
 
 export async function compareView(ctx) {
   if (!ctx.params.runId) return pickGeneration(ctx);
@@ -28,9 +31,11 @@ export async function compareView(ctx) {
 
 /* ---------- pick a generation --------------------------------------------- */
 
-async function pickGeneration({ signal }) {
+async function pickGeneration({ signal, topic = DEFAULT }) {
+  const w = wordsOf(topic);
   const runs = await qAll(
-    "runs?select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm&order=created.desc",
+    "runs?select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm" +
+    `${topicFilter(topic)}&order=created.desc`,
     { signal, pageSize: 200, max: 2000 });
   if (!runs.length)
     return { title: "Compare", heading: "Nothing to compare", body: empty("No generation has been published.") };
@@ -62,8 +67,8 @@ async function pickGeneration({ signal }) {
   return {
     title: "Compare",
     heading: "Read two forecasters. Say which you'd rather have had.",
-    lead: html`Each rewrite is shown beside the harness it tried to replace, on one full match.
-      A coin decides which side sits left, so you judge the words, not the label.`,
+    lead: html`Each rewrite is shown beside the harness it tried to replace, on one full
+      ${w.group}. A coin decides which side sits left, so you judge the words, not the label.`,
     body: html`
       ${doors.length ? html`<div class="grid-2 even">
         ${doors.map(d => html`<a class="panel door" href="${raw(href.compare(d.run.id))}">
@@ -97,18 +102,19 @@ async function pickGeneration({ signal }) {
             <span><span class="name">${incumbentLabel(r, runs)} vs ${rewriteLabel(r, runs)}</span>
               <span class="why">${r.candidate_fp === r.incumbent_fp
                 ? "the search returned its own parent — both columns are the same forecaster"
-                : "pick a match, read both, vote"}</span>
+                : `pick a ${w.group}, read both, vote`}</span>
               <span class="why crumb mono">${r.id}</span></span>
             <span class="spark"></span>
-            <span class="right crumb">choose a match</span>
+            <span class="right crumb">choose a ${w.group}</span>
           </a></li>`;
         })}</ul>
       </section>
 
       <section class="panel"><div class="panel-b prose">
-        <p>Why a whole match and not one forecast? One forecast is checkable five minutes later,
-        so "which reads better" mostly measures prose. A whole match shows when each forecaster
-        stays quiet and whether its reasons change with the game.</p>
+        <p>Why a whole ${w.group} and not one forecast? One forecast is checkable five minutes
+        later, so "which reads better" mostly measures prose. A whole ${w.group} shows when each
+        forecaster stays quiet and whether its reasons change with the
+        ${w.group === "match" ? "game" : "tape"}.</p>
         <details class="more"><summary>the full story</summary>
           <p>A harness can argue well for a call that loses. The number worth watching is not
           who wins but how often a reader and the arithmetic disagree — a forecaster that reads
@@ -121,14 +127,18 @@ async function pickGeneration({ signal }) {
 
 /* ---------- pick a match --------------------------------------------------- */
 
-async function pickFixture({ params, signal }) {
+async function pickFixture({ params, signal, topic = DEFAULT }) {
   const runId = params.runId;
   const [[run], allRuns] = await Promise.all([
     q(`runs?id=eq.${encodeURIComponent(runId)}` +
-      "&select=id,created,accepted,candidate_fp,incumbent_fp,decision,llm", { signal })
+      "&select=id,topic,created,accepted,candidate_fp,incumbent_fp,decision,llm", { signal })
       .catch(() => []),
-    q("runs?select=id,created&order=created.asc", { signal }).catch(() => []),
+    q(`runs?select=id,created${topicFilter(topic)}&order=created.asc`, { signal })
+      .catch(() => []),
   ]);
+  // The run's topic names the group — match, symbol-day, day — whatever the
+  // route says: a bookmark into a Kalshi generation is a Kalshi page.
+  const w = wordsOf(run ? run.topic : topic);
   // Narrow on purpose. Counting distinct fixtures used to mean pulling four
   // thousand rollouts with their `output` jsonb, ordered by time and cut at the
   // limit — so the count printed beside the list was of whatever survived the
@@ -149,14 +159,14 @@ async function pickFixture({ params, signal }) {
   }));
 
   return {
-    title: `${runId} · matches`,
+    title: `${runId} · ${w.groups}`,
     heading: run ? html`${incumbentLabel(run, allRuns)} vs ${rewriteLabel(run, allRuns)}`
-                 : "Pick a match",
-    lead: html`Pick one of ${plural(rows.length, "match")}. You will read both forecasters on
-      every moment of it, then say which you'd rather have had.`,
+                 : `Pick a ${w.group}`,
+    lead: html`Pick one of ${plural(rows.length, w.group, w.groups)}. You will read both
+      forecasters on every moment of it, then say which you'd rather have had.`,
     crumbs: [["compare", href.compare()], [runId]],
     body: html`<section class="panel">
-      <div class="panel-h"><h2>${plural(rows.length, "match")}</h2>
+      <div class="panel-h"><h2>${plural(rows.length, w.group, w.groups)}</h2>
         ${index.truncated ? pill("list truncated", "warn") : ""}</div>
       <ul class="rows">${rows.map(r => html`<li>
         <a class="row" href="${raw(href.compare(runId, r.fixture))}">
@@ -173,12 +183,17 @@ async function pickFixture({ params, signal }) {
 
 /* ---------- the duel -------------------------------------------------------- */
 
-async function duel({ params, signal }) {
+async function duel({ params, signal, topic = DEFAULT }) {
   const { runId, fixture } = params;
-  const rows = await qAll(
-    `rollouts?run_id=eq.${encodeURIComponent(runId)}&fixture=eq.${encodeURIComponent(fixture)}` +
-    `&select=side,ticker,at,mid_now,half_width,output&order=at.asc`,
-    { signal, max: 4000 });
+  const [rows, [run]] = await Promise.all([
+    qAll(
+      `rollouts?run_id=eq.${encodeURIComponent(runId)}&fixture=eq.${encodeURIComponent(fixture)}` +
+      `&select=side,ticker,at,mid_now,half_width,output&order=at.asc`,
+      { signal, max: 4000 }),
+    q(`runs?id=eq.${encodeURIComponent(runId)}&select=id,topic`, { signal }).catch(() => []),
+  ]);
+  const t = topicOf(run ? run.topic : topic);
+  const w = wordsOf(t.id);
 
   const paired = new Map();
   for (const r of rows) {
@@ -188,10 +203,10 @@ async function duel({ params, signal }) {
   }
   const pairs = [...paired.values()].filter(p => p.baseline && p.candidate);
   if (!pairs.length)
-    return { title: fixture, heading: "This match has no paired windows",
+    return { title: fixture, heading: `This ${w.group} has no paired ${w.instance}s`,
              crumbs: [["compare", href.compare()], [runId, href.compare(runId)], [fixture]],
              body: empty("We only compare the two on moments both actually forecast — "
-                       + "same match, same minute. This match has none.") };
+                       + `same ${w.group}, same minute. This ${w.group} has none.`) };
 
   // A coin decides the left column, and which way it landed is stored with the
   // vote: position bias is real, and a vote nobody can correct for is unusable.
@@ -206,16 +221,16 @@ async function duel({ params, signal }) {
     title: fixture,
     heading: html`<span class="mono">${fixture}</span>`,
     lead: html`One of these is the original harness; the other is a rewrite. A coin picked the
-      columns. Read both — ${plural(pairs.length, "moment", "moments")}, same match, same
+      columns. Read both — ${plural(pairs.length, "moment", "moments")}, same ${w.group}, same
       minutes — then vote. The scores stay hidden until you do.`,
     crumbs: [["compare", href.compare()], [runId, href.compare(runId)], [fixture]],
     body: html`
-      <div class="duel">${column(L, flipped ? "B" : "A", pairs)}${column(R, flipped ? "A" : "B", pairs)}</div>
+      <div class="duel">${column(L, flipped ? "B" : "A", pairs, t)}${column(R, flipped ? "A" : "B", pairs, t)}</div>
       <section class="panel" id="voteBox"><div class="panel-b">
         <p class="eyebrow">your call</p>
         <p class="note" id="vote-count" data-count="${voteCount}">${voteCount
-          ? plural(voteCount, "reader has voted", "readers have voted") + " on this match."
-          : "Nobody has voted on this match yet — be the first."}</p>
+          ? plural(voteCount, "reader has voted", "readers have voted") + ` on this ${w.group}.`
+          : `Nobody has voted on this ${w.group} yet — be the first.`}</p>
         <div class="btn-row">
           <button class="btn" type="button" data-action="vote" data-chose="${L}">
             ${flipped ? "B" : "A"} — the left column</button>
@@ -233,7 +248,7 @@ async function duel({ params, signal }) {
         sides, computed by the database rather than by this page.</p>
       </div></section>`,
     ready: root => {
-      addActions({ vote: el => castVote(el, { runId, fixture, left: L }) });
+      addActions({ vote: el => castVote(el, { runId, fixture, left: L, w }) });
       // The count refreshes gently while someone is reading; a vote landing
       // from another tab shows up without a reload.
       let timer = 0;
@@ -245,8 +260,8 @@ async function duel({ params, signal }) {
               `&fixture=eq.${encodeURIComponent(fixture)}`, {});
             const el = root.querySelector("#vote-count");
             if (el) el.textContent = n
-              ? `${plural(n, "reader has voted", "readers have voted")} on this match.`
-              : "Nobody has voted on this match yet — be the first.";
+              ? `${plural(n, "reader has voted", "readers have voted")} on this ${w.group}.`
+              : `Nobody has voted on this ${w.group} yet — be the first.`;
           } catch (e) { /* the next cycle retries */ }
         }
         timer = setTimeout(tick, 60_000);
@@ -257,22 +272,22 @@ async function duel({ params, signal }) {
   };
 }
 
-function column(side, tag, pairs) {
+function column(side, tag, pairs, t) {
   const spoke = pairs.filter(p =>
-    Math.abs((p[side].output && p[side].output.delta_cents) ?? 0) > 0.001).length;
+    Math.abs(forecastOf(p[side].output, t.id).delta ?? 0) > 0.001).length;
   return html`<section class="side" aria-label="Harness ${tag}">
     <div class="head"><span class="tag" aria-hidden="true">${tag}</span>
       <span><span class="name">Harness ${tag}</span>
-        <span class="crumb">had an opinion on ${spoke} of ${pairs.length} windows</span></span></div>
+        <span class="crumb">had an opinion on ${spoke} of ${pairs.length} ${t.words.instance}s</span></span></div>
     <ul class="calls">${pairs.map(p => {
       const r = p[side], o = r.output || {};
-      const d = o.delta_cents;
+      const { delta: d, width } = forecastOf(o, t.id);
       return html`<li class="call">
         <div class="top">
           <span class="clock">${clock(r.at)}</span>
-          <span class="move ${dir(d)}">${d == null ? "—" : cents(d)}</span>
-          <span class="width">±${o.half_width_cents ?? "?"}c</span>
-          <span class="clock spacer">mid ${price(r.mid_now)}</span>
+          <span class="move ${dir(d)}">${d == null ? "—" : fmtMove(d, t.id)}</span>
+          <span class="width">${fmtWidth(width, t.id)}</span>
+          <span class="clock spacer">mid ${fmtPrice(r.mid_now, t.id)}</span>
         </div>
         ${o.driver ? html`<p class="say">${o.driver}</p>`
                    : html`<p class="say note">no reasoning kept for this generation</p>`}
@@ -284,7 +299,7 @@ function column(side, tag, pairs) {
 
 /* ---------- the vote --------------------------------------------------------- */
 
-async function castVote(el, { runId, fixture, left }) {
+async function castVote(el, { runId, fixture, left, w }) {
   const box = document.getElementById("voteBox");
   const buttons = [...box.querySelectorAll("button")];
   buttons.forEach(b => { b.disabled = true; });
@@ -333,10 +348,10 @@ async function castVote(el, { runId, fixture, left }) {
         + "for a call that loses, and the rewriter is judging text too."}</p>
     ${note ? html`<p class="note">Your note, as sent: “${note}”</p>` : ""}
     <p class="note">${answer && answer.already_voted
-      ? "You had already voted on this match, so the earlier vote stands and this one was not stored."
+      ? `You had already voted on this ${w.group}, so the earlier vote stands and this one was not stored.`
       : "Vote recorded."}
       ${answer && answer.windows != null
-        ? `Pooled over ${plural(answer.windows, "paired window")}` +
+        ? `Pooled over ${plural(answer.windows, `paired ${w.instance}`)}` +
           (answer.quiet ? `, of which ${answer.quiet} never moved a tick.` : ".")
         : ""}
       <a href="${raw(href.votes())}">How often the crowd and the arithmetic disagree</a>.</p>

@@ -8,14 +8,15 @@
  * reader to know any of it was interactive.
  */
 
-import { NAV, METRICS_NAV, navOf, parse } from "./routes.js";
+import { NAV, METRICS_NAV, navOf, parse, topicNav, href } from "./routes.js";
 import { mount, html, raw, errorPanel, skeleton } from "./dom.js";
 import { clearCharts } from "./charts.js";
 import { invalidate } from "./data.js";
 import { resetActions } from "./actions.js";
-import { startStatus, onStatus, setOverviewVisible } from "./status.js";
-import { startTicker } from "./ticker.js";
+import { startStatus, onStatus, setOverviewVisible, setStatusTopic } from "./status.js";
+import { startTicker, setTickerTopic } from "./ticker.js";
 import { startClock, tickAll } from "./clock.js";
+import { TOPICS, rememberTopic } from "./topics.js";
 
 import { overviewView } from "./views/overview.js";
 import { metricsView } from "./views/metrics.js";
@@ -39,18 +40,31 @@ const VIEWS = {
 const viewEl = document.getElementById("view");
 const announceEl = document.getElementById("announce");
 const navEl = document.getElementById("nav");
+const topicsEl = document.getElementById("topics");
 const navStatusEl = document.getElementById("nav-status");
 
 let inflight = null;      // the running route's AbortController
 let lastName = null;
+let lastTopic = null;
 let firstPaint = true;
 let slowTimer = 0;        // says so out loud when a fetch is taking its time
 
 /* ---------- chrome -------------------------------------------------------- */
 
+/* Painted per route rather than once: every href carries the topic prefix
+ * when the page is not on the default topic, so the links change with it. */
 function paintNav(active) {
   mount(navEl, NAV.map(([label, to, name]) => html`
-    <li><a href="${raw(to)}" ${raw(name === active ? 'aria-current="page"' : "")}>${label}</a></li>`));
+    <li><a href="${raw(to())}" ${raw(name === active ? 'aria-current="page"' : "")}>${label}</a></li>`));
+}
+
+/* The topic switcher: which of the arena's loops the page is reading. Real
+ * links, so a topic is a place with a URL; `aria-current` marks the one the
+ * page is on, and the status dot beside it is re-pointed at that loop. */
+function paintTopics(topic) {
+  if (!topicsEl) return;
+  mount(topicsEl, topicNav(topic));
+  if (navStatusEl) navStatusEl.setAttribute("href", href.overview());
 }
 
 /* The MiMo signature: the run's state lives in the chrome, always visible,
@@ -113,11 +127,11 @@ document.getElementById("theme").addEventListener("click", () => {
 
 /* ---------- the route ------------------------------------------------------ */
 
-function paint({ title, heading, lead, crumbs, body, ready, routeName }) {
+function paint({ title, heading, lead, crumbs, body, ready, routeName, topic }) {
   const inMetrics = routeName && navOf(routeName) === "metrics";
   const subnav = inMetrics ? html`<nav class="subnav" aria-label="Metrics sections"><ul>
       ${METRICS_NAV.map(([label, to, name]) => html`<li>
-        <a href="${raw(to)}" ${raw(name === routeName ? 'aria-current="page"' : "")}>${label}</a>
+        <a href="${raw(to())}" ${raw(name === routeName ? 'aria-current="page"' : "")}>${label}</a>
       </li>`)}</ul></nav>` : "";
   const head = html`
     ${subnav}
@@ -132,7 +146,11 @@ function paint({ title, heading, lead, crumbs, body, ready, routeName }) {
   viewEl.classList.remove("stale");
   viewEl.removeAttribute("aria-busy");
   enhance(viewEl);
-  document.title = `${title} · rsi-arena`;
+  // The tab names the topic only off the default one, so a Kalshi bookmark
+  // reads as it always has and a crypto tab is telling apart from it.
+  const where = topic && TOPICS[topic] && topic !== "kalshi-horizon-5m"
+    ? ` · ${TOPICS[topic].title}` : "";
+  document.title = `${title}${where} · rsi-arena`;
   if (ready) ready(viewEl);
   try { tickAll(viewEl); } catch (e) { /* stub DOM */ }
 
@@ -180,15 +198,25 @@ async function route({ fresh = false } = {}) {
   try { viewEl.dispatchEvent(new Event("view-teardown")); } catch (e) { /* stub DOM */ }
   setOverviewVisible(r.name === "overview");
 
+  // The topic is part of the route, and the browser remembers the last one
+  // chosen so a plain `#/` next week opens where the reader left off. The
+  // chrome that is not the view — the status dot, the foot-stream — follows.
+  rememberTopic(r.topic);
+  setStatusTopic(r.topic);
+  setTickerTopic(r.topic);
+
   clearCharts();
   resetActions({ retry: () => route({ fresh: true }) });
+  paintTopics(r.topic);
   paintNav(navOf(r.name));
 
   if (fresh) invalidate();
   viewEl.setAttribute("aria-busy", "true");
-  if (r.name === lastName && viewEl.firstChild) viewEl.classList.add("stale");
+  if (r.name === lastName && r.topic === lastTopic && viewEl.firstChild)
+    viewEl.classList.add("stale");
   else mount(viewEl, skeleton(4));
   lastName = r.name;
+  lastTopic = r.topic;
 
   // A skeleton that never resolves is the worst of the failure states, because
   // it looks like progress. After five seconds this says what is actually
@@ -205,17 +233,17 @@ async function route({ fresh = false } = {}) {
   const view = VIEWS[r.name];
   if (!view) {
     return paint({
-      title: "Not found", heading: "No such page",
+      title: "Not found", heading: "No such page", topic: r.topic,
       body: html`<div class="panel"><div class="panel-b prose">
         <p>The address <code>${location.hash}</code> does not match a page here.</p>
-        <p><a href="#/">Start at the overview</a>.</p></div></div>`,
+        <p><a href="${raw(href.overview())}">Start at the overview</a>.</p></div></div>`,
     });
   }
 
   try {
     const out = await view({ ...r, signal, reload: () => route({ fresh: true }) });
     if (signal.aborted) return;                 // a newer route already owns the page
-    paint({ ...out, routeName: r.name });
+    paint({ ...out, routeName: r.name, topic: r.topic });
   } catch (err) {
     if (signal.aborted || err.kind === "aborted") return;
     // An ApiError has already been classified and its detail already logged.
@@ -224,7 +252,7 @@ async function route({ fresh = false } = {}) {
     const shown = err.kind ? err
       : { kind: "unknown", message: "Something in this page went wrong.", retryable: true };
     viewEl.classList.remove("stale");
-    paint({ title: "Error", heading: "Something did not load",
+    paint({ title: "Error", heading: "Something did not load", topic: r.topic,
             body: errorPanel(shown, "retry") });
   }
 }

@@ -20,7 +20,8 @@
  * fixed viewBox, because a viewBox that fits a phone renders 5px axis labels.
  */
 
-import { esc, n3, cents, price, clock } from "./dom.js";
+import { esc, n3, clock } from "./dom.js";
+import { topicOf, moveOf, saidOf, fmtMove, fmtPrice } from "./topics.js";
 
 const observers = [];
 
@@ -218,19 +219,22 @@ export function generationSkill(el, points) {
 /* ---------- 2. predicted against realised --------------------------------- */
 
 /**
- * Both axes are the move in cents, not the price, so the two lines that matter
- * are drawable: the diagonal is the move called exactly, and the horizontal is
+ * Both axes are the move in the topic's unit — cents of a contract price,
+ * basis points of a quote — not the price, so the two lines that matter are
+ * drawable: the diagonal is the move called exactly, and the horizontal is
  * saying nothing. Between them is the wedge where the forecast removed error
  * from the no-change benchmark — which is the definition of skill, drawn.
  */
-export function predictedVsRealised(el, rows) {
+export function predictedVsRealised(el, rows, topic) {
+  const t = topicOf(topic);
+  const unit = t.unit === "bps" ? "basis points" : "cents";
   const pts = rows
     .filter(r => r.mid_now != null && r.realised != null && r.predicted != null)
     .slice(0, 1500)
     .map(r => ({
-      x: (r.realised - r.mid_now) * 100,
-      y: (r.predicted - r.mid_now) * 100,
-      skill: r.skill, ticker: r.ticker, at: r.at,
+      x: moveOf(r, t.id),
+      y: saidOf(r, t.id),
+      skill: r.skill, ticker: r.symbol || r.ticker, at: r.at,
     }));
 
   host(el, width => {
@@ -259,8 +263,8 @@ export function predictedVsRealised(el, rows) {
 
     const dots = pts.map(p => {
       const better = (p.skill ?? 0) > 0;
-      const tip = `${p.ticker} ${clock(p.at)} · printed ${cents(p.x)}, said ${cents(p.y)}` +
-        `, skill ${n3(p.skill)}`;
+      const tip = `${p.ticker} ${clock(p.at)} · printed ${fmtMove(p.x, t.id)}, ` +
+        `said ${fmtMove(p.y, t.id)}, skill ${n3(p.skill)}`;
       return `<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
         <circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="11" fill="transparent"/>
         <circle cx="${x(p.x).toFixed(1)}" cy="${y(p.y).toFixed(1)}" r="3.5"
@@ -270,7 +274,7 @@ export function predictedVsRealised(el, rows) {
     }).join("");
 
     return `<svg viewBox="0 0 ${width} ${H}" width="${width}" height="${H}" role="group"
-      aria-label="What the harness said against what printed, in cents of move">
+      aria-label="What the harness said against what printed, in ${unit} of move">
       ${grid}${wedge}
       <line x1="${x(-reach)}" x2="${x(reach)}" y1="${y(-reach)}" y2="${y(reach)}"
             stroke="var(--soft)" stroke-width="1.5"/>
@@ -282,8 +286,8 @@ export function predictedVsRealised(el, rows) {
             fill="var(--soft)">silence</text>
       ${dots}
       <text x="${m.l + plotW}" y="${H - 6}" text-anchor="end" font-size="11"
-            fill="var(--faint)">what printed, cents</text>
-      <text x="${m.l - 40}" y="${m.t - 8}" font-size="11" fill="var(--faint)">what it said, cents</text>
+            fill="var(--faint)">what printed, ${unit}</text>
+      <text x="${m.l - 40}" y="${m.t - 8}" font-size="11" fill="var(--faint)">what it said, ${unit}</text>
     </svg>`;
   });
 }
@@ -381,8 +385,12 @@ export function sparkline(values, { label = "" } = {}) {
 
 /* ---------- 5. one window's prices ---------------------------------------- */
 
-/** mid, what it said with its quote, and what printed — on one line, to scale. */
-export function priceTrack(r) {
+/** mid, what it said with its quote, and what printed — on one line, to scale.
+ * Prices are printed in the topic's precision: three decimals for a 0-1
+ * contract, two for a quote, none for one in the thousands. */
+export function priceTrack(r, topic) {
+  const t = topicOf(topic ?? r);
+  const price = v => fmtPrice(v, t.id);
   const pts = [["mid", r.mid_now, "var(--ghost)"],
                ["said", r.predicted, "var(--c-cand)"],
                ["printed", r.realised, "var(--ink)"]].filter(p => p[1] != null);

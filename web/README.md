@@ -31,14 +31,29 @@ Files are read once at start, so a change to a module needs a restart.
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Where the page reads from. Unset is survivable: the page says so in words rather than fetching itself and reporting `Unexpected token '<'`. |
 | `PORT` | Defaults to 8000. |
 | `OPENROUTER_CREDIT_REMAINING`, `OPENROUTER_CREDIT_TOTAL`, `OPENROUTER_CREDIT_AS_OF` | What is left on the model account. The one number on the cost page that is in no manifest — a generation records what it spent, and nothing records what there is left to spend — so it is set by hand and shown with the date it was set. Unset shows nothing rather than zero. |
-| `ARCHIVE_PATH` | Where `archive.json` lives, if not `runs/archive.json`. |
+| `ARCHIVE_PATH` | Where the Kalshi `archive.json` lives, if not `runs/archive.json`. Other topics' archives are `runs/archive.<topic>.json`, served at `/archive/<topic>.json`. |
+
+## Topics
+
+One service, several loops. The header's switcher moves every page between
+`kalshi-horizon-5m` (cents of a 0-1 price, tick 0.01), `news-equity-5m` and
+`crypto-horizon-5m` (basis points of a relative move, tick 5). A route may start
+with `t/<topic>/`; without it the page is on the topic the browser last chose,
+else Kalshi. Runs, progress, live forecasts and guesses filter on their `topic`
+column; rollouts, traces and votes reach a topic through the run ids of a
+filtered run list. A rollout row without a `topic` is a Kalshi row, and every
+per-row floor goes through `tickOf`, so the Kalshi numbers are unchanged.
+`supabase/migrations/008_topics.sql` adds the columns; before it is applied the
+status dot degrades to the unfiltered read and the other topics are empty.
 
 ## What is where
 
 | File | What it holds |
 |---|---|
-| `index.html` | The shell: head, header, `<main>`, the live region, and the config the server substitutes. |
+| `index.html` | The shell: head, header (with the topic switcher), `<main>`, the live region, and the config the server substitutes. |
 | `app.js` | Router, theme toggle, focus and announcements, the skeleton and its slow-fetch notice. |
+| `topics.js` | The topics table: unit, tick, words, crons, archive path and grouping per topic, plus the arithmetic that differs between them (`moveOf`, `predictedOf`, `fmtMove`, `tickOf`). Imports nothing. |
+| `routes.js` | Every href, with the optional `#/t/<topic>/` prefix — omitted for the default topic, so old links and bookmarks still mean Kalshi. |
 | `data.js` | Every request. Timeouts, cancellation on route change, `Range` pagination, an in-memory cache, and typed errors. |
 | `dom.js` | The `html` tagged template, which escapes every interpolation unless it is explicitly `raw`, plus the fragments every view reuses. |
 | `charts.js` | Seven pictures, as inline SVG, re-rendered at the width they are actually given. |
