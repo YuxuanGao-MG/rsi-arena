@@ -141,8 +141,10 @@ def rollout_row(run_id: str, side: str, split: str, r: dict, *,
         # it outright now; older dumps are read the way they always were.
         "fixture": (inst.get("group")
                     or (inst.get("game") or {}).get("game_id")
-                    or inst["ticker"].rsplit("-", 1)[0]),
-        "ticker": inst["ticker"], "at": inst["at"],
+                    or str(inst.get("ticker") or inst.get("symbol") or "").rsplit("-", 1)[0]),
+        # A Kalshi instance is a ticker; a crypto or news instance is a symbol.
+        # The column is what the reader keys a window on either way.
+        "ticker": inst.get("ticker") or inst.get("symbol") or inst.get("id"), "at": inst["at"],
         "mid_now": d.get("mid_now"), "realised": d.get("realised"),
         "predicted": d.get("predicted"), "half_width": d.get("half_width"),
         "err": d.get("error"), "naive_error": d.get("naive_error"), "skill": d.get("skill"),

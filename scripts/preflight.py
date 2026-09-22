@@ -129,9 +129,21 @@ _owned = sum(1 for w in hold if _board.get(_inc, w) is not None) if len(_board) 
 # guess about it. The incumbent's own half is whatever the scoreboard does not
 # already own. gen11 priced all three at the incumbent's rate, in one pot,
 # and the pot ran dry $6.50 into a $22 held-out set.
-_judge = (_probe + len(hold)) * PER_WINDOW * s.max_cost_ratio
+# The judgment is priced at the same floored rate the run reserves at: the gate
+# lets a candidate cost the ratio times max(incumbent, floor), and the reserve
+# is that times the windows judged. Pricing it at the raw rate said $0.33 for a
+# generation whose reserve alone was $24, and the ceiling derived from the
+# prediction could not pay for a verdict.
+_floor = max(PER_WINDOW, s.cost_floor_usd or 0.0)
+_judge = (_probe + len(hold)) * _floor * s.max_cost_ratio
 _search = (s.max_metric_calls + s.valset) * PER_WINDOW
-_cold = (_probe + len(hold)) * PER_WINDOW + _judge + _search
+# The rewriter's own bill. On a topic whose windows cost a fraction of a cent it
+# is most of the generation: one reflection per minibatch of proposals, at what
+# a Sonnet rewrite over eight traces has cost.
+REFLECTION_USD = 0.08
+_proposals = max(0, s.max_metric_calls - s.valset) // max(1, s.minibatch)
+_reflect = _proposals * REFLECTION_USD
+_cold = (_probe + len(hold)) * PER_WINDOW + _judge + _search + _reflect
 _next = _cold - _owned * PER_WINDOW
 check("a generation has a ceiling", s.max_generation_usd > 0, f"${s.max_generation_usd:.2f}")
 check("the judgment fits under the ceiling", _judge < s.max_generation_usd,
@@ -142,7 +154,8 @@ check("the judgment fits under the ceiling", _judge < s.max_generation_usd,
 # has already spent. What this knows is what the split costs, and it is the only
 # thing that does.
 print(f"  COST  about ${_next:.0f} to run: ${_judge:.0f} reserved to judge, ${_search:.0f} "
-      f"for the search, ${(_probe + len(hold) - _owned) * PER_WINDOW:.0f} for the baseline "
+      f"for the search, ${_reflect:.0f} for {_proposals} rewrites, "
+      f"${(_probe + len(hold) - _owned) * PER_WINDOW:.0f} for the baseline "
       f"({len(_board)} answers on file save ${_owned * PER_WINDOW:.0f} of a ${_cold:.0f} "
       f"cold generation)")
 _emit = os.environ.get("GITHUB_OUTPUT")

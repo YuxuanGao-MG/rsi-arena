@@ -356,7 +356,7 @@ def test_the_topic_is_registered_and_the_command_prints_it(capsys):
     assert spec.benchmark == "benchmarks/crypto-2026-09.json" and spec.windows_dir == "benchmarks/windows-crypto"
     assert spec.runs_dir == "runs/crypto-horizon-1m" and spec.per_fixture == 24
     assert spec.window_usd == 0.00005 and spec.model_choices == ("typesafe/jev-1.13", "openai/gpt-5-mini")
-    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset) == (30, 15, 2400, 600)
+    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset) == (30, 15, 1200, 600)
     assert spec.max_day_usd == 15 and spec.unit == "bps"
     assert main(["topic", "--topic", "crypto-horizon-1m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)

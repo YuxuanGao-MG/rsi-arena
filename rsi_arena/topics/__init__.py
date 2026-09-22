@@ -39,11 +39,19 @@ class TopicSpec:
     valset: int
     max_day_usd: float                # what a day of the loop on this topic may spend
     unit: str = "cents"               # the metric's unit, for readers that never load the task
+    #: The least an incumbent is priced at when the gate's cost ratio is applied
+    #: and when the judgment is reserved. A Jev incumbent costs two thousandths
+    #: of a cent a window; at a penny the reserve for 1,200 windows was $24
+    #: against a $5 ceiling and the first crypto generation stopped before it
+    #: searched. At a fifth of a cent a candidate may spend up to $0.004 a
+    #: window - one Opus call on roughly every eighth window, which is what a
+    #: gated plan does - and the reserve is under five dollars.
+    cost_floor_usd: float = 0.01
 
     #: The settings a flag left unset takes from the spec. Everything else on
     #: ``Settings`` keeps the dataclass default whatever the topic.
     FILLS = ("harness", "benchmark", "windows_dir", "runs_dir", "per_fixture", "window_usd",
-             "model_choices")
+             "model_choices", "cost_floor_usd", "holdout", "audit", "max_metric_calls", "valset")
 
     def fill(self, settings: Settings) -> Settings:
         """Every ``None`` on ``settings`` that this spec has an answer for, answered."""
@@ -65,7 +73,8 @@ class TopicSpec:
                  ("HOLDOUT", self.holdout), ("AUDIT", self.audit),
                  ("MAX_METRIC_CALLS", self.max_metric_calls), ("VALSET", self.valset),
                  ("MODEL_CHOICES", ",".join(self.model_choices)),
-                 ("MAX_DAY_USD", self.max_day_usd), ("JEV_HARNESS", self.jev_harness)]
+                 ("MAX_DAY_USD", self.max_day_usd), ("JEV_HARNESS", self.jev_harness),
+                 ("COST_FLOOR_USD", self.cost_floor_usd)]
         return "export " + " ".join(f"{k}={shlex.quote(str(v))}" for k, v in pairs)
 
 
@@ -93,6 +102,7 @@ TOPICS: dict[str, TopicSpec] = {
         # Two generations a day at the measured cold price, with room.
         max_day_usd=100.0,
         unit=KalshiHorizon.metric.unit,
+        cost_floor_usd=_defaults.cost_floor_usd,
     ),
     NewsEquity.name: TopicSpec(
         name=NewsEquity.name,
@@ -112,10 +122,11 @@ TOPICS: dict[str, TopicSpec] = {
         model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
         holdout=50,
         audit=30,
-        max_metric_calls=2400,
+        max_metric_calls=1200,
         valset=400,
         max_day_usd=15.0,
         unit=NewsEquity.metric.unit,
+        cost_floor_usd=0.002,
     ),
     CryptoHorizon.name: TopicSpec(
         name=CryptoHorizon.name,
@@ -137,10 +148,11 @@ TOPICS: dict[str, TopicSpec] = {
         model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
         holdout=30,
         audit=15,
-        max_metric_calls=2400,
+        max_metric_calls=1200,
         valset=600,
         max_day_usd=15.0,
         unit=CryptoHorizon.metric.unit,
+        cost_floor_usd=0.002,
     ),
 }
 

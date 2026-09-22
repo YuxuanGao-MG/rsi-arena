@@ -58,8 +58,8 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
                     help="where the archive, the scoreboard and run directories live")
     ap.add_argument("--model-choices", type=_model_list, default=None,
                     help="comma-separated models the search may put in a rewrite")
-    ap.add_argument("--holdout", type=int, default=d.holdout, help="fixtures the optimizer never sees")
-    ap.add_argument("--audit", type=int, default=d.audit,
+    ap.add_argument("--holdout", type=int, default=None, help="fixtures the optimizer never sees")
+    ap.add_argument("--audit", type=int, default=None,
                     help="fixtures shown to nothing until a promotion needs confirming")
     ap.add_argument("--generation", type=int, default=d.generation,
                     help="which turn of the loop this is; rotates the held-out set")
@@ -76,7 +76,7 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--concurrency", type=int, default=d.concurrency)
     ap.add_argument("--cascade", type=int, default=d.cascade,
                     help="train matches to probe before paying for the full evaluation; 0 disables")
-    ap.add_argument("--valset", type=int, default=d.valset,
+    ap.add_argument("--valset", type=int, default=None,
                     help="instances the search scores candidates on; must be under the call budget")
     ap.add_argument("--cascade-floor", type=float, default=d.cascade_floor,
                     help="a probe below this is rejected without confirming")
@@ -85,7 +85,7 @@ def _settings_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--window-usd", type=float, default=None,
                     help="dollars a window before anything is measured; prices the "
                          "judgment reserve when the baseline reports no cost")
-    ap.add_argument("--cost-floor-usd", type=float, default=d.cost_floor_usd,
+    ap.add_argument("--cost-floor-usd", type=float, default=None,
                     help="the least an incumbent is priced at when the cost ratio is "
                          "applied, so a near-free incumbent does not forbid every "
                          "candidate that asks a chat model once")
@@ -772,7 +772,7 @@ def build_parser() -> argparse.ArgumentParser:
     o = sub.add_parser("optimize", help="one generation: baseline, GEPA search, gate")
     _settings_args(o)
     o.add_argument("--run-dir", default=d.run_dir)
-    o.add_argument("--max-metric-calls", type=int, default=d.max_metric_calls)
+    o.add_argument("--max-metric-calls", type=int, default=None)
     o.add_argument("--reflection-model", default=d.reflection_model)
     o.add_argument("--minibatch", type=int, default=d.minibatch)
     o.add_argument("--max-cost-ratio", type=float, default=d.max_cost_ratio)
