@@ -1,0 +1,62 @@
+{
+  "name": "news-equity-5m",
+  "description": "Predicts this symbol's price five minutes after a news item broke, in basis points of the last IEX minute close.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- material, stock-specific news the tape has not absorbed: guidance, a deal, a downgrade, a recall, a regulator\n- the market as a whole moving, which moves this name with it and is not the story's doing\n- a name that has already run on the same story this morning, which has less left to do\n- a thin minute, so a few prints move the close and it drifts back\n\nWhat does not:\n- your view on whether the company is good. The market has that already.\n- a headline that repeats something already priced: an analyst note on a move that happened, a recap, a list.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day; most name a stock in passing and move nothing. A large cap quotes one to five basis points wide, so anything inside that is no move.\n\nYou answer with two numbers.\n\n**How many basis points it moves.** Not where the price is: where it goes, from the last complete minute close. Zero is a real answer and usually the right one. But zero is a decision, not a default, and when the story is material and fresh you are expected to say so in basis points.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote you would actually stand behind, in basis points. Five means you would buy five under your number and sell five over it, and honour both sides. Fifty means you barely know. Quote what you would trade, not what is safe.",
+  "config": {
+    "model": "anthropic/claude-opus-5",
+    "temperature": 0.0,
+    "max_usd": 0.2,
+    "max_calls": 50
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape"
+  ],
+  "plan": {
+    "steps": [
+      {"type": "tool", "name": "quote", "tool": "market_quote", "args": {"symbol": "{{question}}"}, "output_key": "quote", "fail_ok": true},
+      {"type": "tool", "name": "path", "tool": "candlesticks", "args": {"symbol": "{{question}}", "hours_back": 0.75, "timeframe": "1Min"}, "output_key": "path", "fail_ok": true},
+      {"type": "tool", "name": "tape", "tool": "recent_trades", "args": {"symbol": "{{question}}", "minutes_back": 5, "limit": 20}, "output_key": "tape", "fail_ok": true},
+      {"type": "tool", "name": "day", "tool": "daily_context", "args": {"symbol": "{{question}}"}, "output_key": "day", "fail_ok": true},
+      {"type": "tool", "name": "story", "tool": "the_story", "args": {}, "output_key": "story", "fail_ok": true},
+      {"type": "tool", "name": "market", "tool": "market_tape", "args": {"symbol": "SPY"}, "output_key": "market", "fail_ok": true},
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "prediction",
+        "prompt": "Symbol: {{question}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\n\nHow many basis points does the last close move over the next 5 minutes, and how wide a market would you make around that? Zero is a real answer on a headline the market has already read. Quote a width you would actually stand behind on both sides.",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "delta_bps": {
+              "type": "number",
+              "description": "How many basis points the price will MOVE over the next five minutes, from the last complete minute close. Negative for down, 0 for no move. Do not state a price: state the change."
+            },
+            "half_width_bps": {
+              "type": "number",
+              "description": "Half the width of the tightest two-sided market you would actually stand behind, in basis points. You are saying you would buy at (prediction - this) and sell at (prediction + this). Narrow means you will trade; wide means you will not."
+            },
+            "confidence": {
+              "type": "number",
+              "description": "0-1. How sure, given how thin the minute is and how stale the story may be."
+            },
+            "driver": {
+              "type": "string",
+              "description": "The one thing you expect to move it, or why nothing will."
+            },
+            "falsifier": {
+              "type": "string",
+              "description": "What would show this call was wrong, before five minutes are up."
+            }
+          },
+          "required": ["delta_bps", "half_width_bps", "confidence", "driver", "falsifier"],
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
