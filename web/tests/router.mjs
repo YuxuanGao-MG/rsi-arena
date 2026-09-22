@@ -55,12 +55,12 @@ const routes = ["#/", "#/metrics", "#/about",
                 "#/window/3", "#/lineage", "#/archive", "#/compare",
                 "#/compare/gen1-floored", "#/compare/gen1-floored/401878780",
                 "#/votes", "#/live", "#/cost", "#/nonsense",
-                "#/t/crypto-horizon-5m/", "#/t/crypto-horizon-5m/metrics",
-                "#/t/crypto-horizon-5m/about", "#/t/crypto-horizon-5m/generation/cgen1",
-                "#/t/crypto-horizon-5m/compare/cgen1/D20260919",
-                "#/t/crypto-horizon-5m/live", "#/t/crypto-horizon-5m/archive",
-                "#/t/crypto-horizon-5m/lineage", "#/t/crypto-horizon-5m/votes",
-                "#/t/crypto-horizon-5m/cost",
+                "#/t/crypto-horizon-1m/", "#/t/crypto-horizon-1m/metrics",
+                "#/t/crypto-horizon-1m/about", "#/t/crypto-horizon-1m/generation/cgen1",
+                "#/t/crypto-horizon-1m/compare/cgen1/D20260919",
+                "#/t/crypto-horizon-1m/live", "#/t/crypto-horizon-1m/archive",
+                "#/t/crypto-horizon-1m/lineage", "#/t/crypto-horizon-1m/votes",
+                "#/t/crypto-horizon-1m/cost",
                 "#/t/news-equity-5m/", "#/t/news-equity-5m/live", "#/t/news-equity-5m/archive",
                 "#/t/kalshi-horizon-5m/metrics", "#/t/typo/", "#/t/typo/metrics"];
 const missing = new Set(["#/nonsense", "#/t/typo/", "#/t/typo/metrics"]);
@@ -87,20 +87,20 @@ const say = (name, got, want) => {
 };
 localStorage.setItem("rsi_topic", "kalshi-horizon-5m");
 say("a bare route is Kalshi", parse("#/metrics").topic, "kalshi-horizon-5m");
-say("a prefixed route names its topic", parse("#/t/crypto-horizon-5m/metrics").topic, "crypto-horizon-5m");
-say("the prefix leaves the page alone", parse("#/t/crypto-horizon-5m/generation/x").name, "run");
-say("the prefix leaves the params alone", parse("#/t/crypto-horizon-5m/generation/x").params.id, "x");
+say("a prefixed route names its topic", parse("#/t/crypto-horizon-1m/metrics").topic, "crypto-horizon-1m");
+say("the prefix leaves the page alone", parse("#/t/crypto-horizon-1m/generation/x").name, "run");
+say("the prefix leaves the params alone", parse("#/t/crypto-horizon-1m/generation/x").params.id, "x");
 say("an unknown topic is a missing page", parse("#/t/typo/metrics").name, "missing");
 say("withTopic omits the default", withTopic("#/metrics", "kalshi-horizon-5m"), "#/metrics");
-say("withTopic prefixes the rest", withTopic("#/metrics", "crypto-horizon-5m"), "#/t/crypto-horizon-5m/metrics");
+say("withTopic prefixes the rest", withTopic("#/metrics", "crypto-horizon-1m"), "#/t/crypto-horizon-1m/metrics");
 say("withTopic on the root", withTopic("#/", "news-equity-5m"), "#/t/news-equity-5m/");
-location.hash = "#/t/crypto-horizon-5m/";
-say("href.run carries the page's topic", href.run("cgen1"), "#/t/crypto-horizon-5m/generation/cgen1");
-say("href.compare carries the page's topic", href.compare("cgen1", "D1"), "#/t/crypto-horizon-5m/compare/cgen1/D1");
+location.hash = "#/t/crypto-horizon-1m/";
+say("href.run carries the page's topic", href.run("cgen1"), "#/t/crypto-horizon-1m/generation/cgen1");
+say("href.compare carries the page's topic", href.compare("cgen1", "D1"), "#/t/crypto-horizon-1m/compare/cgen1/D1");
 location.hash = "#/";
 say("href.run on Kalshi is the old link", href.run("gen5"), "#/generation/gen5");
-localStorage.setItem("rsi_topic", "crypto-horizon-5m");
-say("a bare route follows the remembered topic", parse("#/").topic, "crypto-horizon-5m");
+localStorage.setItem("rsi_topic", "crypto-horizon-1m");
+say("a bare route follows the remembered topic", parse("#/").topic, "crypto-horizon-1m");
 say("the switcher's Kalshi link is explicit, so it overrides the memory",
     href.topic("kalshi-horizon-5m"), "#/t/kalshi-horizon-5m/");
 localStorage.setItem("rsi_topic", "kalshi-horizon-5m");

@@ -37,7 +37,7 @@ Files are read once at start, so a change to a module needs a restart.
 
 One service, several loops. The header's switcher moves every page between
 `kalshi-horizon-5m` (cents of a 0-1 price, tick 0.01), `news-equity-5m` and
-`crypto-horizon-5m` (basis points of a relative move, tick 5). A route may start
+`crypto-horizon-1m` (basis points of a relative move, tick 5). A route may start
 with `t/<topic>/`; without it the page is on the topic the browser last chose,
 else Kalshi. Runs, progress, live forecasts and guesses filter on their `topic`
 column; rollouts, traces and votes reach a topic through the run ids of a

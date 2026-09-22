@@ -28,16 +28,16 @@ const views = {
   archive: [(await import(`${W}/views/archive.js`)).archiveView, { params: {}, query: {} }],
   // The same pages on another topic, with its own words and unit.
   overviewCrypto: [(await import(`${W}/views/overview.js`)).overviewView,
-                   { params: {}, query: {}, topic: "crypto-horizon-5m" }],
+                   { params: {}, query: {}, topic: "crypto-horizon-1m" }],
   aboutCrypto: [(await import(`${W}/views/about.js`)).aboutView,
-                { params: {}, query: {}, topic: "crypto-horizon-5m" }],
+                { params: {}, query: {}, topic: "crypto-horizon-1m" }],
   runCrypto: [(await import(`${W}/views/run.js`)).runView,
-              { params: { id: "cgen1" }, query: {}, topic: "crypto-horizon-5m" }],
+              { params: { id: "cgen1" }, query: {}, topic: "crypto-horizon-1m" }],
   liveCrypto: [(await import(`${W}/views/live.js`)).liveView,
-               { params: {}, query: {}, topic: "crypto-horizon-5m" }],
+               { params: {}, query: {}, topic: "crypto-horizon-1m" }],
   compareCrypto: [(await import(`${W}/views/compare.js`)).compareView,
                   { params: { runId: "cgen1", fixture: "D20260919" }, query: {},
-                    topic: "crypto-horizon-5m" }],
+                    topic: "crypto-horizon-1m" }],
   archiveNews: [(await import(`${W}/views/archive.js`)).archiveView,
                 { params: {}, query: {}, topic: "news-equity-5m" }],
 };
@@ -92,7 +92,7 @@ if (!/<nav class="topics" aria-label="Topic"><ul id="topics">/.test(shell))
 {
   const { topicNav } = await import(`${W}/routes.js`);
   const { TOPIC_IDS } = await import(`${W}/topics.js`);
-  const nav = toHTML(topicNav("crypto-horizon-5m"));
+  const nav = toHTML(topicNav("crypto-horizon-1m"));
   const links = nav.match(/<a\b[^>]*>[\s\S]*?<\/a>/g) || [];
   if (links.length !== TOPIC_IDS.length) fail("switcher", `${links.length} links for ${TOPIC_IDS.length} topics`);
   for (const a of links) {
@@ -101,7 +101,7 @@ if (!/<nav class="topics" aria-label="Topic"><ul id="topics">/.test(shell))
   }
   const current = links.filter(a => /aria-current="page"/.test(a));
   if (current.length !== 1) fail("switcher", `${current.length} links marked current`);
-  if (!/crypto-horizon-5m/.test(current[0] || "")) fail("switcher", "the wrong link is current");
+  if (!/crypto-horizon-1m/.test(current[0] || "")) fail("switcher", "the wrong link is current");
   if (/onclick|<button/.test(nav)) fail("switcher", "a control that is not a link");
   console.log(`  switcher ${String(nav.length).padStart(6)}b  ${links.length} links, 1 current`);
 }

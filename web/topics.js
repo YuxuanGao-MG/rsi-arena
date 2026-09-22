@@ -91,16 +91,16 @@ export const TOPICS = {
            "failures, and a rewrite is promoted only if it beats its parent on " +
            "symbol-days neither ever saw.",
   },
-  "crypto-horizon-5m": {
-    id: "crypto-horizon-5m",
+  "crypto-horizon-1m": {
+    id: "crypto-horizon-1m",
     title: "Crypto spot",
     unit: "bps",
-    tick: 5,
+    tick: 2,
     relative: true,
     deltaKey: "delta_bps",
     widthKey: "half_width_bps",
     words: { instance: "window", group: "day", groups: "days", subject: "symbol" },
-    archive: "/archive/crypto-horizon-5m.json",
+    archive: "/archive/crypto-horizon-1m.json",
     loopCrons: [[7, 17], [8, 47]],
     loopText: "daily at 07:17 UTC, retried 08:47",
     loopWhen: "07:17 UTC (retried 08:47)",
@@ -111,7 +111,7 @@ export const TOPICS = {
       const day = dayOf(instance);
       return day ? `D${day}` : String(instance).split("@")[0];
     },
-    blurb: "An LLM harness forecasts the five-minute move in BTC, ETH and SOL spot, " +
+    blurb: "An LLM harness forecasts the one-minute move in BTC, ETH and SOL spot, " +
            "in basis points relative to the mid at the time. Each generation, " +
            "another LLM rewrites it from its failures, and a rewrite is promoted " +
            "only if it beats its parent on UTC days neither ever saw.",
@@ -161,7 +161,7 @@ export function topicOf(rowOrTopic) {
   // A row: `topic` when the column was published, else the unit tells the
   // same story — every bps topic shares one tick, every cents topic the other.
   if (rowOrTopic.topic && TOPICS[rowOrTopic.topic]) return TOPICS[rowOrTopic.topic];
-  if (rowOrTopic.unit === "bps") return TOPICS["crypto-horizon-5m"];
+  if (rowOrTopic.unit === "bps") return TOPICS["crypto-horizon-1m"];
   return TOPICS[DEFAULT];
 }
 

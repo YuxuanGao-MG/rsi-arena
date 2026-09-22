@@ -11,7 +11,7 @@
  * the page is about. The prefix is omitted for the default topic, so every
  * link the site has ever handed out — and every bookmark — still means what it
  * meant: `#/generation/gen5` is Kalshi's gen5, and
- * `#/t/crypto-horizon-5m/generation/gen5` is the crypto loop's.
+ * `#/t/crypto-horizon-1m/generation/gen5` is the crypto loop's.
  *
  * Kept apart from the router so views can build an href without importing the
  * router and the router can import the views. Every id here is
