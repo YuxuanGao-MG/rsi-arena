@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GEPA Candidate Tree</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; display: flex; flex-direction: column; }
+  #header { background: #fff; border-bottom: 1px solid #dee2e6; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  #header h1 { font-size: 18px; font-weight: 600; color: #212529; }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: #495057; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #adb5bd; }
+  #graph-container { flex: 1 1 auto; width: 100%; overflow: auto; padding: 20px; text-align: center; }
+  #graph-container svg { width: 100%; height: 100%; }
+  #tooltip {
+    display: none; position: fixed; background: #fff; border: 1px solid #dee2e6;
+    border-radius: 8px; padding: 14px 16px; max-width: 560px; max-height: 70vh; overflow-y: auto;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 1000; font-size: 13px; line-height: 1.5;
+  }
+  #tooltip .tt-header { font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #212529; }
+  #tooltip .tt-meta { color: #6c757d; margin-bottom: 4px; }
+  #tooltip .tt-hint { color: #adb5bd; font-size: 11px; font-style: italic; margin-bottom: 10px; }
+  #tooltip .tt-comp-name { font-weight: 600; color: #495057; margin-top: 10px; border-bottom: 1px solid #e9ecef; padding-bottom: 2px; }
+  #tooltip .tt-comp-text {
+    white-space: pre-wrap; word-break: break-word; background: #f8f9fa;
+    border: 1px solid #e9ecef; border-radius: 4px; padding: 8px 10px; margin-top: 4px;
+    font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+    max-height: 200px; overflow-y: auto;
+  }
+  .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+  .role-best { background: #00e5ff33; color: #006064; }
+  .role-pareto { background: #ff980033; color: #e65100; }
+  .role-seed { background: #e0e0e0; color: #424242; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>GEPA Candidate Tree</h1>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:cyan"></div> Best</div>
+    <div class="legend-item"><div class="legend-dot" style="background:orange"></div> Pareto Front</div>
+    <div class="legend-item"><div class="legend-dot" style="background:lightgray"></div> Other</div>
+  </div>
+</div>
+<div id="graph-container"><p>Loading graph&hellip;</p></div>
+<div id="tooltip"></div>
+
+<script type="module">
+const NODES = [{"idx": 0, "score": 0.4932, "parents": "seed", "role": "Best", "components": {"context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium snapping back through it\n- the US cash open, and the first minutes after it\n- a liquidation cascade: taker selling surging on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or extending\n\nMost minutes do not move. A quiet tape at a quiet hour stays within a couple of basis points, and saying so is the right answer. A minute at the US open, or right before a funding reset, or just after a jump, can move ten or twenty basis points either way.", "model": "typesafe/jev-1.13", "plan": "{\n  \"steps\": [\n    {\n      \"type\": \"tool\",\n      \"name\": \"quote\",\n      \"output_key\": \"quote\",\n      \"tool\": \"market_quote\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"path\",\n      \"output_key\": \"path\",\n      \"tool\": \"candlesticks\",\n      \"args\": {\n        \"symbol\": \"{{question}}\",\n        \"hours_back\": 0.5,\n        \"interval\": \"1m\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"tape\",\n      \"output_key\": \"tape\",\n      \"tool\": \"recent_trades\",\n      \"args\": {\n        \"symbol\": \"{{question}}\",\n        \"minutes_back\": 3,\n        \"limit\": 20\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"funding\",\n      \"output_key\": \"funding\",\n      \"tool\": \"funding_rate\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"others\",\n      \"output_key\": \"others\",\n      \"tool\": \"cross_asset\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"summary\",\n      \"output_key\": \"summary\",\n      \"tool\": \"state_summary\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"prompt\",\n      \"name\": \"predict\",\n      \"output_key\": \"forecast\",\n      \"prompt\": \"Symbol: {{question}}\\nCalendar: {{context}}\\nState: {{summary.summary}}\\nLast close: {{quote}}\\nMinute bars, last 30m: {{path}}\\nRecent prints: {{tape}}\\nFunding: {{funding}}\\nThe other majors: {{others}}\",\n      \"tools\": [],\n      \"max_tool_iterations\": 6,\n      \"questions\": {\n        \"move\": {\n          \"type\": \"score\",\n          \"instructions\": \"How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.\",\n          \"criteria\": [\n            \"down 10 bps or more\",\n            \"down 4 to 9 bps\",\n            \"down about 2 bps\",\n            \"unchanged, within a basis point either way\",\n            \"up about 2 bps\",\n            \"up 4 to 9 bps\",\n            \"up 10 bps or more\"\n          ],\n          \"values\": [\n            -15,\n            -6,\n            -2,\n            0,\n            2,\n            6,\n            15\n          ]\n        }\n      },\n      \"answers\": {\n        \"delta_bps\": {\n          \"from\": \"move\",\n          \"as\": \"mean\"\n        },\n        \"half_width_bps\": {\n          \"from\": \"move\",\n          \"as\": \"half_range\",\n          \"coverage\": 0.6,\n          \"min\": 1\n        },\n        \"confidence\": {\n          \"from\": \"move\",\n          \"as\": \"confidence\"\n        },\n        \"driver\": {\n          \"as\": \"const\",\n          \"value\": \"the expectation of the move distribution\"\n        },\n        \"falsifier\": {\n          \"as\": \"const\",\n          \"value\": \"a close outside the quoted band when the minute prints\"\n        }\n      }\n    }\n  ]\n}", "tools": "market_quote, candlesticks, recent_trades, funding_rate, cross_asset, state_summary"}},
+{"idx": 1, "score": 0.4908, "parents": "0", "role": "Pareto Front", "components": {"context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- Funding settlement proximity: 30-90 minutes before a reset, volatility rises as positions adjust. The perp premium often snaps back toward zero through the settlement.\n- Momentum continuation: a move over the last 1-5 minutes often extends one more tick before pausing. A +20 bps surge with heavy taker buying is not done.\n- Mean reversion after shocks: a sudden -10 bps drop often bounces 2-5 bps in the next minute as limit orders absorb the move.\n- US cash market open (13:30-14:30 UTC): the first 30-60 minutes see elevated activity and directional moves.\n- Liquidation cascades: taker volume surging heavily one-sided (>80% buy or sell) with open interest dropping signals forced liquidations. These extend 2-3 minutes.\n- Cross-asset leadership: BTC moving while ETH/SOL lag by 30-60 seconds creates a brief arbitrage window.\n- Tape imbalance at key levels: sustained 70%+ taker buying or selling for 3+ minutes usually continues at least one more minute.\n\nMost minutes do not move. A quiet tape (50-60% taker buy share, low volume, far from funding) at an off-peak hour stays within 1-2 bps. But do not default to predicting zero when signals are present.\n\nWhen recent price action is volatile (change_1m_bps > 5, or change_5m_bps > 15), or funding is within 90 minutes, or taker imbalance exceeds 70% for multiple minutes, the next minute can easily move 5-15 bps. Widen your quote and adjust your delta accordingly.\n\nA half_width_bps of 1.0 states you expect the price to stay within a 2 bps range. This is only appropriate when the tape is balanced, volume is typical, funding is distant, and recent minutes moved less than 3 bps. Otherwise you will be stopped out.", "model": "typesafe/jev-1.13", "plan": "{\n  \"steps\": [\n    {\n      \"type\": \"tool\",\n      \"name\": \"quote\",\n      \"output_key\": \"quote\",\n      \"tool\": \"market_quote\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"path\",\n      \"output_key\": \"path\",\n      \"tool\": \"candlesticks\",\n      \"args\": {\n        \"symbol\": \"{{question}}\",\n        \"hours_back\": 0.5,\n        \"interval\": \"1m\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"tape\",\n      \"output_key\": \"tape\",\n      \"tool\": \"recent_trades\",\n      \"args\": {\n        \"symbol\": \"{{question}}\",\n        \"minutes_back\": 3,\n        \"limit\": 20\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"funding\",\n      \"output_key\": \"funding\",\n      \"tool\": \"funding_rate\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"others\",\n      \"output_key\": \"others\",\n      \"tool\": \"cross_asset\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"summary\",\n      \"output_key\": \"summary\",\n      \"tool\": \"state_summary\",\n      \"args\": {\n        \"symbol\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"prompt\",\n      \"name\": \"predict\",\n      \"output_key\": \"forecast\",\n      \"prompt\": \"Symbol: {{question}}\\nCalendar: {{context}}\\nState: {{summary.summary}}\\nLast close: {{quote}}\\nMinute bars, last 30m: {{path}}\\nRecent prints: {{tape}}\\nFunding: {{funding}}\\nThe other majors: {{others}}\",\n      \"tools\": [],\n      \"max_tool_iterations\": 6,\n      \"questions\": {\n        \"move\": {\n          \"type\": \"score\",\n          \"instructions\": \"How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.\",\n          \"criteria\": [\n            \"down 10 bps or more\",\n            \"down 4 to 9 bps\",\n            \"down about 2 bps\",\n            \"unchanged, within a basis point either way\",\n            \"up about 2 bps\",\n            \"up 4 to 9 bps\",\n            \"up 10 bps or more\"\n          ],\n          \"values\": [\n            -15,\n            -6,\n            -2,\n            0,\n            2,\n            6,\n            15\n          ]\n        }\n      },\n      \"answers\": {\n        \"delta_bps\": {\n          \"from\": \"move\",\n          \"as\": \"mean\"\n        },\n        \"half_width_bps\": {\n          \"from\": \"move\",\n          \"as\": \"half_range\",\n          \"coverage\": 0.6,\n          \"min\": 1\n        },\n        \"confidence\": {\n          \"from\": \"move\",\n          \"as\": \"confidence\"\n        },\n        \"driver\": {\n          \"as\": \"const\",\n          \"value\": \"the expectation of the move distribution\"\n        },\n        \"falsifier\": {\n          \"as\": \"const\",\n          \"value\": \"a close outside the quoted band when the minute prints\"\n        }\n      }\n    }\n  ]\n}", "tools": "market_quote, candlesticks, recent_trades, funding_rate, cross_asset, state_summary"}}];
+const DOT = `digraph G {
+    rankdir=TB;
+    node [style=filled, shape=circle, fontsize=14, width=0.6, height=0.6];
+    0 [label="0\\n(0.49)", fillcolor=cyan, tooltip=" "];
+    1 [label="1\\n(0.49)", fillcolor=orange, tooltip=" "];
+    0 -> 1;
+}`;
+
+const nodeMap = {};
+NODES.forEach(n => { nodeMap[n.idx] = n; });
+
+let pinnedIdx = null;   // non-null when tooltip is click-pinned (scrollable)
+let hoverIdx = null;    // non-null when hovering over a node
+
+function renderTooltip(idx) {
+  const n = nodeMap[idx];
+  if (!n) return "";
+  let roleBadge = "";
+  if (n.role === "Best") roleBadge = '<span class="role-badge role-best">BEST</span>';
+  else if (n.role === "Pareto Front") roleBadge = '<span class="role-badge role-pareto">PARETO</span>';
+  else if (n.role === "Seed") roleBadge = '<span class="role-badge role-seed">SEED</span>';
+
+  let comps = "";
+  for (const [name, text] of Object.entries(n.components)) {
+    const escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    comps += '<div class="tt-comp-name">' + name + '</div><div class="tt-comp-text">' + escaped + '</div>';
+  }
+
+  return '<div class="tt-header">Candidate ' + n.idx + roleBadge + '</div>' +
+    '<div class="tt-meta">Score: <strong>' + n.score + '</strong>&nbsp;&nbsp;|&nbsp;&nbsp;Parent(s): ' + n.parents +
+    '</div><div class="tt-hint">' + (pinnedIdx === idx ? 'Click node again to dismiss' : 'Click to pin &amp; scroll') + '</div>' +
+    comps;
+}
+
+function positionTooltip(x, y) {
+  const tt = document.getElementById("tooltip");
+  let tx = x + 16, ty = y + 16;
+  const r = tt.getBoundingClientRect();
+  if (tx + r.width > window.innerWidth - 8) tx = x - r.width - 16;
+  if (ty + r.height > window.innerHeight - 8) ty = y - r.height - 16;
+  if (tx < 8) tx = 8;
+  if (ty < 8) ty = 8;
+  tt.style.left = tx + "px";
+  tt.style.top = ty + "px";
+}
+
+function showTooltip(idx, x, y) {
+  const tt = document.getElementById("tooltip");
+  tt.innerHTML = renderTooltip(idx);
+  tt.style.display = "block";
+  positionTooltip(x, y);
+}
+
+function hideTooltip() {
+  pinnedIdx = null;
+  hoverIdx = null;
+  document.getElementById("tooltip").style.display = "none";
+}
+
+// Click outside tooltip and outside nodes dismisses pinned tooltip
+document.addEventListener("mousedown", function(e) {
+  const tt = document.getElementById("tooltip");
+  if (pinnedIdx !== null && tt.style.display === "block"
+      && !tt.contains(e.target) && !e.target.closest(".node")) {
+    hideTooltip();
+  }
+});
+
+async function render() {
+  const { instance } = await import("https://cdn.jsdelivr.net/npm/@viz-js/viz@3.11.0/lib/viz-standalone.mjs");
+  const viz = await instance();
+  const svg = viz.renderSVGElement(DOT);
+  const container = document.getElementById("graph-container");
+  container.innerHTML = "";
+  container.appendChild(svg);
+
+  // Attach hover listeners and strip native <title> tooltips to avoid double tooltips
+  svg.querySelectorAll(".node").forEach(node => {
+    const title = node.querySelector("title");
+    if (!title) return;
+    const idx = parseInt(title.textContent, 10);
+    if (isNaN(idx)) return;
+    title.remove();  // remove native SVG tooltip
+    node.style.cursor = "pointer";
+    // Hover: show tooltip following the mouse (non-interactive)
+    node.addEventListener("mouseenter", e => {
+      if (pinnedIdx !== null) return;  // don't override a pinned tooltip
+      hoverIdx = idx;
+      showTooltip(idx, e.clientX, e.clientY);
+    });
+    node.addEventListener("mousemove", e => {
+      if (pinnedIdx !== null || hoverIdx !== idx) return;
+      positionTooltip(e.clientX, e.clientY);
+    });
+    node.addEventListener("mouseleave", () => {
+      if (pinnedIdx !== null) return;
+      hoverIdx = null;
+      document.getElementById("tooltip").style.display = "none";
+    });
+    // Click: pin the tooltip so user can scroll it
+    node.addEventListener("click", e => {
+      e.stopPropagation();
+      if (pinnedIdx === idx) { hideTooltip(); return; }
+      pinnedIdx = idx;
+      showTooltip(idx, e.clientX, e.clientY);
+    });
+  });
+  // Also strip <title> from edges and the graph itself
+  svg.querySelectorAll(".edge title").forEach(t => t.remove());
+  const graphTitle = svg.querySelector(":scope > title");
+  if (graphTitle) graphTitle.remove();
+}
+
+render().catch(err => {
+  document.getElementById("graph-container").innerHTML =
+    "<p style='color:red'>Failed to render graph: " + err.message + "</p>" +
+    "<pre>" + DOT.replace(/</g,"&lt;") + "</pre>";
+});
+</script>
+</body>
+</html>

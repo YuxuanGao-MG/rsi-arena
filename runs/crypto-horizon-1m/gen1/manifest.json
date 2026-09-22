@@ -1,11 +1,11 @@
 {
   "run_dir": "runs/crypto-horizon-1m/gen1",
   "topic": "crypto-horizon-1m",
-  "created": "2026-09-22T00:46:31+00:00",
+  "created": "2026-09-22T01:11:13+00:00",
   "parent": null,
   "incumbent": "harnesses/crypto-horizon-1m-jev.json",
   "incumbent_fingerprint": "a129ec2ef33f",
-  "candidate_fingerprint": "",
+  "candidate_fingerprint": "a129ec2ef33f",
   "settings": {
     "topic": "crypto-horizon-1m",
     "harness": "harnesses/crypto-horizon-1m-jev.json",
@@ -28,12 +28,12 @@
     "llm_cache": true,
     "reuse_scores": true,
     "concurrency": 4,
-    "max_metric_calls": 2400,
+    "max_metric_calls": 1200,
     "valset": 600,
     "minibatch": 8,
     "max_cost_ratio": 2.0,
-    "cost_floor_usd": 0.01,
-    "max_generation_usd": 5.0,
+    "cost_floor_usd": 0.002,
+    "max_generation_usd": 12.04,
     "window_usd": 5e-05,
     "cascade": 20,
     "cascade_floor": -0.005,
@@ -175,8 +175,8 @@
       "statistic": -0.048,
       "mean_value": 0.4933,
       "failed_runs": 0,
-      "cost_usd": 0.1227,
-      "cost_per_instance": 0.00026,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
       "skill": -0.048,
       "skill_on_moves": -0.0151,
       "mae": 5.4973,
@@ -192,8 +192,8 @@
       "statistic": -0.0156,
       "mean_value": 0.4977,
       "failed_runs": 0,
-      "cost_usd": 0.1843,
-      "cost_per_instance": 0.00026,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
       "skill": -0.0156,
       "skill_on_moves": 0.0119,
       "mae": 5.6354,
@@ -205,23 +205,113 @@
       "unscored": 0
     }
   },
-  "candidate": {},
+  "candidate": {
+    "train": {
+      "instances": 480,
+      "statistic": -0.048,
+      "mean_value": 0.4933,
+      "failed_runs": 0,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
+      "skill": -0.048,
+      "skill_on_moves": -0.0151,
+      "mae": 5.4973,
+      "naive_mae": 5.23,
+      "echoed": 8,
+      "coverage": 0.1979,
+      "moved": 334,
+      "unmeasurable": 22,
+      "unscored": 0
+    },
+    "holdout": {
+      "instances": 720,
+      "statistic": -0.0156,
+      "mean_value": 0.4977,
+      "failed_runs": 0,
+      "cost_usd": 0.0,
+      "cost_per_instance": 0.0,
+      "skill": -0.0156,
+      "skill_on_moves": 0.0119,
+      "mae": 5.6354,
+      "naive_mae": 5.5423,
+      "echoed": 14,
+      "coverage": 0.2528,
+      "moved": 476,
+      "unmeasurable": 41,
+      "unscored": 0
+    }
+  },
   "decision": {
     "accepted": false,
     "reasons": [
-      "incomplete: the ceiling cannot pay for a verdict. Judging a candidate reserves $24.00 to judge a candidate: 1200 windows at $0.0100 each, up to 2.0x the incumbent (priced at the cost floor, which the incumbent is under), and $4.69 of $5.00 remains after the baseline. Nothing was searched, because a search whose winner cannot be judged is the generation gen11 already paid for."
-    ]
+      "the search returned the incumbent unchanged; nothing was proposed to gate"
+    ],
+    "holdout": {
+      "paired": 720,
+      "groups": 30,
+      "diff": 0.0,
+      "low": 0.0,
+      "high": 0.0,
+      "usable": true,
+      "se": 0.0,
+      "detectable": 0.0,
+      "underpowered": false
+    },
+    "train": {
+      "paired": 480,
+      "groups": 20,
+      "diff": 0.0,
+      "low": 0.0,
+      "high": 0.0,
+      "usable": true,
+      "se": 0.0,
+      "detectable": 0.0,
+      "underpowered": false
+    }
   },
-  "search": {},
+  "search": {
+    "seed": "a129ec2ef33f",
+    "seed_is_incumbent": true,
+    "archive": {
+      "candidates": 0,
+      "flat": 0,
+      "contested": 0,
+      "frontier": 0,
+      "instances": 0,
+      "generations": 0,
+      "promoted": 0,
+      "widest": 0
+    },
+    "valset": 600,
+    "candidates": 2,
+    "metric_calls": 1216,
+    "best_idx": 0,
+    "best_train_value": 0.4932,
+    "archive_after": {
+      "candidates": 2,
+      "flat": 0,
+      "contested": 600,
+      "frontier": 2,
+      "instances": 600,
+      "generations": 1,
+      "promoted": 0,
+      "widest": 345
+    }
+  },
   "audit": {},
   "llm": {
-    "reserved_usd": 24.0,
-    "reserve": "$24.00 to judge a candidate: 1200 windows at $0.0100 each, up to 2.0x the incumbent (priced at the cost floor, which the incumbent is under)",
-    "search_ceiling_usd": -19.0,
-    "calls": 1200,
-    "cache_hits": 0,
-    "spent_usd": 0.307,
-    "budget_usd": 5.0,
+    "reserved_usd": 4.8,
+    "reserve": "$4.80 to judge a candidate: 1200 windows at $0.0020 each, up to 2.0x the incumbent (priced at the cost floor, which the incumbent is under)",
+    "search_ceiling_usd": 7.24,
+    "reused": {
+      "remembered": 1319,
+      "hits": 2400,
+      "added": 1319
+    },
+    "calls": 726,
+    "cache_hits": 1210,
+    "spent_usd": 0.2491,
+    "budget_usd": 12.04,
     "exhausted": false
   }
 }
