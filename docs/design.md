@@ -1,5 +1,37 @@
 # Design: the alternative
 
+## Status, 2026-09-22: three topics, and what the price bought
+
+Two new topics run beside Kalshi, on the same loop, gate and reader, both on
+TypeSafe's Jev as the incumbent. Their first generations, on GitHub Actions:
+
+| topic | question set | held-out groups | resolves | baseline | candidate | spent |
+| --- | --- | --- | --- | --- | --- | --- |
+| crypto-horizon-1m | 92 UTC days, 2,208 windows | 30 days | 0.050 | -0.016 | -0.013 | $5.09 |
+| news-equity-5m | 5,102 items, 2,246 symbol-days | 300 symbol-days | **0.009** | -0.007 | -0.007 | $6.64 |
+
+Both rejected, both correctly: neither rewrite moved held-out skill outside
+its interval. The number to read is the third column. The Kalshi gate on a
+hundred matches resolves about 0.050; the news gate on three hundred
+symbol-days resolves 0.009, for a generation that costs a tenth as much,
+because a Jev window costs two thousandths of a cent and the search judged
+every candidate on the whole question set. The crypto gate is where Kalshi's
+is only because its groups are days and the set has ninety-two of them; the
+lever there is more days, not more windows.
+
+What the rewriter did with the money: the news search proposed 58 times,
+accepted ten candidates and stopped on its call budget, having rewritten the
+context, the plan, the tool list and the model; the candidate echoed the
+mid on 9 held-out windows against the incumbent's 53. The crypto search
+proposed 23 times for 7 candidates. On neither topic is the incumbent above
+silence yet.
+
+Two things the first generations found, both fixed: a Jev incumbent's
+judgment had to be priced at the topic's own cost floor (the reserve was
+$24 against a $5 ceiling), and the reader keyed runs by directory name, so
+the crypto loop's gen1 overwrote Kalshi's gen1 rollouts; other topics now
+publish as ``gen1@<topic>``.
+
 ## Status, 2026-09-15
 
 **The loop has run end to end against the real API.** Everything below is what
