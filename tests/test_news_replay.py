@@ -414,7 +414,10 @@ def test_the_spec_and_the_cli_know_the_topic(capsys):
     assert s.runs_dir == spec.runs_dir and s.window_usd == spec.window_usd
     assert s.model_choices == spec.model_choices
     assert Settings().harness == "harnesses/horizon-5m.json", "the first topic keeps the dataclass"
-    assert json.loads((ROOT / "benchmarks" / "news-2026-09.json").read_text()) == []
+    # The question set is real now (5,275 items, 2026-09-22); every item names a
+    # symbol, an instant and the story it came from.
+    items = json.loads((ROOT / "benchmarks" / "news-2026-09.json").read_text())
+    assert items and all({"symbol", "news_id", "at", "headline"} <= set(i) for i in items)
     assert json.loads((ROOT / "runs" / "archive.news-equity-5m.json").read_text()) == {"entries": []}
     universe = [l for l in (ROOT / "benchmarks" / "universe-us.txt").read_text().splitlines()
                 if l and not l.startswith("#")]
