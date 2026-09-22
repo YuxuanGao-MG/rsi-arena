@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Callable
 
 import pytest
 
+from rsi_arena.alpaca._bars import MAX_STALE_S, Bar, last_complete_bar
+from rsi_arena.alpaca._news import NewsItem
+from rsi_arena.alpaca._session import NY
 from rsi_arena.harness import Completion, Decision
 from rsi_arena.kalshi._history import Candle
 
@@ -100,6 +103,91 @@ class FakeHistory:
         self.trade_calls.append({"ticker": ticker, "start": start, "end": end, "max": max_trades})
         return [{"created_time": (end or self.t0).isoformat(), "yes_price_dollars": "0.50",
                  "count_fp": "3", "taker_side": "yes"}]
+
+
+class FakeBars:
+    """IEX minute bars from ``series[symbol] = {minute_offset: close}`` starting
+    at ``t0``; a value may be ``(close, volume)``. ``daily[symbol] = {date: close}``
+    stands in for the daily endpoint and ``prints`` for the trades one.
+
+    Point in time is the shared rule, not a fake of it: ``price_at`` goes
+    through :func:`last_complete_bar` exactly as the real source does.
+    ``leaky`` makes ``trades`` and ``bars`` ignore ``end``, the way a gateway
+    that does not honour its bound would, so a tool's own check is what a
+    test then exercises.
+    """
+
+    def __init__(self, t0: datetime, series: dict[str, dict[int, Any]],
+                 daily: dict[str, dict[Any, float]] | None = None,
+                 prints: list[dict[str, Any]] | None = None, volume: float = 100.0,
+                 leaky: bool = False) -> None:
+        self.t0, self.series = t0, series
+        self.daily_rows = daily or {}
+        self.prints = prints or []
+        self.volume, self.leaky = volume, leaky
+        self.bar_calls: list[dict[str, Any]] = []
+        self.trade_calls: list[dict[str, Any]] = []
+        self.daily_calls: list[dict[str, Any]] = []
+
+    def _bars(self, symbol: str) -> list[Bar]:
+        out = []
+        for minute, value in sorted(self.series.get(symbol, {}).items()):
+            close, vol = (value if isinstance(value, tuple) else (value, self.volume))
+            ts = self.t0 + timedelta(minutes=minute)
+            out.append(Bar(symbol=symbol, ts_open=ts, o=close, h=close * 1.0002, l=close * 0.9998,
+                           c=close, v=vol, n=10, vwap=close))
+        return out
+
+    def bars(self, symbol: str, start: datetime, end: datetime, timeframe: str = "1Min") -> list[Bar]:
+        self.bar_calls.append({"symbol": symbol, "start": start, "end": end, "timeframe": timeframe})
+        return [b for b in self._bars(symbol)
+                if b.ts_open >= start and (self.leaky or b.ts_open <= end)]
+
+    def price_at(self, symbol: str, at: datetime, max_stale_s: int = MAX_STALE_S) -> float | None:
+        bar = last_complete_bar(self.bars(symbol, at - timedelta(seconds=max_stale_s + 60), at),
+                                at, max_stale_s)
+        return None if bar is None else bar.c
+
+    def realised_price(self, symbol: str, at: datetime, horizon: int = 5) -> float | None:
+        return self.price_at(symbol, at + timedelta(minutes=horizon))
+
+    def daily(self, symbol: str, before_date, days: int = 20) -> list[Bar]:
+        self.daily_calls.append({"symbol": symbol, "before": before_date, "days": days})
+        rows = []
+        for day, close in sorted(self.daily_rows.get(symbol, {}).items()):
+            if day >= before_date:
+                continue
+            ts = datetime.combine(day, time(0), tzinfo=NY).astimezone(UTC)
+            rows.append(Bar(symbol=symbol, ts_open=ts, o=close, h=close * 1.01, l=close * 0.99,
+                            c=close, v=1e6, n=1000, vwap=close))
+        return rows[-days:]
+
+    def trades(self, symbol: str, start: datetime, end: datetime, limit: int = 50) -> list[dict]:
+        self.trade_calls.append({"symbol": symbol, "start": start, "end": end, "limit": limit})
+        rows = [{"t": p["t"].isoformat(), "p": p["p"], "s": p["s"]}
+                for p in self.prints
+                if p.get("symbol", symbol) == symbol and p["t"] >= start
+                and (self.leaky or p["t"] <= end)]
+        rows.sort(key=lambda r: r["t"], reverse=True)
+        return rows[:limit]
+
+
+class FakeNews:
+    """News items in memory. Honours ``start``/``end`` like the API unless ``leaky``."""
+
+    def __init__(self, items: list[NewsItem], leaky: bool = False) -> None:
+        self.items_all, self.leaky = list(items), leaky
+        self.calls: list[dict[str, Any]] = []
+
+    def items(self, symbols, start: datetime, end: datetime, limit: int = 50, sort: str = "asc",
+              max_items: int | None = None) -> list[NewsItem]:
+        self.calls.append({"symbols": list(symbols), "start": start, "end": end, "limit": limit,
+                           "sort": sort, "max_items": max_items})
+        wanted = {s.upper() for s in symbols}
+        rows = [i for i in self.items_all if wanted & set(i.symbols)
+                and (self.leaky or start <= i.created_at <= end)]
+        rows.sort(key=lambda i: i.created_at, reverse=(sort == "desc"))
+        return rows[:max_items] if max_items else rows
 
 
 @pytest.fixture

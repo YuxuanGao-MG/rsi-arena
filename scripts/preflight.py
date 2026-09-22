@@ -73,7 +73,12 @@ groups = collections.Counter(i.group for i in inst)
 train, hold, audit = three_way_split(inst, s.audit, s.holdout, s.seed,
                                      s.generation // max(1, s.holdout_rotate_every))
 tg, hg, ag = ({i.group for i in train}, {i.group for i in hold}, {i.group for i in audit})
-check("matches", len(groups) >= 100, f"{len(groups)} matches, {len(inst)} windows")
+# An empty question set is the most common way a new topic arrives, and it
+# used to crash the arithmetic below rather than fail this line. The check
+# is the same; only the sentence says what to do.
+check("matches", len(groups) >= 100, f"{len(groups)} matches, {len(inst)} windows"
+      + ("; the question set is empty: build it (a discover script, then rsi-arena windows) "
+         "before a generation" if not inst else ""))
 check("no match on both sides", not (tg & hg), f"{len(tg)} train / {len(hg)} held out")
 check("the audit set is shown to nothing else", not (ag & (tg | hg)),
       f"{len(ag)} matches held back for confirmation")
@@ -85,8 +90,9 @@ check("held-out clears the bootstrap floor", len(hg) >= 8, f"{len(hg)} matches, 
 check("held-out is large enough for the test to mean something", len(hg) >= 40,
       f"{len(hg)} matches; below 40 the bootstrap over-rejects")
 _cap = s.per_fixture or 10 ** 6
-check("windows per match respect --per-fixture", max(groups.values()) <= _cap,
-      f"max {max(groups.values())}, cap {s.per_fixture or 'none'}")
+_most = max(groups.values(), default=0)
+check("windows per match respect --per-fixture", _most <= _cap,
+      f"max {_most}, cap {s.per_fixture or 'none'}")
 # Measured, not assumed: gen5 paid $12.08 for 357 windows that reached the model.
 # The docs said $0.013 a window for a year, which was a different model. One
 # number, on the settings object, so the run's reserve and this prediction
@@ -135,7 +141,7 @@ if _emit:
 check("the question set is not itself the runaway", len(inst) * PER_WINDOW < 600,
       f"{len(inst)} windows is about ${len(inst) * PER_WINDOW:.0f} per full pass")
 moved = sum(1 for i in inst if moved_by(i))
-check("enough windows actually move", moved / len(inst) > 0.4,
+check("enough windows actually move", bool(inst) and moved / len(inst) > 0.4,
       f"{moved}/{len(inst)} moved >= {metric.tick:g} {metric.unit}")
 
 print("\n— the gate —")

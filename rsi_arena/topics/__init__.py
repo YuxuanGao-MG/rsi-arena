@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from ..loop import Settings, Task
 from .kalshi_horizon import KalshiHorizon
+from .news_equity import NewsEquity
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,29 @@ TOPICS: dict[str, TopicSpec] = {
         max_day_usd=100.0,
         unit=KalshiHorizon.metric.unit,
     ),
+    NewsEquity.name: TopicSpec(
+        name=NewsEquity.name,
+        factory=NewsEquity.from_settings,
+        # The seed is the decisions-model harness: at two thousandths of a
+        # cent a window the whole question set is judged every generation,
+        # which is the resolution the Kalshi topic never could buy. The Opus
+        # file is the chat-model seed for a model comparison. ``TopicSpec``
+        # has one seed field, so the Jev file is it.
+        harness="harnesses/news-equity-5m-jev.json",
+        jev_harness="harnesses/news-equity-5m-jev.json",
+        benchmark="benchmarks/news-2026-09.json",
+        windows_dir="benchmarks/windows-news",
+        runs_dir="runs/news-equity-5m",
+        per_fixture=0,
+        window_usd=0.00005,
+        model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
+        holdout=50,
+        audit=30,
+        max_metric_calls=2400,
+        valset=400,
+        max_day_usd=15.0,
+        unit=NewsEquity.metric.unit,
+    ),
 }
 
 
@@ -106,4 +130,4 @@ def load_topic(settings: Settings) -> Task:
     return spec_of(settings.topic).factory(settings)
 
 
-__all__ = ["TOPICS", "TopicSpec", "load_topic", "spec_of", "KalshiHorizon"]
+__all__ = ["TOPICS", "TopicSpec", "load_topic", "spec_of", "KalshiHorizon", "NewsEquity"]

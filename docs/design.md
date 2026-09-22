@@ -208,6 +208,40 @@ Kalshi's. Each topic gets its own archive and scoreboard, flat in `runs/`; the
 first keeps the names its committed files already have. `rsi-arena windows`
 prints the same groups as before, in the topic's unit.
 
+### The second venue: a US stock at the second a story broke (2026-09-21)
+
+`news-equity-5m` is the first topic through the seam. An instance is a
+Benzinga item on a US stock or ETF, timestamped to the second by Alpaca's
+news feed, paired with one symbol it names; the tools are frozen at
+`created_at`; the answer is the symbol's last complete IEX minute close five
+minutes on, in basis points. Regular hours only, from five minutes after the
+open to a minute before the close.
+
+The point-in-time rule is different on this venue and is written once, in
+`alpaca/_bars.py`: Alpaca stamps a bar with its open, so a bar is known when
+`ts_open + 60s` is at or before the instant, and a price is the close of the
+last known bar within three minutes. Every tool in `alpaca/replay.py` reads
+through that rule; prints and news are bounded by the API's `end` and
+checked again on each timestamp. The box has twenty tools in the same five
+families the Kalshi box grew into, with the derived reads a decisions model
+needs (`move_base_rate` at this time of day over the prior ten sessions,
+`tape_imbalance` by the tick rule, `news_absorption`, `state_summary`).
+
+Nothing has been fetched yet: there are no Alpaca keys on the machine. The
+client reads them late, every read is tested against fakes and an
+`httpx.MockTransport`, and `scripts/discover_news.py --dry-run` runs the
+whole discovery against a synthetic tape and then prints the command to run
+once `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` exist. Discovery fills a
+per-symbol-day bar store under `benchmarks/news-data/bars`, so once it has
+run, replay is offline like Kalshi's. The benchmark is committed empty and
+preflight says so in a sentence rather than a traceback.
+
+The seed is the Jev harness: at two thousandths of a cent a window the
+question set can be judged whole, which is the resolution the Kalshi topic
+could never buy. The metric is `Metric(tick=5, scale=100, unit="bps",
+relative=True)`; a large cap quotes one to five basis points wide, so a move
+under five is inside the spread.
+
 ### Still open
 
 - No generation has been accepted. Two have been rejected honestly.
