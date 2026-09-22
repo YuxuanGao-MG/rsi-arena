@@ -8,35 +8,40 @@ for, remembered cost and all - so the comparison costs only the challenger's
 windows, and the gate's own paired bootstrap draws the interval by match.
 Written for the first question anyone asks of a new model: on the windows we
 have, does it beat what we run.
+
+``--topic`` picks the task; the instances in the dump are rebuilt by it, so a
+dump from any topic compares on that topic.
 """
 import argparse, asyncio, json, sys
-from datetime import datetime
 from pathlib import Path
 sys.path.insert(0, ".")
 from rsi_arena.harness import Harness, OpenRouter
-from rsi_arena.loop import Settings, evaluate, paired_bootstrap, summarise
+from rsi_arena.loop import Scoreboard, Settings, evaluate, paired_bootstrap, summarise
 from rsi_arena.loop.task import Outcome, Rollout
-from rsi_arena.topics.kalshi_horizon import KalshiHorizon, Window
+from rsi_arena.topics import TOPICS, load_topic
 
 ap = argparse.ArgumentParser()
 ap.add_argument("rollouts", nargs="?", default="")
+ap.add_argument("--topic", default=Settings().topic, choices=sorted(TOPICS))
 ap.add_argument("--scoreboard", default="",
-                help="instead of a dump: a harness fingerprint whose answers runs/scoreboard.json remembers; "
+                help="instead of a dump: a harness fingerprint whose answers the topic's scoreboard remembers; "
                      "every window of the question set it has an answer for is compared")
 ap.add_argument("--harness", required=True)
-ap.add_argument("--benchmark", default="benchmarks/soccer-2026.json")
+ap.add_argument("--benchmark", default=None, help="defaults to the topic's")
+ap.add_argument("--runs-dir", default=None, help="defaults to the topic's")
 ap.add_argument("--limit", type=int, default=0)
 ap.add_argument("--concurrency", type=int, default=8)
 ap.add_argument("--max-usd", type=float, default=5.0)
 ap.add_argument("--out", default="")
 a = ap.parse_args()
 
-s = Settings(benchmark=a.benchmark)
-task = KalshiHorizon.from_settings(s)
+spec = TOPICS[a.topic]
+s = Settings(topic=a.topic, benchmark=a.benchmark or spec.benchmark,
+             runs_dir=a.runs_dir or spec.runs_dir)
+task = load_topic(s)
 windows, incumbent = [], []
 if a.scoreboard:
-    from rsi_arena.loop import SCOREBOARD, Scoreboard
-    board = Scoreboard.load(Path("runs") / SCOREBOARD)
+    board = Scoreboard.load(Scoreboard.path_for(s.runs_dir, task.name))
     for w in task.instances():
         known = board.get(a.scoreboard, w)
         if known is None:
@@ -48,9 +53,7 @@ if a.scoreboard:
 else:
     dump = json.load(open(a.rollouts))
     for r in dump:
-        i = r["instance"]
-        w = Window(ticker=i["ticker"], at=datetime.fromisoformat(i["at"]), mid_now=i["mid_now"],
-                   realised=i["realised"], game=i.get("game") or {}, event=i.get("event", ""))
+        w = task.instance_from_dict(r["instance"])
         o = r["outcome"]
         windows.append(w)
         incumbent.append(Rollout(instance=w, run=None,
@@ -59,7 +62,7 @@ else:
                                  remembered_cost=r.get("cost_usd")))
 if a.limit:
     windows, incumbent = windows[: a.limit], incumbent[: a.limit]
-task._windows = windows
+task.use_instances(windows)
 harness = Harness.load(a.harness)
 llm = OpenRouter(cache_dir=f"{s.cache_dir}/llm", budget_usd=a.max_usd, concurrency=a.concurrency)
 

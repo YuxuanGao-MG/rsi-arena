@@ -184,6 +184,30 @@ under three per cent of a generation's bill — tens of calls against thousands 
 and rewriting a harness from its own failures is the part that most rewards
 reasoning.
 
+### The topic seam (2026-09-21)
+
+Two more tracks are coming — US equities on news, and crypto spot, both
+forecasting a five-minute move in basis points — and the question was what
+they would have to know about Kalshi to plug in. The answer used to be: the
+CLI's defaults, the "model" reflection prompt, preflight, the publisher, the
+live grader, and the scoreboard's file name. Now it is a package and a
+`TopicSpec` in `topics/__init__.py`.
+
+What moved: the score, with its unit made a parameter
+(`topics/_common/metric.py`; `Metric.KALSHI` reproduces `kalshi_horizon/score.py`
+to 1e-12 on every case that file's tests state, and the Kalshi task still
+scores through its own file); thinning and live grading (`_common/thin.py`,
+`_common/live.py`); the frozen-tool cache (`harness/toolcache.py`). The loop
+reads a handful of optional attributes off a task with `getattr` — `metric`,
+`moved`, `label`, `context_of`, `instance_from_dict`, `use_instances`,
+`model_notes` — and falls back to Kalshi's behaviour when they are absent.
+`rsi-arena topic --shell` prints a topic's spec for a workflow to `eval`, and
+`--harness`, `--benchmark`, `--windows-dir`, `--per-fixture`, `--window-usd`,
+`--runs-dir` and `--model-choices` default to the topic's rather than to
+Kalshi's. Each topic gets its own archive and scoreboard, flat in `runs/`; the
+first keeps the names its committed files already have. `rsi-arena windows`
+prints the same groups as before, in the topic's unit.
+
 ### Still open
 
 - No generation has been accepted. Two have been rejected honestly.

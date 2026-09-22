@@ -16,12 +16,14 @@ being dropped in ``_settings``, and the one check that could have caught it was
 asking a different object. A guard that does not read what it guards is
 decoration.
 
+Asks the topic, not Kalshi, for everything it checks: the box a harness may
+draw on, the inputs a plan may read, the unit a move is measured in and what
+counts as one. ``--topic`` therefore preflights any topic the CLI knows.
+
 Needs no key and no network beyond the question set already on disk.
 """
-import json, os, sys, glob, collections
-from datetime import datetime, timezone
+import os, sys, collections
 sys.path.insert(0, '.')
-from pathlib import Path
 
 ok, bad = [], []
 def check(name, cond, detail=""):
@@ -29,36 +31,43 @@ def check(name, cond, detail=""):
     print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"  — {detail}" if detail else ""))
 
 from rsi_arena.harness.spec import Harness
-from rsi_arena.loop.settings import Settings
-from rsi_arena.topics.kalshi_horizon import score_output, pooled_skill
-from rsi_arena.topics.kalshi_horizon.task import KalshiHorizon
 from rsi_arena.loop.task import three_way_split
-from rsi_arena.cli import _settings, build_parser
-from rsi_arena.kalshi.replay import replay_tools
+from rsi_arena.cli import _metric_of, _moved_by, _settings, build_parser
+from rsi_arena.topics import load_topic
+from rsi_arena.topics._common.metric import pooled_skill, score_output
 
 # The run's own parser, so a flag the run honours is a flag this sees.
 s = _settings(build_parser().parse_args(["optimize", *sys.argv[1:]]))
 h = Harness.load(s.harness)
+task = load_topic(s)
+metric = _metric_of(task)
+moved_by = _moved_by(task)
+
+print(f"\n— {task.name}: moves in {metric.unit}, a tick is {metric.tick:g} —")
 
 print("\n— the harness —")
 check("model is set", bool(h.config.model), h.config.model)
-_box = set(replay_tools(datetime(2026, 1, 1, tzinfo=timezone.utc)))
+_box = set(task.tools())
 check("every declared tool exists in the frozen box", set(h.tools) <= _box,
       f"{len(h.tools)} declared of {len(_box)} available: {sorted(set(h.tools) - _box) or 'all present'}")
 check("the rewriter has room to compose", len(_box) >= 10, f"{len(_box)} tools in the box")
-check("plan inputs are supplied", h.plan.required_inputs() <= {"game"}, str(h.plan.required_inputs()))
+check("plan inputs are supplied", h.plan.required_inputs() <= set(task.inputs),
+      f"{sorted(h.plan.required_inputs())} of {sorted(task.inputs)}")
 check("components round-trip", h.from_components(h.to_components()).to_components() == h.to_components())
 
 print("\n— the metric —")
-quiet = [score_output({"delta_cents": 0}, 0.5, 0.5) for _ in range(9)]
-mover = [score_output({"delta_cents": 0}, 0.5, 0.57) for _ in range(20)]
+# Stated in the topic's own output keys and unit, so the three properties the
+# whole loop rests on are asserted of the metric a run will actually score by.
+_delta, _width = metric.output_keys
+_move = metric.price_from(0.5, 7 * metric.tick)              # a seven-tick move
+quiet = [score_output({_delta: 0}, 0.5, 0.5, metric) for _ in range(9)]
+mover = [score_output({_delta: 0}, 0.5, _move, metric) for _ in range(20)]
 check("silence pools to exactly zero", abs(pooled_skill(quiet + mover)) < 1e-12, f"{pooled_skill(quiet+mover):+.2e}")
 check("silence is 0.5 to the optimizer", quiet[0].value == 0.5)
-loud = [score_output({"delta_cents": 4}, 0.5, 0.5) for _ in range(9)] + mover
+loud = [score_output({_delta: 4 * metric.tick}, 0.5, 0.5, metric) for _ in range(9)] + mover
 check("noise on a dead market costs", pooled_skill(loud) < 0, f"{pooled_skill(loud):+.4f}")
 
 print("\n— the question set —")
-task = KalshiHorizon.from_settings(s)
 inst = task.instances()
 groups = collections.Counter(i.group for i in inst)
 train, hold, audit = three_way_split(inst, s.audit, s.holdout, s.seed,
@@ -86,10 +95,10 @@ PER_WINDOW = s.window_usd
 _probe = min(s.cascade or len(tg), len(tg)) * (s.per_fixture or 8)
 # Priced against what is already owned. The incumbent's half of a generation is
 # the same harness on the same windows every time until something is promoted,
-# and `runs/scoreboard.json` remembers what that already cost.
-from rsi_arena.loop import SCOREBOARD, Scoreboard
+# and the topic's scoreboard remembers what that already cost.
+from rsi_arena.loop import Scoreboard
 from rsi_arena.loop.generation import fingerprint
-_board = Scoreboard.load(Path(s.run_dir).parent / SCOREBOARD) if s.reuse_scores else Scoreboard()
+_board = Scoreboard.load(Scoreboard.path_for(s.runs_dir, task.name)) if s.reuse_scores else Scoreboard()
 _inc = fingerprint(h)
 _owned = sum(1 for w in hold if _board.get(_inc, w) is not None) if len(_board) else 0
 # Priced the way the run spends it, which is in three shares.
@@ -125,8 +134,9 @@ if _emit:
         fh.write(f"cold_usd={_cold:.2f}\n")
 check("the question set is not itself the runaway", len(inst) * PER_WINDOW < 600,
       f"{len(inst)} windows is about ${len(inst) * PER_WINDOW:.0f} per full pass")
-moved = sum(1 for i in inst if abs(i.realised - i.mid_now) >= 0.01)
-check("enough windows actually move", moved / len(inst) > 0.4, f"{moved}/{len(inst)} moved >= 1c")
+moved = sum(1 for i in inst if moved_by(i))
+check("enough windows actually move", moved / len(inst) > 0.4,
+      f"{moved}/{len(inst)} moved >= {metric.tick:g} {metric.unit}")
 
 print("\n— the gate —")
 check("cascade is on", s.cascade > 0, f"{s.cascade} matches, floor {s.cascade_floor:+.3f}")

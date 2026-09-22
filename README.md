@@ -18,8 +18,8 @@ rsi_arena/
   harness/    the JSON contract, the runner, the model client
   kalshi/     Kalshi and fixture data (stdlib only), tools frozen at an instant
   loop/       the Task protocol, the GEPA adapter, the gate, generation records
-  topics/     one package per task; kalshi_horizon is the first
-  cli.py      rsi-arena bench | optimize | show
+  topics/     one package per task; kalshi_horizon is the first, _common what they share
+  cli.py      rsi-arena windows | bench | optimize | show | topic
 harnesses/    horizon-5m.json, the base harness the loop exists to beat
 benchmarks/   epl-2026-09.json, five finished EPL fixtures
 docs/         design, framework survey, notes on the prior codebase

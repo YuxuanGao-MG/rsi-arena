@@ -46,6 +46,11 @@ def test_parser_covers_the_settings_it_claims_to():
             "max_metric_calls", "run_dir"} <= named
     s = _settings(args)
     for name in named:
+        if getattr(args, name) is None:
+            # Left unset, the flag is the topic's to answer; for the first topic
+            # the answer is the dataclass default, which the next test holds.
+            assert getattr(s, name) == getattr(Settings(), name), f"{name} was not filled"
+            continue
         assert getattr(s, name) == getattr(args, name), f"{name} did not reach Settings"
 
 

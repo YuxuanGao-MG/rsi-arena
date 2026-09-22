@@ -13,6 +13,8 @@ from ...harness import Run, Toolbox, model_tool_names
 from ...kalshi._history import History
 from ...kalshi.replay import MatchTimeline, ToolCache, match_timeline, replay_tools
 from ...loop import Outcome, Settings
+from .._common.metric import Metric
+from .._common.thin import thin
 from .score import WindowScore, pooled, pooled_skill, score_output
 from .windows import Window, build_windows, load_fixtures
 
@@ -45,10 +47,32 @@ Round-trip fees on Kalshi are two to three cents, the same size as typical moves
 useful forecast is one confident enough to be worth trading."""
 
 
+#: What the rewriter is told about the models it may choose, measured on this
+#: task. Lived in the loop's "model" reflection template until a second topic
+#: needed a template that did not talk about soccer.
+MODEL_NOTES = (
+    "Measured on this task: anthropic/claude-opus-5 was the only one above "
+    "silence (+0.106) at about 3.5 cents a window; openai/gpt-5-mini was near "
+    "silence at a fourteenth of the price; anthropic/claude-sonnet-4.5 echoed the "
+    "market often. A cheaper model that stays quiet at the right times can beat an "
+    "expensive one that speaks badly - the gate charges for cost as well as error. "
+    "typesafe/jev-1.13 is different in kind: it answers typed questions with a "
+    "probability distribution, writes no text, calls no tools, and costs about "
+    "two thousandths of a cent a window; it can only run a plan whose prompt "
+    "steps carry \"questions\" and \"answers\" (the plan grammar describes them), "
+    "and a chat model cannot run such a plan. Swap to or from it only if the plan "
+    "matches, or the harness fails to load.")
+
+
 class KalshiHorizon:
     name = "kalshi-horizon-5m"
     background = BACKGROUND
     inputs = frozenset({"question", "game"})
+    #: The unit the move is measured in. The task scores through its own
+    #: ``score.py``, which this reproduces exactly; the metric is for callers
+    #: that need the unit without knowing the topic.
+    metric = Metric.KALSHI
+    model_notes = MODEL_NOTES
 
     def __init__(self, *, fixtures=(), history: History | None = None, every_minutes: int = 5,
                  windows_dir: str | None = None, cache_dir: str | None = None,
@@ -80,8 +104,26 @@ class KalshiHorizon:
             built = build_windows(self.fixtures, history=self.history,
                                   every_minutes=self.every_minutes, windows_dir=self.windows_dir,
                                   log=lambda m: print(m, file=sys.stderr))
-            self._windows = _thin(built, self.per_fixture)
+            self._windows = thin(built, self.per_fixture)
         return self._windows
+
+    def use_instances(self, windows: list[Window]) -> None:
+        """Score exactly these rather than the benchmark's. For paired comparisons."""
+        self._windows = list(windows)
+
+    def instance_from_dict(self, d: dict[str, Any]) -> Window:
+        return Window.from_dict(d)
+
+    def moved(self, window: Window) -> bool:
+        """Did the market move at least a tick over the horizon?"""
+        return self.metric.moved(window.mid_now, window.realised)
+
+    def label(self, window: Window) -> str:
+        return f"{window.ticker} at {window.at.isoformat()[:16]}Z"
+
+    def context_of(self, window: Window) -> dict[str, Any]:
+        """The world at the instant, as the harness was shown it."""
+        return window.game
 
     def tools(self) -> list[str]:
         """Every tool a harness on this topic may name.
@@ -226,21 +268,7 @@ def _feedback(w: Window, s: WindowScore | None, run: Run | None) -> str:
 def _thin(windows: list[Window], per_fixture: int) -> list[Window]:
     """At most ``per_fixture`` windows per match, spread across the match.
 
-    Evenly spaced rather than the first N, because the first N of a football
-    match are all the opening twenty minutes — the quietest part, before the
-    scoreline has done anything a forecast could be wrong about.
+    The general form is :func:`rsi_arena.topics._common.thin.thin`; this name
+    stays because the tests know it.
     """
-    if per_fixture <= 0:
-        return windows
-    by_group: dict[str, list[Window]] = {}
-    for w in windows:
-        by_group.setdefault(w.group, []).append(w)
-    out: list[Window] = []
-    for group in sorted(by_group):
-        rows = sorted(by_group[group], key=lambda w: (w.at, w.ticker))
-        if len(rows) <= per_fixture:
-            out.extend(rows)
-            continue
-        step = len(rows) / per_fixture
-        out.extend(rows[int(i * step)] for i in range(per_fixture))
-    return out
+    return thin(windows, per_fixture)

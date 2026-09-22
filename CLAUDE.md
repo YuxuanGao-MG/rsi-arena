@@ -21,7 +21,10 @@ rsi-arena show runs/gen2
 `rsi_arena/harness` (JSON contract, runner, model client) · `rsi_arena/kalshi`
 (data layer, frozen tools) · `rsi_arena/loop` (Task protocol, GEPA adapter,
 gate, generation records; topic-agnostic) · `rsi_arena/topics/kalshi_horizon`
-(windows, score, feedback) · `rsi_arena/cli.py`.
+(windows, score, feedback) · `rsi_arena/topics/_common` (the move metric with
+its unit as a parameter, thinning, live grading; shared by every five-minute
+topic) · `rsi_arena/topics/__init__.py` (`TopicSpec`: what each topic runs on)
+· `rsi_arena/cli.py`.
 
 ## Rules
 

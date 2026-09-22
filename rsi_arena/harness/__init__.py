@@ -8,6 +8,7 @@ from .runner import BudgetExceeded, Run, Runner, Trace
 from .spec import (AnyStep, Harness, HarnessConfig, HarnessError, LoopStep, Plan,
                    PromptStep, ToolStep)
 from .template import ConditionError, evaluate, reads, render
+from .toolcache import NO_CACHE, ToolCache, cached
 from .tools import FunctionTool, Tool, Toolbox, ToolResult, tool
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "PromptStep", "ToolStep",
     "ConditionError", "evaluate", "reads", "render",
     "FunctionTool", "Tool", "Toolbox", "ToolResult", "tool",
+    "NO_CACHE", "ToolCache", "cached",
 ]

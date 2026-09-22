@@ -193,6 +193,11 @@ def reflection_templates(task: Task, base: Harness,
     examples = ("Below are instances the current harness ran on, what it did, and feedback on "
                 "each. Read the feedback for patterns: what the harness kept getting wrong, "
                 "and what a better one would do differently.\n```\n<side_info>\n```\n\n")
+    # What the topic has measured about the models on offer, if it has. The
+    # sentences about Opus and Jev on soccer used to be written here, which made
+    # the loop's one prompt about models a prompt about Kalshi.
+    notes = str(getattr(task, "model_notes", "") or "").strip()
+    notes = notes + " " if notes else ""
     return {
         "context": head + "The current context (the system prompt every model step sees):\n```\n<curr_param>\n```\n\n"
                    + examples + "Write a new context. Keep what works, fix what the feedback shows, and "
@@ -209,18 +214,8 @@ def reflection_templates(task: Task, base: Harness,
         "model": head + "The model currently doing the forecasting:\n```\n<curr_param>\n```\n\n"
                  + examples
                  + "Choose the model. Pick exactly one of: " + ", ".join(model_choices or ("<unchanged>",))
-                 + ". Measured on this task: anthropic/claude-opus-5 was the only one above "
-                 "silence (+0.106) at about 3.5 cents a window; openai/gpt-5-mini was near "
-                 "silence at a fourteenth of the price; anthropic/claude-sonnet-4.5 echoed the "
-                 "market often. A cheaper model that stays quiet at the right times can beat an "
-                 "expensive one that speaks badly - the gate charges for cost as well as error. "
-                 "typesafe/jev-1.13 is different in kind: it answers typed questions with a "
-                 "probability distribution, writes no text, calls no tools, and costs about "
-                 "two thousandths of a cent a window; it can only run a plan whose prompt "
-                 "steps carry \"questions\" and \"answers\" (the plan grammar describes them), "
-                 "and a chat model cannot run such a plan. Swap to or from it only if the plan "
-                 "matches, or the harness fails to load. "
-                 "Reply with the model name alone within ``` blocks.",
+                 + ". " + notes
+                 + "Reply with the model name alone within ``` blocks.",
         "tools": head + "The current tool list:\n```\n<curr_param>\n```\n\n" + examples
                  + "Write the new tool list as comma-separated names drawn only from the tools "
                  "named above — including ones the current list leaves out, if the feedback "

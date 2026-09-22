@@ -34,11 +34,16 @@ STALE_AFTER_S = 300
 class Progress:
     """One updatable row describing the current run. No-op without a database."""
 
-    def __init__(self, run_id: str, db_url: str | None = None) -> None:
+    def __init__(self, run_id: str, topic: str = "", db_url: str | None = None) -> None:
         self.run_id = run_id
+        #: Which topic the run is on. Written only if the table has a column for
+        #: it: the reader's schema gains one in a later migration, and a
+        #: heartbeat must not fail on a database that has not caught up.
+        self.topic = topic
         self.url = db_url if db_url is not None else (
             os.environ.get("SUPABASE_DB_URL") or os.environ.get("DATABASE_URL") or "")
         self._conn: Any = None
+        self._has_topic: bool | None = None
         self._warned = False
         self._last_write = 0.0
         self.started = time.time()
@@ -69,14 +74,24 @@ class Progress:
         try:
             conn = self._connect()
             with conn.cursor() as cur:
-                cur.execute(
-                    """insert into rsi.progress (run_id, phase, detail, started_at, updated_at)
-                       values (%s, %s, %s, to_timestamp(%s), now())
-                       on conflict (run_id) do update
-                       set phase = excluded.phase, detail = excluded.detail,
-                           updated_at = now()""",
-                    (self.run_id, phase,
-                     json.dumps(detail, default=str), self.started))
+                if self.topic and self._topic_column(cur):
+                    cur.execute(
+                        """insert into rsi.progress (run_id, topic, phase, detail, started_at, updated_at)
+                           values (%s, %s, %s, %s, to_timestamp(%s), now())
+                           on conflict (run_id) do update
+                           set topic = excluded.topic, phase = excluded.phase,
+                               detail = excluded.detail, updated_at = now()""",
+                        (self.run_id, self.topic, phase,
+                         json.dumps(detail, default=str), self.started))
+                else:
+                    cur.execute(
+                        """insert into rsi.progress (run_id, phase, detail, started_at, updated_at)
+                           values (%s, %s, %s, to_timestamp(%s), now())
+                           on conflict (run_id) do update
+                           set phase = excluded.phase, detail = excluded.detail,
+                               updated_at = now()""",
+                        (self.run_id, phase,
+                         json.dumps(detail, default=str), self.started))
             conn.commit()
             self._last_write = now
         except Exception as exc:  # noqa: BLE001 - the window must not break the wall
@@ -85,6 +100,19 @@ class Progress:
                       f"{type(exc).__name__}: {exc}", file=sys.stderr)
                 self._warned = True
             self._close()
+
+    def _topic_column(self, cur: Any) -> bool:
+        """Whether ``rsi.progress`` has a ``topic`` column. Asked once, and a
+        probe that fails reads as "no", which is the write that always works."""
+        if self._has_topic is None:
+            try:
+                cur.execute("select 1 from information_schema.columns "
+                            "where table_schema = 'rsi' and table_name = 'progress' "
+                            "and column_name = 'topic'")
+                self._has_topic = cur.fetchone() is not None
+            except Exception:  # noqa: BLE001
+                self._has_topic = False
+        return self._has_topic
 
     def _connect(self) -> Any:
         if self._conn is None or self._conn.closed:
