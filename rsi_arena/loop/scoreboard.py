@@ -42,6 +42,11 @@ def scoreboard_path(runs_root: str | Path, topic: str = "") -> Path:
     orphan, and the workflow reads it by that name.
     """
     root = Path(runs_root)
+    # A topic's own runs directory (runs/<topic>/) keeps the flat file beside
+    # the first topic's, in the parent: the web image copies runs/archive*.json
+    # and .railwayignore cannot re-include a file inside an excluded directory.
+    if root.name == topic:
+        root = root.parent
     if not topic or topic == Settings.topic:
         return root / SCOREBOARD
     return root / f"scoreboard.{topic}.json"

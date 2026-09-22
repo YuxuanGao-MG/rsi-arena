@@ -200,3 +200,112 @@ def history(t0) -> FakeHistory:
     # Contract A drifts up a cent a minute; contract B is flat.
     return FakeHistory(t0, {"A": {m: 0.40 + 0.01 * m for m in range(0, 40)},
                             "B": {m: 0.50 for m in range(0, 40)}})
+
+
+# -- the crypto topic's sources, faked -------------------------------------------
+
+from rsi_arena.crypto._binance import AggTrade, Kline  # noqa: E402
+
+
+def ramp(minutes: int, start: float = 100.0, bps_per_minute: float = 1.0) -> dict[int, float]:
+    """A close series rising ``bps_per_minute`` basis points a minute, compounded, from ``start``."""
+    return {m: start * (1 + bps_per_minute / 1e4) ** m for m in range(minutes)}
+
+
+class FakeKlines:
+    """Minute bars from ``series[symbol] = {minute_offset: close}`` starting at ``t0``.
+
+    Each bar opens at its offset and closes a minute later, like the exchange's.
+    ``calls`` counts reads, so a test can see whether a cache or a windows file
+    answered instead.
+    """
+
+    def __init__(self, t0: datetime, series: dict[str, dict[int, float]]) -> None:
+        self.t0, self.series = t0, series
+        self.calls: list[tuple[str, datetime, datetime]] = []
+
+    def klines(self, symbol: str, start: datetime, end: datetime, interval: str = "1m") -> list[Kline]:
+        self.calls.append((symbol, start, end))
+        out = []
+        for m, close in sorted(self.series.get(symbol, {}).items()):
+            ts = self.t0 + timedelta(minutes=m)
+            if start <= ts < end:
+                out.append(Kline(ts_open=ts, open=close, high=close * 1.0001, low=close * 0.9999,
+                                 close=close, volume=1.0, quote_volume=close, trades=10,
+                                 taker_buy_volume=0.6))
+        return out
+
+
+class FakeAggTrades:
+    """A tape of ``(ts, price, qty, buyer_maker)`` that honours ``end`` like the API's endTime."""
+
+    def __init__(self, prints: list[tuple[datetime, float, float, bool]]) -> None:
+        self.prints = prints
+        self.calls = 0
+
+    def agg_trades(self, symbol: str, start: datetime, end: datetime, limit: int = 1000) -> list[AggTrade]:
+        self.calls += 1
+        return [AggTrade(ts=ts, price=p, qty=q, buyer_maker=m) for ts, p, q, m in self.prints
+                if start <= ts <= end][:limit]
+
+
+class FakeFutures:
+    """Funding, open interest and perp rows as the store hands them back: oldest first, ``ts`` in ms."""
+
+    def __init__(self, funding: list[dict] | None = None, oi: list[dict] | None = None,
+                 perp: list[dict] | None = None) -> None:
+        self._funding, self._oi, self._perp = funding or [], oi or [], perp or []
+
+    def funding(self, symbol: str) -> list[dict]:
+        return sorted(self._funding, key=lambda r: r["ts"])
+
+    def oi(self, symbol: str) -> list[dict]:
+        return sorted(self._oi, key=lambda r: r["ts"])
+
+    def perp(self, symbol: str) -> list[dict]:
+        return sorted(self._perp, key=lambda r: r["ts"])
+
+
+def FakeFunding(rows: list[dict]) -> FakeFutures:  # noqa: N802 - a fake by the name the tests use
+    return FakeFutures(funding=rows)
+
+
+def FakeOI(rows: list[dict]) -> FakeFutures:  # noqa: N802
+    return FakeFutures(oi=rows)
+
+
+class FakeDaily:
+    """On-chain series: ``series[name] = (kind, rows)`` with ``ts`` in seconds, sliced by the store's rules."""
+
+    def __init__(self, series: dict[str, tuple[str, list[dict]]]) -> None:
+        self.series = series
+
+    def kind(self, name: str) -> str:
+        return self.series[name][0]
+
+    def rows(self, name: str) -> list[dict]:
+        return sorted(self.series.get(name, ("daily", []))[1], key=lambda r: r["ts"])
+
+    def first_recorded(self, name: str) -> datetime | None:
+        rows = self.rows(name)
+        return datetime.fromtimestamp(int(rows[0]["ts"]), tz=UTC) if rows else None
+
+    def known_at(self, name: str, at: datetime) -> list[dict]:
+        from rsi_arena.crypto._onchain import block_at, daily_before
+        rows = self.rows(name)
+        kind = self.series.get(name, ("daily", []))[0]
+        return daily_before(rows, at) if kind == "daily" else block_at(rows, at)
+
+
+@pytest.fixture
+def c0() -> datetime:
+    """Noon UTC on a Sunday: no US session, funding at 16:00."""
+    return datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def spot(c0) -> FakeKlines:
+    # BTC climbs a basis point a minute for two days; ETH is flat; SOL climbs twice as fast.
+    return FakeKlines(c0, {"BTCUSDT": ramp(2 * 1440, 100000.0, 1.0),
+                           "ETHUSDT": {m: 4000.0 for m in range(2 * 1440)},
+                           "SOLUSDT": ramp(2 * 1440, 200.0, 2.0)})
