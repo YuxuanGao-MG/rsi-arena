@@ -219,6 +219,12 @@ class BinanceSpot:
         #: the store then gets what is held and nothing else, and a benchmark
         #: run on a runner never opens a socket for a bar. On for live use.
         self.fetch_missing = fetch_missing
+        #: Days fetched because the store lacked them, kept for a little while.
+        #: A live box asks for a dozen distinct bar ranges at one instant and
+        #: every one of them spans the same three un-stored days; without this
+        #: a tick refetched them a dozen times and took seventy seconds.
+        self._fetched: dict[tuple[str, date], tuple[float, list[Kline]]] = {}
+        self.fetched_ttl_s = 30.0
 
     def _get(self, path: str, params: dict[str, Any]) -> Any:
         errors = []
@@ -282,11 +288,21 @@ class BinanceSpot:
             else:
                 out.extend(held)
             day += timedelta(days=1)
-        for day in _runs(missing if self.fetch_missing else []):
-            first, final = day
-            out.extend(self.fetch_klines(symbol, datetime.combine(first, datetime.min.time(), UTC),
-                                         datetime.combine(final + timedelta(days=1),
-                                                          datetime.min.time(), UTC)))
+        if self.fetch_missing:
+            now = time.monotonic()
+            fresh = [d for d in missing if (symbol.upper(), d) in self._fetched
+                     and now - self._fetched[(symbol.upper(), d)][0] < self.fetched_ttl_s]
+            for d in fresh:
+                out.extend(self._fetched[(symbol.upper(), d)][1])
+            for first, final in _runs([d for d in missing if d not in fresh]):
+                got = self.fetch_klines(symbol, datetime.combine(first, datetime.min.time(), UTC),
+                                        datetime.combine(final + timedelta(days=1),
+                                                         datetime.min.time(), UTC))
+                d = first
+                while d <= final:
+                    self._fetched[(symbol.upper(), d)] = (now, [k for k in got if k.ts_open.date() == d])
+                    d += timedelta(days=1)
+                out.extend(got)
         return sorted((k for k in out if start <= k.ts_open < end), key=lambda k: k.ts_open)
 
     def fill_day(self, symbol: str, day: date) -> int:
