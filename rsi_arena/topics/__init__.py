@@ -14,6 +14,7 @@ from dataclasses import dataclass, fields
 from typing import Any, Callable
 
 from ..loop import Settings, Task
+from .crypto_horizon import CryptoHorizon
 from .kalshi_horizon import KalshiHorizon
 
 
@@ -92,6 +93,31 @@ TOPICS: dict[str, TopicSpec] = {
         max_day_usd=100.0,
         unit=KalshiHorizon.metric.unit,
     ),
+    CryptoHorizon.name: TopicSpec(
+        name=CryptoHorizon.name,
+        factory=CryptoHorizon.from_settings,
+        # The seed the loop starts from is the decisions-model harness: the
+        # spec has one slot for the seed and one for the Jev seed, and on this
+        # topic they are the same file. The chat-model seed beside it
+        # (harnesses/crypto-horizon-1m.json) is there to be named with
+        # ``--harness`` when a run wants Opus in the driving seat.
+        harness="harnesses/crypto-horizon-1m-jev.json",
+        jev_harness="harnesses/crypto-horizon-1m-jev.json",
+        benchmark="benchmarks/crypto-2026-09.json",
+        windows_dir="benchmarks/windows-crypto",
+        runs_dir="runs/crypto-horizon-1m",
+        # Twenty-four instants a day across three coins: power comes from days.
+        per_fixture=24,
+        # A Jev window: two thousandths of a cent, before anything is measured.
+        window_usd=0.00005,
+        model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
+        holdout=30,
+        audit=15,
+        max_metric_calls=2400,
+        valset=600,
+        max_day_usd=15.0,
+        unit=CryptoHorizon.metric.unit,
+    ),
 }
 
 
@@ -106,4 +132,4 @@ def load_topic(settings: Settings) -> Task:
     return spec_of(settings.topic).factory(settings)
 
 
-__all__ = ["TOPICS", "TopicSpec", "load_topic", "spec_of", "KalshiHorizon"]
+__all__ = ["TOPICS", "TopicSpec", "load_topic", "spec_of", "KalshiHorizon", "CryptoHorizon"]
