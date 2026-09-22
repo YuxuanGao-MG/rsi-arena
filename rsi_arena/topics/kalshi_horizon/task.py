@@ -24,10 +24,13 @@ BREAKAGE = 0.05
 
 BACKGROUND = """The harness forecasts the short-term path of a Kalshi sports contract while the
 match is being played. It is given {{question}}, the contract ticker, and {{game}}, the
-score, clock and recent events as they stood at that instant. It may call three tools,
-each frozen at that instant: market_quote (the book), candlesticks (minute bars up to
-now) and previous_trades (the print tape). Nothing else exists: no news, no live game
-feed, because those cannot be replayed honestly.
+score, clock and recent events as they stood at that instant. Its tools are frozen at
+that instant and come in four families: the book itself (market_quote, candlesticks,
+previous_trades and their history), arithmetic with no clock in it (fees, de-vigging,
+sizing), the match as the timeline recorded it (game_state, game_clock, minutes since
+a goal), and derived reads that do the counting for a model that cannot
+(move_base_rate, tape_imbalance, goal_absorption, state_summary). Nothing else exists:
+no news, no live game feed, because those cannot be replayed honestly.
 
 Its last step must return a JSON object with numeric delta_cents, how many cents the
 mid will move over the next five minutes (0 is a real answer, and the right one on a

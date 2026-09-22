@@ -298,6 +298,11 @@ def replay_tools(at: datetime, history: History | None = None,
     care. They are here because a search over three tools is barely a search:
     the arena's premise is that a harness composes primitives, and until now it
     had almost nothing to compose.
+
+    A last family is derived: the counting, subtraction and date maths a
+    decisions model cannot do, done over the same frozen reads and handed back
+    as numbers with a sentence. ``state_summary`` composes the others into one
+    paragraph, which is the state such a model reads best.
     """
     hist = history or History()
     cache = cache or ToolCache(None)
@@ -613,6 +618,187 @@ def replay_tools(at: datetime, history: History | None = None,
             return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
         return cached("coherence_check", {"ticker": ticker}, compute)
 
+    # -- derived: the arithmetic a decisions model cannot do ------------------
+    #
+    # Jev answers typed questions about a state and does no counting, no
+    # subtraction and no date maths. Handing it forty minute bars is handing
+    # it nothing; handing it "moved 3c in the last five minutes, buyers on the
+    # tape, 12' since the goal" is a state. Each of these reads the same frozen
+    # history the primitives read, bounded at the instant the same way, and
+    # gives back numbers and a sentence.
+
+    def bars_before(ticker: str, hours: float):
+        return [c for c in hist.price_path(ticker, at - timedelta(hours=hours), at, MINUTE)
+                if c.ts <= at and c.mid is not None]
+
+    def clock() -> ToolResult:
+        """Minutes played and left, from the timeline's kickoff and the instant."""
+        if line is None:
+            return ToolResult.failed("no timeline for this window")
+
+        def compute() -> ToolResult:
+            elapsed = (at - line.kickoff).total_seconds()
+            if elapsed < 0:
+                out = {"status": "scheduled", "minutes_to_kickoff": int(-elapsed // 60)}
+                return ToolResult(ok=True, text=json.dumps(out), data=out)
+            minute = int(elapsed // 60)
+            scored = [e for e in line.events if e.scored and e.seconds <= elapsed]
+            since = (minute - scored[-1].minute) if scored else None
+            out = {"minutes_played": minute, "minutes_left_to_90": max(0, 90 - minute),
+                   "period": "1" if minute < 45 else "2",
+                   "minutes_since_score_change": since,
+                   "stoppage_near": minute >= 85,
+                   "verdict": (f"{minute}' played, {max(0, 90 - minute)} to the ninetieth"
+                               + (f", {since} since the last goal" if since is not None
+                                  else ", no goal yet")
+                               + (", stoppage near" if minute >= 85 else ""))}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("game_clock", {"game": line.game_id}, compute)
+
+    def base_rate(ticker: str) -> ToolResult:
+        """What five-minute moves have looked like at this price, from this contract's own past."""
+        def compute() -> ToolResult:
+            now = hist.quote_at(ticker, at, MINUTE)
+            if now is None or now.mid is None:
+                return ToolResult.failed(f"no quote on {ticker} at that instant")
+            bucket = _bucket(now.mid)
+            # A window starts strictly before the instant and may end on it:
+            # the bar at ``at`` is known, the one after it is the answer.
+            bars = bars_before(ticker, 3.0)
+            horizon = timedelta(minutes=HORIZON_MINUTES)
+            moves: list[float] = []
+            for i, c in enumerate(bars):
+                target = c.ts + horizon
+                if c.ts >= at or target > at or _bucket(c.mid) != bucket:
+                    continue
+                # The last bar at or before the horizon, never one after it.
+                later = None
+                for candidate in bars[i:]:
+                    if candidate.ts > target:
+                        break
+                    later = candidate
+                if later is None or later is c:
+                    continue
+                moves.append((later.mid - c.mid) * 100)
+            if not moves:
+                out = {"ticker": ticker, "bucket": bucket, "samples": 0, "mean_cents": None,
+                       "p10": None, "p50": None, "p90": None, "moved_share": None,
+                       "verdict": f"no five-minute history at {bucket} on this contract"}
+                return ToolResult(ok=True, text=json.dumps(out), data=out)
+            moves.sort()
+            moved = sum(1 for m in moves if abs(m) >= 1.0) / len(moves)
+            out = {"ticker": ticker, "bucket": bucket, "samples": len(moves),
+                   "mean_cents": round(sum(moves) / len(moves), 2),
+                   "p10": round(_quantile(moves, 0.1), 2), "p50": round(_quantile(moves, 0.5), 2),
+                   "p90": round(_quantile(moves, 0.9), 2), "moved_share": round(moved, 3),
+                   "verdict": (f"{'active' if moved >= 0.5 else 'quiet'}: {moved:.0%} of "
+                               f"{len(moves)} five-minute windows at {bucket} moved a cent or more")}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("move_base_rate", {"ticker": ticker}, compute)
+
+    def imbalance(ticker: str, minutes_back: int = 10) -> ToolResult:
+        """Who has been hitting the book: contracts taken on the yes side against the no side."""
+        back = max(1, int(minutes_back))
+
+        def compute() -> ToolResult:
+            since = at - timedelta(minutes=back)
+            prints = hist.trades(ticker, start=since, end=at, max_trades=200)
+            rows = []
+            for t in prints:
+                ts = _instant(t.get("created_time"))
+                # Bounded by the API's end, and checked again here: a print
+                # from after the instant is the exact leak this box exists
+                # to refuse, and a fake or a gateway may not honour the bound.
+                if ts is not None and (ts > at or ts < since):
+                    continue
+                try:
+                    count = float(t.get("count_fp") or t.get("count") or 0)
+                except (TypeError, ValueError):
+                    count = 0.0
+                rows.append((str(t.get("taker_side") or ""), count))
+            yes = sum(n for side, n in rows if side == "yes")
+            no = sum(n for side, n in rows if side == "no")
+            total = yes + no
+            ratio = (yes - no) / total if total else 0.0
+            verdict = "buyers" if ratio > 0.2 else "sellers" if ratio < -0.2 else "balanced"
+            out = {"ticker": ticker, "minutes_back": back, "prints": len(rows),
+                   "yes_taken": round(yes, 2), "no_taken": round(no, 2),
+                   "imbalance": round(ratio, 3),
+                   "largest_print": round(max((n for _, n in rows), default=0.0), 2),
+                   "verdict": (f"{verdict}: {len(rows)} prints in {back}m, {yes:.0f} yes against "
+                               f"{no:.0f} no")}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("tape_imbalance", {"ticker": ticker, "minutes_back": back}, compute)
+
+    def absorption(ticker: str) -> ToolResult:
+        """How much of the last goal the price has taken in, and whether it is still moving."""
+        if line is None:
+            return ToolResult.failed("no timeline for this window")
+
+        def compute() -> ToolResult:
+            elapsed = (at - line.kickoff).total_seconds()
+            scored = [e for e in line.events if e.scored and e.seconds <= elapsed]
+            if not scored:
+                out = {"ticker": ticker, "note": "no goal yet"}
+                return ToolResult(ok=True, text=json.dumps(out), data=out)
+            goal = scored[-1]
+            when = min(line.kickoff + timedelta(seconds=goal.seconds), at)
+            then = hist.quote_at(ticker, when, MINUTE)
+            now = hist.quote_at(ticker, at, MINUTE)
+            if now is None or now.mid is None:
+                return ToolResult.failed(f"no quote on {ticker} at that instant")
+            mid_then = then.mid if then is not None else None
+            recent = bars_before(ticker, 0.25)[-4:]
+            drift = (recent[-1].mid - recent[0].mid) * 100 if len(recent) >= 2 else 0.0
+            move = (now.mid - mid_then) * 100 if mid_then is not None else None
+            out = {"ticker": ticker, "goal_minute": goal.minute, "goal_by": goal.team,
+                   "minutes_since": int(elapsed // 60) - goal.minute,
+                   "mid_at_goal": mid_then, "mid_now": now.mid,
+                   "move_since_cents": round(move, 2) if move is not None else None,
+                   "drift_last_3_bars_cents": round(drift, 2),
+                   "still_drifting": abs(drift) >= 1.0,
+                   "verdict": ((f"moved {move:+.1f}c since the {goal.minute}' goal"
+                                if move is not None else f"no quote at the {goal.minute}' goal")
+                               + (", still drifting" if abs(drift) >= 1.0 else ", settled"))}
+            return ToolResult(ok=True, text=json.dumps(out, default=str), data=out)
+        return cached("goal_absorption", {"ticker": ticker, "game": line.game_id}, compute)
+
+    def summary(ticker: str) -> ToolResult:
+        """One paragraph, the shape a decisions model reads best. Built through
+        the other tools rather than from fresh reads, so it shares their cache
+        and cannot disagree with what they said."""
+        def compute() -> ToolResult:
+            q = quote(ticker)
+            if not q.ok:
+                return ToolResult.failed(q.error or "no quote")
+            book = q.data
+            bars = bars_before(ticker, 0.25)[-5:]
+            parts = [f"{ticker} mid {_cents(book['mid'])}c, bid {_cents(book['yes_bid'])} ask "
+                     f"{_cents(book['yes_ask'])} ({book['status']})."]
+            if len(bars) >= 2:
+                path = "/".join(_cents(c.mid) for c in bars)
+                parts.append(f"Last {len(bars)} bars {path}c, net {(bars[-1].mid - bars[0].mid) * 100:+.1f}c.")
+            tape_now = imbalance(ticker)
+            if tape_now.ok:
+                parts.append(f"Tape: {tape_now.data['verdict']}.")
+            if line is not None:
+                clk = clock()
+                if clk.ok and "verdict" in clk.data:
+                    parts.append(f"Clock: {clk.data['verdict']}.")
+                goal = absorption(ticker)
+                if goal.ok and "verdict" in goal.data:
+                    parts.append(f"Goal: {goal.data['verdict']}.")
+            rate = base_rate(ticker)
+            if rate.ok:
+                parts.append(f"Base rate: {rate.data['verdict']}.")
+            text = " ".join(parts)
+            if len(text) > 600:
+                text = text[:597].rstrip() + "..."
+            out = {"ticker": ticker, "summary": text, "mid": book["mid"]}
+            return ToolResult(ok=True, text=text, data=out)
+        return cached("state_summary", {"ticker": ticker, "game": line.game_id if line else None},
+                      compute)
+
     return Toolbox([
         FunctionTool(name="market_quote",
                      description="The book on one contract as of now: bid, ask, mid, spread, last, volume.",
@@ -728,7 +914,49 @@ def replay_tools(at: datetime, history: History | None = None,
                                  "properties": {"ticker": {"type": "string"}},
                                  "required": ["ticker"]},
                      fn=siblings),
+        FunctionTool(name="move_base_rate",
+                     description=("How five-minute moves at this price have looked on this "
+                                  "contract over the last three hours: count, mean, p10/p50/p90 "
+                                  "in cents, the share that moved a cent or more, and whether "
+                                  "that reads quiet or active."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=base_rate),
+        FunctionTool(name="tape_imbalance",
+                     description=("Who has been hitting the book over the last minutes: "
+                                  "contracts taken yes against no, an imbalance from -1 to 1, "
+                                  "the print count and the largest print. Says buyers, "
+                                  "sellers or balanced."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"},
+                                                "minutes_back": {"type": "integer"}},
+                                 "required": ["ticker"]},
+                     fn=imbalance),
+        FunctionTool(name="state_summary",
+                     description=("One paragraph of the whole situation: the book, the last "
+                                  "five bars, the tape, the clock and the goal if there is a "
+                                  "timeline, and the base rate. Under 600 characters; the "
+                                  "state a decisions model reads best."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=summary),
     ] + ([] if line is None else [
+        FunctionTool(name="game_clock",
+                     description=("Minutes played and left to ninety, the period, minutes since "
+                                  "the score last changed, and whether stoppage is near. The "
+                                  "date maths done, for a model that cannot do it."),
+                     parameters={"type": "object", "properties": {}},
+                     fn=clock),
+        FunctionTool(name="goal_absorption",
+                     description=("How far the price has moved since the last goal and whether "
+                                  "it is still drifting over the last three bars, or a note "
+                                  "that there has been no goal."),
+                     parameters={"type": "object",
+                                 "properties": {"ticker": {"type": "string"}},
+                                 "required": ["ticker"]},
+                     fn=absorption),
         FunctionTool(name="game_state",
                      description=("Score, period and clock as of now, with the events of the "
                                   "last ten minutes."),
@@ -746,3 +974,39 @@ def replay_tools(at: datetime, history: History | None = None,
                                  "properties": {"limit": {"type": "integer"}}},
                      fn=plays),
     ]))
+
+
+#: Price buckets for the base rate. A contract near a cent or near a dollar
+#: has almost nowhere to go, and one in the middle has everywhere, so a
+#: move's typical size is a function of where the price sits.
+_BUCKETS: tuple[tuple[float, str], ...] = ((0.10, "<10c"), (0.30, "10-30c"), (0.70, "30-70c"),
+                                           (0.90, "70-90c"))
+
+
+def _bucket(mid: float) -> str:
+    for edge, label in _BUCKETS:
+        if mid < edge:
+            return label
+    return ">90c"
+
+
+def _quantile(sorted_values: list[float], q: float) -> float:
+    if not sorted_values:
+        return 0.0
+    pos = q * (len(sorted_values) - 1)
+    lo, hi = int(pos), min(int(pos) + 1, len(sorted_values) - 1)
+    return sorted_values[lo] + (sorted_values[hi] - sorted_values[lo]) * (pos - lo)
+
+
+def _instant(raw: Any) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        when = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def _cents(price: float | None) -> str:
+    return "?" if price is None else f"{price * 100:.0f}"

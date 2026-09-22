@@ -32,3 +32,12 @@ def test_evaluate_refuses_code():
         evaluate("(lambda: 1)()", {})
     with pytest.raises(ConditionError, match="not in state"):
         evaluate("missing > 1", {})
+
+
+def test_a_path_through_none_renders_empty_but_a_missing_name_still_raises():
+    """A skipped step leaves its output_key as None, so a plan that branches on
+    a decision reads the skipped branch's fields as nothing. A name nothing
+    ever wrote is still a broken harness."""
+    assert render("driver: {{opinion.text}}|", {"opinion": None}) == "driver: |"
+    with pytest.raises(KeyError):
+        render("{{opinion.text}}", {})

@@ -3,7 +3,9 @@
 State is one flat dict. A placeholder is a dotted path into it: ``{{plan.queries}}``
 reads ``state["plan"]["queries"]``. A missing name is a ``KeyError`` naming the
 path, because a harness that reads what nothing wrote is a broken harness and
-should say so.
+should say so. A path that runs into ``None`` part-way renders empty instead:
+that is what a skipped step leaves under its ``output_key``, and a plan that
+branches on a decision reads the skipped branch's fields as nothing.
 
 Conditions (``until``, ``skip_if``) are Python expressions over the same state,
 parsed with ``ast`` and evaluated by hand. Only comparisons, boolean logic,
@@ -30,6 +32,8 @@ class ConditionError(ValueError):
 def lookup(state: dict[str, Any], path: str) -> Any:
     value: Any = state
     for part in path.split("."):
+        if value is None:
+            return None
         if isinstance(value, dict):
             if part not in value:
                 raise KeyError(path)
