@@ -10,13 +10,21 @@ from typing import Any
 class Settings:
     topic: str = "kalshi-horizon-5m"
     harness: str = "harnesses/horizon-5m.json"     # a harness file, or a run directory to continue from
-    benchmark: str = "benchmarks/epl-2026-09.json"
+    # What the loop runs on, not the five-match set it was written against.
+    # These four were the workflow's literals for a month while the dataclass
+    # still said epl-2026-09 / 2 / 0 / 0; the first topic's TopicSpec is read
+    # off this object, and the workflow now reads the spec, so the dataclass
+    # has to be the scheduled run or the scheduled run would have changed.
+    benchmark: str = "benchmarks/soccer-2026.json"
     windows_dir: str = "benchmarks/windows"         # the question set, built once and versioned
-    holdout: int = 2                               # instance groups (fixtures) the optimizer never sees
+    # Instance groups (fixtures) the optimizer never sees. A hundred, because
+    # the gate's interval narrows with matches and thirty-five could not
+    # resolve any rewrite anyone has produced.
+    holdout: int = 100
     # Matches cut away before anything else and never shown to the search or the
     # gate. Scored only to confirm a promotion. Free until something is promoted,
     # which is why it can be generous.
-    audit: int = 0
+    audit: int = 60
     # Which turn of the loop this is, and how often the held-out matches rotate.
     # Rotation bounds how many times one set of matches can be queried at a
     # one-sided 2.5% threshold; rotating every generation would be stricter and
@@ -25,7 +33,10 @@ class Settings:
     holdout_rotate_every: int = 4
     seed: int = 0
     every: int = 5                                 # minutes between windows
-    per_fixture: int = 0                           # cap windows kept per match; 0 keeps all
+    # Cap on windows kept per match; 0 keeps all. Four: a match's windows share
+    # a scoreline and a horizon, so power comes from matches, and four takes a
+    # cold generation from $86 to $53.
+    per_fixture: int = 4
     model: str | None = None                       # override the harness model
     # Models the search may put in a rewrite. Measured on the same 68 held-out
     # windows before any of this ran on a schedule: Opus 5 +0.106 at $0.035 a

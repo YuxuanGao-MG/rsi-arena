@@ -21,7 +21,7 @@ rsi_arena/
   topics/     one package per task; kalshi_horizon is the first, _common what they share
   cli.py      rsi-arena windows | bench | optimize | show | topic
 harnesses/    horizon-5m.json, the base harness the loop exists to beat
-benchmarks/   epl-2026-09.json, five finished EPL fixtures
+benchmarks/   soccer-2026.json, 485 finished fixtures (epl-2026-09.json is the five-match dev set)
 docs/         design, framework survey, notes on the prior codebase
 tests/        offline: no key, no network
 ```
