@@ -18,7 +18,10 @@ from .._common.metric import pooled as _pooled
 from .._common.metric import pooled_skill as _pooled_skill
 from .._common.metric import score_output as _score_output
 
-METRIC = Metric(tick=5.0, scale=100.0, unit="bps", relative=True, clamp=None,
+# Measured 2026-09-22 on the first question set (5,102 items, 56 names): |move| p50
+# 8.7 bps, p95 47 bps, 67% at or over the tick. Tick near half the median, scale
+# near the 95th percentile - the same rule the crypto topic was calibrated by.
+METRIC = Metric(tick=5.0, scale=50.0, unit="bps", relative=True, clamp=None,
                 output_keys=("delta_bps", "half_width_bps"))
 
 

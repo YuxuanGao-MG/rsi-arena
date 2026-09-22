@@ -120,8 +120,10 @@ TOPICS: dict[str, TopicSpec] = {
         per_fixture=0,
         window_usd=0.00005,
         model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
-        holdout=50,
-        audit=30,
+        # 2,246 symbol-days on the first question set: a held-out set of 300
+        # resolves a gap about a third the size that the Kalshi hundred does.
+        holdout=300,
+        audit=100,
         # Calls are not the bound on a topic whose windows cost a fraction of a
         # cent: one accepted candidate's full valset pass is 600, and 1200 let
         # the search propose exactly once. The dollar stopper bounds the

@@ -403,7 +403,7 @@ def test_the_spec_and_the_cli_know_the_topic(capsys):
     assert spec.benchmark == "benchmarks/news-2026-09.json" and spec.windows_dir == "benchmarks/windows-news"
     assert spec.runs_dir == "runs/news-equity-5m" and spec.per_fixture == 0
     assert spec.window_usd == 0.00005 and spec.model_choices == ("typesafe/jev-1.13", "openai/gpt-5-mini")
-    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset, spec.max_day_usd) == (50, 30, 4800, 400, 15)
+    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset, spec.max_day_usd) == (300, 100, 4800, 400, 15)
     assert main(["topic", "--topic", "news-equity-5m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["harness"] == spec.harness and out["unit"] == "bps" and "factory" not in out
