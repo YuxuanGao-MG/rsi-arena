@@ -140,8 +140,12 @@ _search = (s.max_metric_calls + s.valset) * PER_WINDOW
 # The rewriter's own bill. On a topic whose windows cost a fraction of a cent it
 # is most of the generation: one reflection per minibatch of proposals, at what
 # a Sonnet rewrite over eight traces has cost.
+# The search stops on dollars (loop/budget.py::SpendStopper), so what it may
+# spend on rewrites is a cap, not a forecast: enough proposals to matter,
+# priced at what a Sonnet rewrite over eight traces has cost.
 REFLECTION_USD = 0.08
-_proposals = max(0, s.max_metric_calls - s.valset) // max(1, s.minibatch)
+MAX_PRICED_PROPOSALS = 75
+_proposals = min(MAX_PRICED_PROPOSALS, max(0, s.max_metric_calls - s.valset) // max(1, s.minibatch))
 _reflect = _proposals * REFLECTION_USD
 _cold = (_probe + len(hold)) * PER_WINDOW + _judge + _search + _reflect
 _next = _cold - _owned * PER_WINDOW

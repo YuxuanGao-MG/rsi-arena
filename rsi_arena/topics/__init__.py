@@ -122,7 +122,11 @@ TOPICS: dict[str, TopicSpec] = {
         model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
         holdout=50,
         audit=30,
-        max_metric_calls=1200,
+        # Calls are not the bound on a topic whose windows cost a fraction of a
+        # cent: one accepted candidate's full valset pass is 600, and 1200 let
+        # the search propose exactly once. The dollar stopper bounds the
+        # rewriter's bill; the calls just have to be out of its way.
+        max_metric_calls=4800,
         valset=400,
         max_day_usd=15.0,
         unit=NewsEquity.metric.unit,
@@ -148,7 +152,11 @@ TOPICS: dict[str, TopicSpec] = {
         model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
         holdout=30,
         audit=15,
-        max_metric_calls=1200,
+        # Calls are not the bound on a topic whose windows cost a fraction of a
+        # cent: one accepted candidate's full valset pass is 600, and 1200 let
+        # the search propose exactly once. The dollar stopper bounds the
+        # rewriter's bill; the calls just have to be out of its way.
+        max_metric_calls=4800,
         valset=600,
         max_day_usd=15.0,
         unit=CryptoHorizon.metric.unit,
