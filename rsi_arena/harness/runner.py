@@ -205,6 +205,12 @@ class Runner:
         if step.skip_if and evaluate(step.skip_if, ctx.state):
             s = ctx.span(label, step.type)
             s.status, s.ended = "skipped", time.monotonic()
+            if step.output_key:
+                # A skipped step writes nothing, and a later step that reads
+                # {{opinion.text}} must not fail for it: the name exists as
+                # None, and a path through None renders empty. A name nothing
+                # ever wrote is still a broken harness and still raises.
+                ctx.state.setdefault(step.output_key, None)
             return ctx.state.get("last")
         ctx.ledger.check(label)
         span = ctx.span(label, "loop" if isinstance(step, LoopStep) else "step")

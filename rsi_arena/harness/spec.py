@@ -168,6 +168,10 @@ Later steps read earlier results with {{name}} or {{name.field}}.
   (1-based) and loop_results are readable.
 
 Conditions are small Python expressions over state names: comparisons, and/or/not, len().
+A plan may branch on a decision: a noul questions step whose answers map
+{"probability": {"from": "gate", "as": "probability"}} under output_key "gate" writes
+{{gate.probability}}, which a later step may test in skip_if ("gate.probability < 0.35");
+a skipped step leaves its output_key as null and {{name.field}} through it renders empty.
 The harness's "tools" list is the whole set a plan may name."""
 
     def reads(self) -> set[str]:

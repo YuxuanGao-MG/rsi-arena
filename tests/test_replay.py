@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from rsi_arena.topics.kalshi_horizon import Fixture, build_windows
 from rsi_arena.kalshi.replay import MatchEvent, MatchTimeline, ToolCache, realised_mid, replay_tools
 
@@ -10,7 +12,8 @@ def test_frozen_tools_never_see_past_the_instant(history, t0):
     # Not an exact set: the box grows, and pinning its size turns widening the
     # search into a test failure. What must stay true is that nothing in it can
     # see past the instant — so the named absentees are the assertion.
-    assert {"market_quote", "candlesticks", "previous_trades"} <= set(box)
+    assert {"market_quote", "candlesticks", "previous_trades",
+            "move_base_rate", "tape_imbalance", "state_summary"} <= set(box)
     for reaches_forward in ("game_state", "recent_plays", "team_news", "web_research",
                             "live_markets", "todays_fixtures", "market_settlement"):
         assert reaches_forward not in box, f"{reaches_forward} would answer with the future"
@@ -187,3 +190,130 @@ def test_a_match_that_has_not_kicked_off_is_not_in_progress(t0):
 
     during = line.state_at(t0 + timedelta(minutes=10))
     assert during["status"] == "in_progress" and during["clock"] == "10'"
+
+
+# --- derived tools: the arithmetic a decisions model cannot do ---------------
+
+
+class _TapedHistory:
+    """A history whose tape has prints on both sides of the instant and honours
+    ``end`` the way the API's max_ts does."""
+
+    def __init__(self, base, prints):
+        self.base, self.prints = base, prints
+
+    def __getattr__(self, name):
+        return getattr(self.base, name)
+
+    def trades(self, ticker, start=None, end=None, max_trades=None):
+        return [{"created_time": t["ts"].isoformat(), "yes_price_dollars": "0.50",
+                 "count_fp": str(t["n"]), "taker_side": t["side"]}
+                for t in self.prints
+                if (end is None or t["ts"] <= end) and (start is None or t["ts"] >= start)]
+
+
+def _line(at, minutes_in=30, goals=(10,)):
+    return MatchTimeline(game_id="g", league="EPL", home="H", away="A",
+                         kickoff=at - timedelta(minutes=minutes_in),
+                         events=[MatchEvent(seconds=60 * m, kind="goal", team="H", text=f"{m}'")
+                                 for m in goals])
+
+
+def test_the_derived_tools_are_in_the_box_and_the_timeline_ones_only_with_a_line(t0, history):
+    without = replay_tools(t0, history)
+    assert {"move_base_rate", "tape_imbalance", "state_summary"} <= set(without)
+    assert "game_clock" not in without and "goal_absorption" not in without
+    assert len(without) >= 14
+    assert {"game_clock", "goal_absorption"} <= set(replay_tools(t0, history, line=_line(t0)))
+
+
+def test_game_clock_does_the_date_maths(t0, history):
+    late = replay_tools(t0, history, line=_line(t0, minutes_in=87, goals=(10, 70)))
+    out = late["game_clock"].safe_call()
+    assert out.ok
+    assert out.data["minutes_played"] == 87 and out.data["minutes_left_to_90"] == 3
+    assert out.data["period"] == "2" and out.data["minutes_since_score_change"] == 17
+    assert out.data["stoppage_near"] is True and "stoppage near" in out.data["verdict"]
+    # Standing at minute thirty, the goal on seventy has not happened.
+    early = replay_tools(t0, history, line=_line(t0, minutes_in=30, goals=(10, 70)))
+    out = early["game_clock"].safe_call()
+    assert out.data["minutes_since_score_change"] == 20 and out.data["stoppage_near"] is False
+    none = replay_tools(t0, history, line=_line(t0, minutes_in=30, goals=()))["game_clock"].safe_call()
+    assert none.data["minutes_since_score_change"] is None and "no goal" in none.data["verdict"]
+
+
+def test_move_base_rate_reads_only_bars_before_the_instant(t0, history):
+    """Contract A drifts a cent a minute for forty minutes, so every five-minute
+    window moves five cents. Standing at minute twenty, the bars after it are
+    the future and must not be in the sample."""
+    at = t0 + timedelta(minutes=20)
+    out = replay_tools(at, history)["move_base_rate"].safe_call(ticker="A")
+    assert out.ok, out.error
+    assert out.data["bucket"] == "30-70c", "the mid at minute twenty is 60c"
+    # Bars at minutes 0..15 can each see a bar five minutes on, at or before
+    # minute twenty; from minute 16 on they cannot, and nothing later exists.
+    assert out.data["samples"] == 16
+    assert out.data["mean_cents"] == pytest.approx(5.0) and out.data["p50"] == pytest.approx(5.0)
+    assert out.data["moved_share"] == 1.0 and out.data["verdict"].startswith("active")
+    # Nine minutes on, at 69c, nine more starting bars have a bar five on.
+    later = replay_tools(t0 + timedelta(minutes=29), history)["move_base_rate"].safe_call(ticker="A")
+    assert later.data["samples"] == 25 and later.data["p90"] == pytest.approx(5.0)
+    # At 70c the price is in the next bucket, where this contract has no history yet.
+    fresh = replay_tools(t0 + timedelta(minutes=30), history)["move_base_rate"].safe_call(ticker="A")
+    assert fresh.ok and fresh.data["bucket"] == "70-90c" and fresh.data["samples"] == 0
+    assert fresh.data["p50"] is None and "no five-minute history" in fresh.data["verdict"]
+    flat = replay_tools(at, history)["move_base_rate"].safe_call(ticker="B")
+    assert flat.data["moved_share"] == 0.0 and flat.data["verdict"].startswith("quiet")
+
+
+def test_tape_imbalance_ignores_prints_after_the_instant(t0, history):
+    at = t0 + timedelta(minutes=20)
+    before = [{"ts": at - timedelta(minutes=3), "n": 30, "side": "yes"},
+              {"ts": at - timedelta(minutes=1), "n": 10, "side": "no"}]
+    after = [{"ts": at + timedelta(minutes=1), "n": 500, "side": "no"}]
+    clean = replay_tools(at, _TapedHistory(history, before))["tape_imbalance"].safe_call(ticker="A")
+    leaky = replay_tools(at, _TapedHistory(history, before + after))["tape_imbalance"].safe_call(ticker="A")
+    assert clean.ok and clean.data == leaky.data, "a print from the future changes nothing"
+    assert clean.data["prints"] == 2 and clean.data["yes_taken"] == 30 and clean.data["no_taken"] == 10
+    assert clean.data["imbalance"] == pytest.approx(0.5) and clean.data["largest_print"] == 30
+    assert clean.data["verdict"].startswith("buyers")
+    # Older than minutes_back is out too, and an empty tape is balanced, not an error.
+    stale = [{"ts": at - timedelta(minutes=30), "n": 99, "side": "no"}]
+    quiet = replay_tools(at, _TapedHistory(history, stale))["tape_imbalance"].safe_call(
+        ticker="A", minutes_back=10)
+    assert quiet.ok and quiet.data["prints"] == 0 and quiet.data["verdict"].startswith("balanced")
+
+
+def test_goal_absorption_reads_the_mid_at_the_goal_and_now(t0, history):
+    """Thirty minutes in with a goal on ten, contract A has drifted twenty cents
+    since, and is still drifting; contract B has not moved."""
+    at = t0 + timedelta(minutes=30)
+    out = replay_tools(at, history, line=_line(at, goals=(10,)))["goal_absorption"].safe_call(ticker="A")
+    assert out.ok, out.error
+    assert out.data["goal_minute"] == 10 and out.data["minutes_since"] == 20
+    assert out.data["mid_at_goal"] == pytest.approx(0.50) and out.data["mid_now"] == pytest.approx(0.70)
+    assert out.data["move_since_cents"] == pytest.approx(20.0)
+    assert out.data["still_drifting"] is True and "still drifting" in out.data["verdict"]
+    flat = replay_tools(at, history, line=_line(at))["goal_absorption"].safe_call(ticker="B")
+    assert flat.data["move_since_cents"] == 0.0 and flat.data["still_drifting"] is False
+    none = replay_tools(at, history, line=_line(at, goals=()))["goal_absorption"].safe_call(ticker="A")
+    assert none.ok and none.data == {"ticker": "A", "note": "no goal yet"}
+
+
+def test_state_summary_is_one_short_paragraph_built_from_the_others(t0, history, tmp_path):
+    at = t0 + timedelta(minutes=30)
+    box = replay_tools(at, history, ToolCache(tmp_path), line=_line(at))
+    out = box["state_summary"].safe_call(ticker="A")
+    assert out.ok, out.error
+    text = out.data["summary"]
+    assert text == out.text and len(text) <= 600
+    assert "mid 70c" in text, "it names the mid"
+    assert "Tape:" in text and "Clock:" in text and "Goal:" in text and "Base rate:" in text
+    assert out.data["mid"] == pytest.approx(0.70)
+    bare = replay_tools(at, history)["state_summary"].safe_call(ticker="A")
+    assert bare.ok and "Clock:" not in bare.text and "mid 70c" in bare.text
+    # It goes through the other tools' cache, so with a cache on disk a later
+    # call of the tool it composed reads nothing again.
+    n = len(history.trade_calls)
+    replay_tools(at, history, ToolCache(tmp_path), line=_line(at))["tape_imbalance"].safe_call(ticker="A")
+    assert len(history.trade_calls) == n

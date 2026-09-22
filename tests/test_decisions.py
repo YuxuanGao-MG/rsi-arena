@@ -165,3 +165,71 @@ async def test_the_client_posts_state_and_questions_without_our_values_and_charg
                             "questions": {"move": {k: v for k, v in MOVE.items() if k != "values"}}}
     assert d.answers["move"]["score"] == 1.0 and d.cost_usd == 1.8e-05 and d.model.startswith("typesafe/")
     assert c.calls == 1 and abs(c.spent_usd - 1.8e-05) < 1e-12
+
+
+# --- a plan that branches on a decision --------------------------------------
+
+GATED = Path(__file__).resolve().parents[1] / "harnesses" / "horizon-5m-jev-gated.json"
+
+
+def _task(history, t0, ticker, minutes, mid, realised):
+    from datetime import timedelta
+
+    from rsi_arena.topics.kalshi_horizon import KalshiHorizon, Window
+    windows = [Window(ticker=ticker, at=t0 + timedelta(minutes=m), mid_now=mid, realised=realised,
+                      game={"clock": f"{m}'"}, event="E") for m in minutes]
+    return KalshiHorizon(history=history, windows=windows)
+
+
+def test_the_gated_jev_harness_loads_and_branches_on_its_gate():
+    h = Harness.load(GATED)
+    assert "ask_opus" in h.tools and "state_summary" in h.tools
+    opinion = h.plan.steps[5]
+    assert opinion.tool == "ask_opus" and opinion.skip_if == "gate.probability < 0.35"
+    assert h.from_components(h.to_components()).to_components() == h.to_components()
+
+
+async def test_a_quiet_gate_skips_opus_and_the_forecast_still_renders(t0, history):
+    """The gate says the window will not move, so Opus is never asked, and the
+    final questions step reads {{opinion.text}} as empty rather than failing."""
+    from rsi_arena.loop import evaluate
+    tk = _task(history, t0, "B", (10, 15, 20), 0.50, 0.50)
+
+    def decisions(state, questions):
+        if "moves" in questions:
+            return {"moves": {"type": "noul", "noul": 0.1}}
+        assert state.rstrip().endswith("Driver, if one was asked for:"), state[-80:]
+        assert "P(moves a cent or more): 0.1" in state
+        assert "mid 50c" in state, "the state summary reached the questions"
+        n = len(questions["move"]["criteria"])
+        return {"move": {"type": "score", "score": 3.0, "confidence": 0.8,
+                         "probabilities": {str(i): (1.0 if i == 3 else 0.0) for i in range(n)}}}
+    llm = FakeLLM(lambda m, s, t: "OPUS WAS ASKED", decisions=decisions, cost=0.03)
+    rollouts = await evaluate(tk, Harness.load(GATED), tk.instances(), llm)
+    assert all(r.run.ok for r in rollouts), [r.run.error for r in rollouts]
+    assert llm.calls == [], "Opus was never asked"
+    assert all(r.run.state["opinion"] is None for r in rollouts)
+    skipped = [s for r in rollouts for s in r.run.trace.spans if s.status == "skipped"]
+    assert len(skipped) == len(rollouts) and all(s.name == "opinion" for s in skipped)
+    assert all(r.output["delta_cents"] == 0.0 for r in rollouts)
+    assert all(r.cost_usd < 0.001 for r in rollouts), "a quiet window costs Jev's price"
+
+
+async def test_a_live_gate_asks_opus_and_the_forecast_reads_the_driver(t0, history):
+    from rsi_arena.loop import evaluate
+    tk = _task(history, t0, "A", (20,), 0.60, 0.65)
+
+    def decisions(state, questions):
+        if "moves" in questions:
+            return {"moves": {"type": "noul", "noul": 0.9}}
+        assert "Driver, if one was asked for: drifting up on a thin book" in state
+        n = len(questions["move"]["criteria"])
+        return {"move": {"type": "score", "score": 5.0, "confidence": 0.8,
+                         "probabilities": {str(i): (1.0 if i == 5 else 0.0) for i in range(n)}}}
+    llm = FakeLLM(lambda m, s, t: "drifting up on a thin book", decisions=decisions, cost=0.03)
+    [r] = await evaluate(tk, Harness.load(GATED), tk.instances(), llm)
+    assert r.run.ok, r.run.error
+    assert len(llm.calls) == 1 and llm.calls[0]["model"] == "anthropic/claude-opus-5"
+    assert "mid 60c" in llm.calls[0]["messages"][0]["content"], "Opus reads the same summary"
+    assert r.output["delta_cents"] == 2.5
+    assert r.cost_usd == pytest.approx(0.03 + 2 * 0.03 / 1000)
