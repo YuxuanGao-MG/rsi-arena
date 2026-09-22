@@ -171,6 +171,11 @@ class Asset:
         self.gz = gzip.compress(body, 6) if len(body) >= GZIP_MIN else b""
 
 
+#: The topic whose archive is the bare `runs/archive.json`, from before there
+#: was more than one. Every other topic's is `runs/archive.<topic>.json`.
+DEFAULT_TOPIC = "kalshi-horizon-5m"
+
+
 def archive_path() -> Path | None:
     """`runs/archive.json`, wherever it ended up.
 
@@ -186,12 +191,34 @@ def archive_path() -> Path | None:
     return None
 
 
+def archive_paths() -> dict[str, Path]:
+    """Every topic's archive, keyed by the path it is served at.
+
+    One loop per topic, one file per loop, all flat under `runs/` because the
+    Dockerfile copies `runs/archive*.json` and `.railwayignore` lets exactly that
+    glob through. `runs/archive.json` is the first topic's and keeps its old
+    address as well as its new one; `runs/archive.<topic>.json` is any other's.
+    """
+    out: dict[str, Path] = {}
+    kalshi = archive_path()
+    if kalshi is not None:
+        out["/archive.json"] = kalshi
+        out[f"/archive/{DEFAULT_TOPIC}.json"] = kalshi
+    for folder in (HERE.parent / "runs", HERE):
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("archive.*.json")):
+            topic = path.name[len("archive."):-len(".json")]
+            if topic and topic != DEFAULT_TOPIC:
+                out.setdefault(f"/archive/{topic}.json", path)
+    return out
+
+
 def load() -> dict[str, Asset]:
     """Everything servable, keyed by request path."""
     out = {"/": Asset(page_bytes(), TYPES[".html"])}
-    found = archive_path()
-    if found is not None:
-        out["/archive.json"] = Asset(found.read_bytes(), TYPES[".json"])
+    for route, found in archive_paths().items():
+        out[route] = Asset(found.read_bytes(), TYPES[".json"])
     for path in sorted(HERE.rglob("*")):
         if not path.is_file() or path.name == "index.html":
             continue

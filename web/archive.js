@@ -13,6 +13,7 @@
  */
 
 import { local } from "./data.js";
+import { topicOf, DEFAULT } from "./topics.js";
 
 /** Scores are the optimizer's value, not skill: 0.5 is silence, 1.0 is +10c of edge. */
 export const SILENCE = 0.5;
@@ -20,8 +21,9 @@ export const SILENCE = 0.5;
 /** Fewer shared instances than this and a comparison is not worth making. */
 const MIN_SHARED = 4;
 
-export async function loadArchive({ signal } = {}) {
-  const data = await local("/archive.json", { signal });
+/** One archive per topic — each loop keeps its own file, served beside the page. */
+export async function loadArchive({ signal, topic = DEFAULT } = {}) {
+  const data = await local(topicOf(topic).archive, { signal });
   const entries = (data && data.entries) || [];
   for (const e of entries) {
     const values = Object.values(e.scores || {});
@@ -119,19 +121,18 @@ export function frontier(entries, won = wins(entries), disputed = contested(entr
   return keep;
 }
 
-/** `KXEPLGAME-26SEP05NFOTOT-NFO@2026-09-05T14:05:00+00:00` → the event ticker. */
-export function fixtureOf(instance) {
-  const ticker = String(instance).split("@")[0];
-  const cut = ticker.lastIndexOf("-");
-  return cut > 0 ? ticker.slice(0, cut) : ticker;
-}
+/** `KXEPLGAME-26SEP05NFOTOT-NFO@2026-09-05T14:05:00+00:00` → the event ticker.
+ * Kalshi's grouping; every topic's is `TOPICS[t].groupOf`. */
+export const fixtureOf = instance => topicOf(DEFAULT).groupOf(instance);
 
-/** Mean score per candidate over one fixture's instances, for the "only thing that worked" table. */
-export function byFixture(entries) {
+/** Mean score per candidate over one group's instances — one match, one
+ * symbol-day, one UTC day — for the "only thing that worked" table. */
+export function byFixture(entries, topic = DEFAULT) {
+  const groupOf = topicOf(topic).groupOf;
   const out = new Map();
   for (const e of entries) {
     for (const [instance, score] of Object.entries(e.scores || {})) {
-      const fixture = fixtureOf(instance);
+      const fixture = groupOf(instance);
       if (!out.has(fixture)) out.set(fixture, new Map());
       const per = out.get(fixture);
       if (!per.has(e.id)) per.set(e.id, { sum: 0, n: 0 });

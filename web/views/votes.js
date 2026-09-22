@@ -6,15 +6,21 @@
  * input a Bradley–Terry model over votes would eventually be fitted on.
  */
 
-import { qAll } from "../data.js";
+import { qAll, qs, topicFilter } from "../data.js";
 import { href } from "../routes.js";
 import { html, raw, stat, pill, n3, pct, dir, empty, day, plural } from "../dom.js";
+import { DEFAULT, wordsOf } from "../topics.js";
 
-export async function votesView({ signal }) {
-  const [votes, runs] = await Promise.all([
-    qAll("votes?select=*&order=created.desc", { signal, max: 20_000 }),
-    qAll("runs?select=id,accepted&order=created.desc", { signal, pageSize: 200, max: 2000 }),
-  ]);
+export async function votesView({ signal, topic = DEFAULT }) {
+  const w = wordsOf(topic);
+  // A vote hangs off a run, and runs carry the topic; so the votes of a topic
+  // are the votes on its runs. Nothing to read when it has no runs yet.
+  const runs = await qAll(`runs?select=id,accepted${topicFilter(topic)}&order=created.desc`,
+                          { signal, pageSize: 200, max: 2000 });
+  const votes = runs.length
+    ? await qAll(`votes?select=*&run_id=${qs.inList(runs.map(r => r.id))}&order=created.desc`,
+                 { signal, max: 20_000 })
+    : [];
 
   if (!votes.length) {
     return {
@@ -95,9 +101,9 @@ export async function votesView({ signal }) {
       <div class="panel-h"><h2>Every vote</h2><span class="pill">newest first</span></div>
       <div class="scroll"><table>
         <caption>One row per vote. The two skills are the pooled held-out figures for that
-          match, which the reader could not see when they chose.</caption>
+          ${w.group}, which the reader could not see when they chose.</caption>
         <thead><tr>
-          <th scope="col">when</th><th scope="col">match</th><th scope="col">chose</th>
+          <th scope="col">when</th><th scope="col">${w.group}</th><th scope="col">chose</th>
           <th scope="col" class="n">incumbent</th><th scope="col" class="n">rewrite</th>
           <th scope="col">verdict</th>
         </tr></thead>

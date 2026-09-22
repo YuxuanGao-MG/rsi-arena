@@ -19,15 +19,20 @@ import { onStatus, setOverviewVisible, relative } from "../status.js";
 import { tickAll } from "../clock.js";
 import { loadGuess, renderGuess, wireGuess } from "../guess.js";
 import { addActions } from "../actions.js";
+import { topicOf, DEFAULT, wordsOf } from "../topics.js";
 
 const PHASES = ["baseline", "search", "cascade", "holdout", "audit", "done"];
 
-export async function overviewView({ signal }) {
-  const g = await loadGenerations({ signal });
+export async function overviewView({ signal, topic = DEFAULT }) {
+  const t = topicOf(topic);
+  const w = wordsOf(t.id);
+  const g = await loadGenerations({ signal, topic: t.id });
+  g.topic = t.id;
   const latest = g.runs[0] || null;
   const latestStatus = latest ? g.statusOf.get(latest.id) : null;
   // The crowd is a garnish; its absence must never cost the page.
-  const guessState = await loadGuess({ signal, runs: g.runs }).catch(() => ({ available: false }));
+  const guessState = await loadGuess({ signal, runs: g.runs, topic: t.id })
+    .catch(() => ({ available: false }));
 
   const body = html`
     <section class="panel hero-panel">
@@ -87,18 +92,21 @@ export async function overviewView({ signal }) {
     </section>` : empty("No generations published yet.")}
 
     <section class="panel"><div class="panel-b prose">
-      <p>An LLM harness forecasts where a Kalshi soccer price will be five minutes later.
-      Each generation, another LLM rewrites it from its failures. A rewrite is promoted only if
-      it beats its parent on matches neither ever saw — and after
-      ${plural(g.runs.length, "generation")}, none has been.</p>
+      <p>${t.blurb} ${g.runs.some(r => r.accepted)
+        ? html`After ${plural(g.runs.length, "generation")},
+            ${plural(g.runs.filter(r => r.accepted).length, "rewrite")} has been.`
+        : g.runs.length
+        ? html`After ${plural(g.runs.length, "generation")}, none has been.`
+        : html`No generation has run on this topic yet.`}</p>
       <details class="more">
         <summary>the full story</summary>
         <p><strong>Skill</strong> is the fraction of the no-change baseline's error a forecast
         removed. Predicting "no change" is free and nearly always nearly right, so saying
         nothing scores exactly zero — <strong>silence</strong> — and a promotion needs a
-        held-out interval clear of it. <strong>Held-out</strong> means matches neither the
-        rewrite nor its optimizer saw; splits respect matches, never windows, because fifty
-        windows on one match are fifty correlated looks at one game.</p>
+        held-out interval clear of it. <strong>Held-out</strong> means ${w.groups} neither the
+        rewrite nor its optimizer saw; splits respect ${w.groups}, never ${w.instance}s, because
+        fifty ${w.instance}s on one ${w.group} are fifty correlated looks at one
+        ${w.group === "match" ? "game" : w.group}.</p>
         <p>Zero promotions is the finding, not the failure mode. Part of it is now measured:
         the early gate was too small to resolve the effects it was judging.
         <a href="${raw(href.about())}">Methodology and vocabulary</a>.</p>
@@ -110,8 +118,8 @@ export async function overviewView({ signal }) {
   return {
     title: "Overview",
     heading: "A harness that rewrites itself, measured",
-    lead: html`What the loop is doing now, and whether any rewrite has ever beaten the harness
-      it came from.`,
+    lead: html`What the ${t.title} loop is doing now, and whether any rewrite has ever beaten
+      the harness it came from.`,
     body,
     ready: root => {
       if (g.points.length) generationSkill(root.querySelector("#gen-skill"), g.points);
@@ -132,7 +140,7 @@ export async function overviewView({ signal }) {
       const refreshGuess = async () => {
         if (typeof document !== "undefined" && document.hidden) return;
         try {
-          const next = await loadGuess({ runs: g.runs });
+          const next = await loadGuess({ runs: g.runs, topic: t.id });
           if (guessEl && guessEl.isConnected !== false) {
             guessEl.innerHTML = renderGuess(next);
             wireGuess(guessEl, addActions, next);
@@ -229,6 +237,7 @@ export function heroFor(s, g) {
 
   // idle
   const latest = g.runs[0];
+  const t = topicOf(g.topic);
   const verdict = s.conclusion
     || (latest ? (g.statusOf.get(latest.id) === "complete"
         ? (latest.accepted ? "accepted" : "rejected") : g.statusOf.get(latest.id)) : null);
@@ -245,11 +254,10 @@ export function heroFor(s, g) {
           ${verdict || "no verdict recorded"}${s.reason ? html`, ${s.reason}` : ""}.`
       : html`No run has reported yet.`}</p>
     <div class="cards hero-cards">
-      ${stat({ value: html`<time data-tick="until" data-target="loop">…</time>`,
-               label: "next generation", note: "daily at 03:17 UTC, retried 05:47" })}
-      ${stat({ value: html`<time data-tick="until" data-target="live">…</time>`,
-               label: "next live collection",
-               note: "19:05 weekdays · 15:05 weekends · 01:05 daily, UTC" })}
+      ${stat({ value: html`<time data-tick="until" data-target="loop" data-topic="${t.id}">…</time>`,
+               label: "next generation", note: t.loopText })}
+      ${stat({ value: html`<time data-tick="until" data-target="live" data-topic="${t.id}">…</time>`,
+               label: "next live collection", note: t.liveText })}
     </div>
     ${collecting}${note}`;
 }

@@ -273,6 +273,15 @@ export function invalidate(prefix = "") {
     if (!prefix || key.includes(prefix)) cache.delete(key);
 }
 
+/**
+ * `&topic=eq.<id>` — the filter every topic-scoped select appends.
+ *
+ * One place, so the column name and the encoding are not repeated in nine
+ * files. Rollouts, traces and votes are not filtered by it directly: they
+ * reach a topic through the `run_id` of a run list that already was.
+ */
+export const topicFilter = t => t ? `&topic=eq.${encodeURIComponent(t)}` : "";
+
 export const qs = {
   /** `in.(a,b,c)` with each value quoted, because fixtures carry dashes. */
   inList(values) {

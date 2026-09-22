@@ -166,7 +166,8 @@ async def one(harness: Harness, llm: OpenRouter, league: str, game: str,
 
     run = await Runner(llm, box).run(harness, question=ticker,
                                      game=json.dumps(state)[:1200])
-    return {"at": at.isoformat(), "league": league, "game_id": game, "ticker": ticker,
+    return {"at": at.isoformat(), "topic": "kalshi-horizon-5m",
+            "league": league, "game_id": game, "ticker": ticker,
             "mid_now": candle.mid, "game": state, "harness": harness.name,
             "output": run.output, "run": run.to_dict(),
             "ok": run.ok, "error": run.error}

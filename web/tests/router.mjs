@@ -44,12 +44,26 @@ globalThis.setTimeout = ((real) => (fn, ms) => (ms >= 1000 ? 0 : real(fn, ms)))(
 
 await import(`${W}/app.js`);
 
+const { parse, href, withTopic } = await import(`${W}/routes.js`);
+
+// Every route the site has ever had, then the same pages under a topic prefix.
+// The prefixless ones must keep meaning Kalshi — they are bookmarks — and the
+// prefixed ones must resolve to the same views with the other topic's data.
 const routes = ["#/", "#/metrics", "#/about",
                 "#/generation/gen1-floored", "#/generation/gen1-floored?side=baseline",
                 "#/generation/gen5?side=baseline", "#/generation/gen4",
                 "#/window/3", "#/lineage", "#/archive", "#/compare",
                 "#/compare/gen1-floored", "#/compare/gen1-floored/401878780",
-                "#/votes", "#/live", "#/cost", "#/nonsense"];
+                "#/votes", "#/live", "#/cost", "#/nonsense",
+                "#/t/crypto-horizon-5m/", "#/t/crypto-horizon-5m/metrics",
+                "#/t/crypto-horizon-5m/about", "#/t/crypto-horizon-5m/generation/cgen1",
+                "#/t/crypto-horizon-5m/compare/cgen1/D20260919",
+                "#/t/crypto-horizon-5m/live", "#/t/crypto-horizon-5m/archive",
+                "#/t/crypto-horizon-5m/lineage", "#/t/crypto-horizon-5m/votes",
+                "#/t/crypto-horizon-5m/cost",
+                "#/t/news-equity-5m/", "#/t/news-equity-5m/live", "#/t/news-equity-5m/archive",
+                "#/t/kalshi-horizon-5m/metrics", "#/t/typo/", "#/t/typo/metrics"];
+const missing = new Set(["#/nonsense", "#/t/typo/", "#/t/typo/metrics"]);
 let bad = 0;
 for (const hash of routes) {
   location.hash = hash;
@@ -59,9 +73,37 @@ for (const hash of routes) {
   const title = document.title;
   const ok = view.innerHTML.length > 300 && !/Something did not load/.test(view.innerHTML);
   const announced = node("announce").textContent;
-  if (!ok && hash !== "#/nonsense") { bad++; console.log(`FAIL ${hash}: ${view.innerHTML.slice(0, 200)}`); }
-  else console.log(`ok   ${hash.padEnd(38)} ${String(view.innerHTML.length).padStart(6)}b  title=${JSON.stringify(title)}  busy=${view.getAttribute("aria-busy")}  announced=${JSON.stringify(announced)}`);
+  if (!ok && !missing.has(hash)) { bad++; console.log(`FAIL ${hash}: ${view.innerHTML.slice(0, 200)}`); }
+  else if (missing.has(hash) && !/No such page/.test(view.innerHTML)) {
+    bad++; console.log(`FAIL ${hash}: should be a missing page, got ${view.innerHTML.slice(0, 120)}`);
+  }
+  else console.log(`ok   ${hash.padEnd(46)} ${String(view.innerHTML.length).padStart(6)}b  title=${JSON.stringify(title)}  busy=${view.getAttribute("aria-busy")}  announced=${JSON.stringify(announced)}`);
 }
+
+// The topic prefix: parsed, omitted for the default, carried by every href.
+const say = (name, got, want) => {
+  if (got !== want) { bad++; console.log(`FAIL ${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`); }
+  else console.log(`ok   ${name}`);
+};
+localStorage.setItem("rsi_topic", "kalshi-horizon-5m");
+say("a bare route is Kalshi", parse("#/metrics").topic, "kalshi-horizon-5m");
+say("a prefixed route names its topic", parse("#/t/crypto-horizon-5m/metrics").topic, "crypto-horizon-5m");
+say("the prefix leaves the page alone", parse("#/t/crypto-horizon-5m/generation/x").name, "run");
+say("the prefix leaves the params alone", parse("#/t/crypto-horizon-5m/generation/x").params.id, "x");
+say("an unknown topic is a missing page", parse("#/t/typo/metrics").name, "missing");
+say("withTopic omits the default", withTopic("#/metrics", "kalshi-horizon-5m"), "#/metrics");
+say("withTopic prefixes the rest", withTopic("#/metrics", "crypto-horizon-5m"), "#/t/crypto-horizon-5m/metrics");
+say("withTopic on the root", withTopic("#/", "news-equity-5m"), "#/t/news-equity-5m/");
+location.hash = "#/t/crypto-horizon-5m/";
+say("href.run carries the page's topic", href.run("cgen1"), "#/t/crypto-horizon-5m/generation/cgen1");
+say("href.compare carries the page's topic", href.compare("cgen1", "D1"), "#/t/crypto-horizon-5m/compare/cgen1/D1");
+location.hash = "#/";
+say("href.run on Kalshi is the old link", href.run("gen5"), "#/generation/gen5");
+localStorage.setItem("rsi_topic", "crypto-horizon-5m");
+say("a bare route follows the remembered topic", parse("#/").topic, "crypto-horizon-5m");
+say("the switcher's Kalshi link is explicit, so it overrides the memory",
+    href.topic("kalshi-horizon-5m"), "#/t/kalshi-horizon-5m/");
+localStorage.setItem("rsi_topic", "kalshi-horizon-5m");
 
 // A route change mid-flight must not let the old route paint.
 let slow;

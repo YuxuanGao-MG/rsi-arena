@@ -7,7 +7,12 @@
  *
  *   data-tick="rel"      datetime=ISO   → "3m ago", self-ageing
  *   data-tick="elapsed"  datetime=ISO   → "1h 34m", counting up
- *   data-tick="until"    data-target=loop|live → "in 4h 12m", counting down
+ *   data-tick="until"    data-target=loop|live [data-topic=<id>]
+ *                                       → "in 4h 12m", counting down
+ *
+ * The crons are the topic's — each loop and each collector fires on its own
+ * schedule, stated in topics.js — and an element names its topic or takes the
+ * page's.
  *
  * Content updates, not animation: `prefers-reduced-motion` turns off the
  * pulses and slides elsewhere, but a clock that stops ticking is not a
@@ -17,35 +22,24 @@
  */
 
 import { relative, elapsed } from "./status.js";
+import { topicOf, currentTopic, nextCron } from "./topics.js";
 
-/** Next chance for a generation: 03:17 UTC, retried 05:47 — one runs per day.
- * GitHub's scheduler is best-effort, so the loop fires twice and a guard keeps
- * the second firing from meaning a second generation. Pure, for the tests. */
-export function nextLoopRun(now = Date.now()) {
-  const t = new Date(now);
-  const candidates = [];
-  for (let d = 0; d < 2; d++)
-    for (const [h, m] of [[3, 17], [5, 47]])
-      candidates.push(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + d, h, m));
-  return Math.min(...candidates.filter(c => c > now));
+/** Next chance for a generation on this topic. Kalshi's: 03:17 UTC, retried
+ * 05:47 — GitHub's scheduler is best-effort, so the loop fires twice and a
+ * guard keeps the second firing from meaning a second generation. Pure. */
+export function nextLoopRun(now = Date.now(), topic) {
+  return nextCron(topicOf(topic).loopCrons, now);
 }
 
-/** Next live collection: 19:05 UTC Mon–Fri, 15:05 Sat–Sun, 01:05 daily. */
-export function nextLiveRun(now = Date.now()) {
-  const t = new Date(now);
-  const candidates = [];
-  for (let d = 0; d < 3; d++) {
-    const day = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() + d));
-    const dow = day.getUTCDay();
-    const hours = [[1, 5], dow === 0 || dow === 6 ? [15, 5] : [19, 5]];
-    for (const [h, m] of hours)
-      candidates.push(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), h, m));
-  }
-  return Math.min(...candidates.filter(c => c > now));
+/** Next live collection on this topic. Kalshi's: 19:05 UTC Mon–Fri, 15:05
+ * Sat–Sun, 01:05 daily. */
+export function nextLiveRun(now = Date.now(), topic) {
+  return nextCron(topicOf(topic).liveCrons, now);
 }
 
 /** "in 4h 12m", or "in 3m 20s" close in so the tick is visible. */
 export function untilText(target, now = Date.now()) {
+  if (!Number.isFinite(target)) return "not scheduled";
   const s = Math.max(0, Math.round((target - now) / 1000));
   if (s < 600) return `in ${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
   const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
@@ -65,7 +59,8 @@ export function tickAll(root = document, now = Date.now()) {
       if (at) el.textContent = elapsed(at, now);
     } else if (kind === "until") {
       const fn = TARGETS[el.getAttribute("data-target")];
-      if (fn) el.textContent = untilText(fn(now), now);
+      const topic = el.getAttribute("data-topic") || currentTopic();
+      if (fn) el.textContent = untilText(fn(now, topic), now);
     }
   }
 }

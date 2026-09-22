@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0d1114" media="(prefers-color-scheme: dark)">
-<meta name="description" content="An LLM harness forecasts Kalshi soccer prices five minutes out; each generation an LLM rewrites it from its failures, and a rewrite is promoted only if it beats its parent on held-out matches. So far, none has been.">
+<meta name="description" content="LLM harnesses forecast five-minute price moves — Kalshi soccer contracts, US equities after news, crypto spot — and each generation an LLM rewrites each one from its failures. A rewrite is promoted only if it beats its parent on held-out instances. Measured, not narrated.">
 <meta property="og:title" content="rsi-arena">
 <meta property="og:description" content="A self-rewriting forecasting harness, and whether any rewrite has ever beaten the harness it came from — measured, not narrated.">
 <meta property="og:type" content="website">
@@ -41,6 +41,9 @@
 <header class="site">
   <div class="bar">
     <a class="brand" href="#/"><span class="dot" aria-hidden="true"></span> rsi-arena</a>
+    <!-- Which of the arena's topics the page reads: real links, painted by
+         app.js, the current one marked aria-current. -->
+    <nav class="topics" aria-label="Topic"><ul id="topics"></ul></nav>
     <nav class="main" aria-label="Sections"><ul id="nav"></ul></nav>
     <div class="spacer"></div>
     <!-- The run's state lives in the chrome, MiMo-style: always visible,

@@ -15,8 +15,8 @@ import { windowSkill } from "../stats.js";
 import { rewriteLabel, fateOf, genName } from "../labels.js";
 import { loadGenerations } from "../generations.js";
 
-export async function metricsView({ signal }) {
-  const g = await loadGenerations({ signal });
+export async function metricsView({ signal, topic }) {
+  const g = await loadGenerations({ signal, topic });
   if (!g.runs.length) {
     return {
       title: "Metrics", heading: "No generations published yet",

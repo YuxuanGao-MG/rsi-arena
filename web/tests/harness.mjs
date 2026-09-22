@@ -63,30 +63,36 @@ const SCHEMA = {
   runs: ["id", "topic", "created", "parent", "incumbent", "incumbent_fp",
          "candidate_fp", "accepted", "reasons", "baseline", "candidate",
          "decision", "search", "llm", "split", "audit"],
+  // 008 added topic and unit to rollouts, topic/symbol/venue/context/unit to
+  // live_forecasts, and topic to progress and guesses.
   rollouts: ["id", "run_id", "side", "split", "fixture", "ticker", "at",
              "mid_now", "realised", "predicted", "half_width", "err",
              "naive_error", "skill", "echoed", "unmeasurable", "scored",
-             "cost_usd", "ok", "error_text", "output", "game", "feedback"],
+             "cost_usd", "ok", "error_text", "output", "game", "feedback",
+             "topic", "unit"],
   traces: ["rollout_id", "spans"],
   votes: ["id", "created", "run_id", "fixture", "chose", "left_side",
           "baseline_skill", "candidate_skill", "voter", "server_computed"],
   live_forecasts: ["at", "league", "game_id", "ticker", "mid_now", "realised",
                    "harness", "output", "game", "spans", "skill", "scored",
-                   "ok", "error_text"],
-  progress: ["run_id", "phase", "detail", "started_at", "updated_at"],
+                   "ok", "error_text", "topic", "symbol", "venue", "context", "unit"],
+  progress: ["run_id", "phase", "detail", "started_at", "updated_at", "topic"],
   trace_feedback: ["id", "created", "rollout_id", "verdict", "voter"],
-  guesses: ["id", "created", "guess", "voter"],
+  guesses: ["id", "created", "guess", "voter", "topic"],
+  book_snapshots: ["topic", "symbol", "at", "book"],
 };
 
 // The three RPCs' argument names, from their SQL signatures. PostgREST
 // resolves a function by name AND named-argument set, so a wrong set is the
 // same 404 PGRST202 a missing function gets — the stub used to answer
-// success to any name with any body, which certifies typos.
+// success to any name with any body, which certifies typos. rsi_cast_guess
+// is overloaded since 008: (guess, voter) means Kalshi, (guess, voter, topic)
+// names the loop.
 const RPCS = {
   rsi_cast_vote: { required: ["run_id", "fixture", "chose", "left_side"],
                    optional: ["voter", "note"] },
   rsi_flag_trace: { required: ["rollout_id", "verdict", "voter"], optional: [] },
-  rsi_cast_guess: { required: ["guess", "voter"], optional: [] },
+  rsi_cast_guess: { required: ["guess", "voter"], optional: ["topic"] },
 };
 
 function checkSelect(table, params) {
@@ -152,8 +158,19 @@ globalThis.fetch = async (url, opts = {}) => {
     return json(state.github ?? { workflow_runs: [
       { id: 35180102504, status: "completed", conclusion: "success" }] });
   }
-  if (url === "/archive.json")
-    return json(JSON.parse(readFileSync("runs/archive.json", "utf8")));
+  // The archives, served the way web/server.py serves them: the bare file is
+  // Kalshi's, `/archive/<topic>.json` is that topic's `runs/archive.<topic>.json`.
+  if (url === "/archive.json" || url === "/archive/kalshi-horizon-5m.json")
+    return json(JSON.parse(readFileSync(join(HERE, "..", "..", "runs", "archive.json"), "utf8")));
+  const topicArchive = /^\/archive\/([a-z0-9-]+)\.json$/.exec(String(url));
+  if (topicArchive) {
+    const file = join(HERE, "..", "..", "runs", `archive.${topicArchive[1]}.json`);
+    try { return json(JSON.parse(readFileSync(file, "utf8"))); }
+    catch (e) {
+      return { ok: false, status: 404, headers: hdr("text/plain"),
+               json: async () => ({}), text: async () => "404 not found" };
+    }
+  }
   const u = new URL(url);
   if (u.pathname.startsWith("/rest/v1/rpc/")) {
     if (rpcState.fail)
@@ -187,13 +204,15 @@ globalThis.fetch = async (url, opts = {}) => {
       return json({ stored: true, id: 1, tally });
     }
     if (fn === "rsi_cast_guess") {
-      const mine = FX.guesses.find(g => g.voter === args.voter);
+      const topic = args.topic || "kalshi-horizon-5m";
+      const mine = FX.guesses.find(g => g.voter === args.voter && (g.topic || "kalshi-horizon-5m") === topic);
       if (mine) { mine.guess = args.guess; mine.created = new Date().toISOString(); }
-      else FX.guesses.push({ id: FX.guesses.length + 1,
+      else FX.guesses.push({ id: FX.guesses.length + 1, topic,
         created: new Date().toISOString(), guess: args.guess, voter: args.voter });
-      return json({ stored: true, crowd: {
-        yes: FX.guesses.filter(g => g.guess).length,
-        no: FX.guesses.filter(g => !g.guess).length } });
+      const crowd = FX.guesses.filter(g => (g.topic || "kalshi-horizon-5m") === topic);
+      return json({ stored: true, topic, crowd: {
+        yes: crowd.filter(g => g.guess).length,
+        no: crowd.filter(g => !g.guess).length } });
     }
     return json({ stored: true, already_voted: false, vote_id: 9,
                   baseline_skill: 0.043, candidate_skill: 0.041, windows: 34, quiet: 8 });

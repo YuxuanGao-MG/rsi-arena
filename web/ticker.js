@@ -12,10 +12,11 @@
  * cache reads as live data, and both are worse than saying what happened.
  */
 
-import { q } from "./data.js";
-import { html, raw, toHTML, cents, price } from "./dom.js";
+import { q, qs, topicFilter } from "./data.js";
+import { html, raw, toHTML } from "./dom.js";
 import { href } from "./routes.js";
 import { relative } from "./status.js";
+import { currentTopic, forecastOf, fmtMove, fmtPrice } from "./topics.js";
 
 const REFRESH_MS = 90_000;
 const MAX_ITEMS = 8;
@@ -23,6 +24,7 @@ const MAX_ITEMS = 8;
 let el = null;
 let timer = 0;
 let lastGood = null;
+let topic = null;                        // whose events the strip carries
 
 export function startTicker(target) {
   if (!target || el) return;
@@ -35,15 +37,31 @@ export function startTicker(target) {
   refresh();
 }
 
+/** The strip follows the page's topic; a switch refreshes it at once. */
+export function setTickerTopic(id) {
+  if (id === topic) return;
+  topic = id;
+  lastGood = null;
+  if (el) refresh();
+}
+
 async function gather() {
+  const mine = topic || currentTopic();
+  // Votes hang off runs, so the run ids of this topic are the filter — one
+  // narrow select rather than a `topic` column votes do not have.
+  const ids = await q(`runs?select=id${topicFilter(mine)}`, {}).catch(() => []);
   // Three independent selects; one failing should not empty the others.
   const [runs, live, votes] = await Promise.all([
-    q("runs?select=id,created,accepted,reasons,llm,decision&order=created.desc&limit=3", {})
+    q(`runs?select=id,created,accepted,reasons,llm,decision${topicFilter(mine)}` +
+      "&order=created.desc&limit=3", {})
       .catch(() => []),
-    q("live_forecasts?select=at,ticker,mid_now,skill,scored,output&order=at.desc&limit=4", {})
+    q(`live_forecasts?select=at,ticker,symbol,mid_now,skill,scored,output${topicFilter(mine)}` +
+      "&order=at.desc&limit=4", {})
       .catch(() => []),
-    q("votes?select=created,run_id,fixture,chose&order=created.desc&limit=3", {})
-      .catch(() => []),
+    ids.length
+      ? q(`votes?select=created,run_id,fixture,chose&run_id=${qs.inList(ids.map(r => r.id))}` +
+          "&order=created.desc&limit=3", {}).catch(() => [])
+      : [],
   ]);
 
   const events = [];
@@ -56,12 +74,13 @@ async function gather() {
                   text: `${r.id} ${word}` });
   }
   for (const f of live) {
-    const said = f.output && f.output.delta_cents != null
-      ? `said ${cents(f.output.delta_cents)}` : "made no forecast";
+    const { delta } = forecastOf(f.output, mine);
+    const said = delta != null ? `said ${fmtMove(delta, mine)}` : "made no forecast";
     const scored = f.scored && f.skill != null ? ` · skill ${f.skill >= 0 ? "+" : ""}${f.skill}` : "";
-    const team = String(f.ticker || "").split("-").pop();
+    // A Kalshi ticker ends in the team; the other topics name the symbol.
+    const who = f.symbol || String(f.ticker || "").split("-").pop();
     events.push({ at: f.at, to: href.live(),
-                  text: `${team} quoted ${price(f.mid_now)}, ${said}${scored}` });
+                  text: `${who} quoted ${fmtPrice(f.mid_now, mine)}, ${said}${scored}` });
   }
   for (const v of votes) {
     const chose = v.chose === "baseline" ? "the incumbent"

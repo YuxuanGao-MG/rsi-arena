@@ -7,12 +7,13 @@
 import { q, rpc, ApiError } from "../data.js";
 import { href } from "../routes.js";
 import {
-  html, raw, pill, n3, n2, usd, cents, dir, empty, stamp, plural,
+  html, raw, pill, n3, usd, dir, empty, stamp, plural,
 } from "../dom.js";
 import { priceTrack } from "../charts.js";
 import { windowSkill } from "../stats.js";
 import { addActions } from "../actions.js";
 import { VOTER } from "../voter.js";
+import { topicOf, forecastOf, fmtMove, fmtErr, fmtWidth, wordsOf } from "../topics.js";
 
 export async function windowView({ params, signal }) {
   const rid = String(params.id || "");
@@ -39,11 +40,17 @@ export async function windowView({ params, signal }) {
                    body: empty(html`Nothing published with id <code>${rid}</code>.`) };
 
   const spans = (traces[0] && traces[0].spans) || [];
+  // The row's own topic, when the column was published; a row without one is
+  // Kalshi. Keyed on the row rather than the route so a bookmark to a Kalshi
+  // window reads as Kalshi whatever topic the reader was last on.
+  const t = topicOf(r);
+  const w = wordsOf(t.id);
   // Recomputed from this window's own errors, for the same reason the tables
   // are: the stored column carries whatever the metric said that week.
   const skill = windowSkill(r);
   const restated = r.skill != null && Math.abs(r.skill - skill) > 0.002;
   const o = r.output || {};
+  const { delta, width } = forecastOf(o, t.id);
   const covered = r.realised != null && r.predicted != null && r.half_width != null
     && Math.abs(r.realised - r.predicted) <= r.half_width;
 
@@ -57,11 +64,11 @@ export async function windowView({ params, signal }) {
           ${pill(r.side === "baseline" ? "incumbent" : "candidate")}
         </div>
         <div class="panel-b">
-          ${raw(priceTrack(r))}
+          ${raw(priceTrack(r, t.id))}
           <div class="fc">
             <div class="box"><div class="k">it said</div>
-              <div class="big">${cents(o.delta_cents)}</div>
-              <p>quoting ±${o.half_width_cents ?? "?"}c${o.confidence != null
+              <div class="big">${fmtMove(delta, t.id)}</div>
+              <p>quoting ${fmtWidth(width, t.id)}${o.confidence != null
                 ? `, confidence ${o.confidence}` : ""}${o.reconstructed
                 ? " · rebuilt from the score, so no reasoning was kept" : ""}.
                 ${r.realised != null && r.half_width
@@ -72,8 +79,8 @@ export async function windowView({ params, signal }) {
               <p>against no change${r.unmeasurable
                 ? " — but the market did not move, so there was no error to remove" : ""}.
                 ${r.err != null && r.naive_error != null
-                  ? `Missed by ${n2(r.err * 100)}c where saying nothing would have missed by
-                     ${n2(r.naive_error * 100)}c.` : ""}
+                  ? `Missed by ${fmtErr(r.err, t.id)} where saying nothing would have missed by
+                     ${fmtErr(r.naive_error, t.id)}.` : ""}
                 ${restated ? `The scoreboard of the day recorded ${n3(r.skill)} here, under a
                    metric that has since changed.` : ""}</p></div>
           </div>
@@ -132,7 +139,7 @@ export async function windowView({ params, signal }) {
   return {
     title: r.ticker,
     heading: html`${r.ticker} <span class="crumb">· ${stamp(r.at)}</span>`,
-    lead: html`One moment in one match: the forecaster was asked where this price would be
+    lead: html`One moment in one ${w.group}: the forecaster was asked where this price would be
       five minutes later. Here is what it said, why, and what actually happened.`,
     crumbs: [["generations", href.runs()], [r.run_id, href.run(r.run_id, r.side)], ["window"]],
     body,

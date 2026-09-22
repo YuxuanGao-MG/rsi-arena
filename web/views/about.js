@@ -9,30 +9,58 @@
 
 import { href } from "../routes.js";
 import { html, raw } from "../dom.js";
-import { NEXT_SCHEDULED } from "../status.js";
+import { TOPICS, TOPIC_IDS, topicOf, DEFAULT, wordsOf } from "../topics.js";
 
-export async function aboutView() {
+export async function aboutView({ topic = DEFAULT } = {}) {
+  const t = topicOf(topic);
+  const w = wordsOf(t.id);
+  const kalshi = t.id === DEFAULT;
   const body = html`
     <section class="panel"><div class="panel-b prose">
       <h2>What is being measured</h2>
-      <p>A <strong>harness</strong> — an LLM wired to market-data tools by a JSON plan — is put
+      ${kalshi ? html`<p>A <strong>harness</strong> — an LLM wired to market-data tools by a JSON plan — is put
       back at fixed instants of Kalshi soccer matches, its tools frozen at that instant, and
       asked where the contract's mid price goes in five minutes. The answer is already in the
-      candle history, so hundreds of windows score in seconds and cost only model calls.</p>
-      <p>Each generation, GEPA rewrites the harness from the traces of the windows it lost. The
-      rewrite is promoted only if it beats the incumbent on <strong>held-out</strong> matches —
-      matches neither the rewrite nor its optimizer ever saw — with a paired cluster bootstrap
-      putting the difference clear of zero. The gate is the only promotion path; the search's
-      own best-on-train is not a result. A new generation starts on the ${NEXT_SCHEDULED} cron
-      and reports its phase as it moves, which is what the dot in the header reads.</p>
+      candle history, so hundreds of windows score in seconds and cost only model calls.</p>`
+      : html`<p>${t.blurb}</p>
+      <p>A <strong>harness</strong> — an LLM wired to market-data tools by a JSON plan — is put
+      back at a fixed instant, its tools frozen at that instant, and asked where the price goes
+      in five minutes, in ${t.unit === "bps" ? "basis points" : "cents"}. The answer is
+      already in the price history, so hundreds of ${w.instance}s score in seconds and cost
+      only model calls.</p>`}
+      <p>Each generation, GEPA rewrites the harness from the traces of the ${w.instance}s it
+      lost. The rewrite is promoted only if it beats the incumbent on
+      <strong>held-out</strong> ${w.groups} — ${w.groups} neither the rewrite nor its optimizer
+      ever saw — with a paired cluster bootstrap putting the difference clear of zero. The gate
+      is the only promotion path; the search's own best-on-train is not a result. A new
+      generation starts on the ${t.loopWhen} cron and reports its phase as it moves, which is
+      what the dot in the header reads.</p>
       <p><strong>Skill</strong> is the fraction of the no-change baseline's error a forecast
       removed. Predicting the price stays put is free and nearly always nearly right, so saying
       nothing scores exactly zero — <strong>silence</strong> — which makes zero a meaningful
       line, not an axis default. The gated statistic is <strong>pooled</strong>: sum the error
-      removed, sum the baseline's error, divide. Splits respect <strong>fixtures</strong>, never
-      windows, because fifty windows on one match are fifty correlated observations of one
-      game. A failed run scores as silence rather than being dropped, since dropping it would
-      reward failing on the hard windows.</p>
+      removed, sum the baseline's error, divide${kalshi ? ""
+        : html`, with the baseline's error floored at one tick of ${t.tick}
+          ${t.unit === "bps" ? "basis points" : "cents"}`}. Splits respect
+      <strong>${kalshi ? "fixtures" : w.groups}</strong>, never ${w.instance}s, because fifty
+      ${w.instance}s on one ${w.group} are fifty correlated observations of one
+      ${w.group === "match" ? "game" : w.group}. A failed run scores as silence rather than
+      being dropped, since dropping it would reward failing on the hard ${w.instance}s.</p>
+    </div></section>
+
+    <section class="panel"><div class="panel-b prose">
+      <h2>The topics</h2>
+      <p>Three loops run the same machinery on three questions. Each has its own generations,
+      its own archive and its own live collector, and the switcher in the header moves every
+      page between them. Skill is comparable across them — it is a fraction of the no-change
+      error either way — but the unit is not: a cent of a 0-1 contract and a basis point of a
+      quote are different things, and the pages say which they are showing.</p>
+      <dl class="glossary-list">
+        ${TOPIC_IDS.map(id => html`<dt>${TOPICS[id].title}
+            ${id === t.id ? html`<span class="pill brand">this page</span>` : ""}</dt>
+          <dd>${TOPICS[id].blurb} Unit: ${TOPICS[id].unit}, tick ${TOPICS[id].tick}.
+            <a href="${raw(href.topic(id, "#/about"))}">Read the ${TOPICS[id].title} pages</a>.</dd>`)}
+      </dl>
     </div></section>
 
     <section class="panel"><div class="panel-b prose">
@@ -63,8 +91,9 @@ export async function aboutView() {
     <section class="panel"><div class="panel-b prose">
       <h2>Vocabulary</h2>
       <dl class="glossary-list">
-        <dt>window</dt><dd>One contract at one instant — the unit that gets scored.</dd>
-        <dt>fixture</dt><dd>The match a window belongs to; the unit every split respects.</dd>
+        <dt>${w.instance}</dt><dd>One ${w.subject} at one instant — the unit that gets scored.</dd>
+        <dt>${kalshi ? "fixture" : "group"}</dt><dd>The ${w.group} a ${w.instance} belongs to;
+          the unit every split respects.</dd>
         <dt>generation</dt><dd>One run of the loop: baseline, search, gate, verdict.</dd>
         <dt>incumbent / candidate</dt><dd>The harness being defended, and the rewrite
           challenging it.</dd>

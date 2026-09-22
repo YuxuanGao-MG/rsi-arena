@@ -89,16 +89,57 @@ def why_thin(row: dict) -> str | None:
     return row.get("error") or row.get("unscored_because")
 
 
-def live_row(row: dict) -> tuple:
-    """One forecast, in the column order ``rsi.live_forecasts`` declares."""
+#: The columns every deployment of the table has, in declaration order.
+BASE_COLUMNS = ("at", "league", "game_id", "ticker", "mid_now", "realised", "harness",
+                "output", "game", "spans", "skill", "scored", "ok", "error_text")
+
+#: The columns migration 008 adds, and where each comes from in a collector's
+#: row. Written only when the table has them, so the same script publishes
+#: before and after the migration is applied.
+DEFAULT_TOPIC = "kalshi-horizon-5m"
+TOPIC_COLUMNS = ("topic", "symbol", "venue", "context", "unit")
+
+
+def live_row(row: dict, extras: tuple[str, ...] = ()) -> tuple:
+    """One forecast, in the column order ``rsi.live_forecasts`` declares.
+
+    The first fourteen values are the table as 002 created it; ``extras`` names
+    which of 008's columns to append, in order, so a caller that probed the
+    table gets exactly the tuple its insert names.
+    """
     scored = row.get("scored")
     spans = (row.get("run") or {}).get("trace") or []
-    return (row["at"], row.get("league"), row.get("game_id"), row["ticker"],
+    base = (row["at"], row.get("league"), row.get("game_id"), row["ticker"],
             row.get("mid_now"), row.get("realised"), row.get("harness"),
             Json(row.get("output")), Json(row.get("game")),
             Json([trim_span(s) for s in spans]),
             (scored or {}).get("skill"), scored is not None,
             row.get("ok"), why_thin(row))
+    more = {
+        # A collector that predates topics wrote no topic; it was Kalshi's.
+        "topic": row.get("topic") or DEFAULT_TOPIC,
+        "symbol": row.get("symbol"),
+        "venue": row.get("venue"),
+        "context": Json(row.get("context")) if row.get("context") is not None else None,
+        "unit": row.get("unit") or "cents",
+    }
+    return base + tuple(more[name] for name in extras)
+
+
+def topic_columns(cur) -> tuple[str, ...]:
+    """Which of 008's columns this database has.
+
+    Probed rather than assumed: the publisher runs on a cron beside a migration
+    someone applies by hand, and the two are not applied in the same minute.
+    Naming a column the table lacks fails the whole insert; omitting one it has
+    lets its default stand, which for `topic` and `unit` is Kalshi's.
+    """
+    cur.execute("""
+        select column_name from information_schema.columns
+         where table_schema = 'rsi' and table_name = 'live_forecasts'
+    """)
+    present = {name for (name,) in cur.fetchall()}
+    return tuple(name for name in TOPIC_COLUMNS if name in present)
 
 
 def read_rows(path: Path, start: int) -> tuple[list[dict], int]:
@@ -138,19 +179,14 @@ def offset_of(sidecar: Path, path: Path) -> int:
 
 
 def publish(cur, rows: list[dict]) -> int:
-    execute_values(cur, """
-        insert into rsi.live_forecasts
-          (at, league, game_id, ticker, mid_now, realised, harness, output, game,
-           spans, skill, scored, ok, error_text)
+    extras = topic_columns(cur)
+    columns = BASE_COLUMNS + extras
+    updates = ", ".join(f"{c} = excluded.{c}" for c in columns if c not in ("at", "ticker"))
+    execute_values(cur, f"""
+        insert into rsi.live_forecasts ({", ".join(columns)})
         values %s
-        on conflict (ticker, at) do update set
-            league = excluded.league, game_id = excluded.game_id,
-            mid_now = excluded.mid_now, realised = excluded.realised,
-            harness = excluded.harness, output = excluded.output,
-            game = excluded.game, spans = excluded.spans,
-            skill = excluded.skill, scored = excluded.scored,
-            ok = excluded.ok, error_text = excluded.error_text
-    """, [live_row(r) for r in rows])
+        on conflict (ticker, at) do update set {updates}
+    """, [live_row(r, extras) for r in rows])
     return len(rows)
 
 
@@ -176,9 +212,11 @@ def main() -> int:
     if args.dry_run:
         for row in rows:
             (at, league, game_id, ticker, mid, realised, harness,
-             output, _game, spans, skill, scored, ok, error) = live_row(row)
-            print(f"  {at}  {league:11} {game_id:10} {ticker:34} mid {mid}  "
-                  f"realised {realised}  skill {skill}  scored {scored}  ok {ok}")
+             output, _game, spans, skill, scored, ok, error, topic, symbol, venue,
+             _context, unit) = live_row(row, TOPIC_COLUMNS)
+            print(f"  {at}  {topic:18} {league or symbol or '':11} {game_id or venue or '':10} "
+                  f"{ticker:34} mid {mid}  realised {realised}  skill {skill} {unit}  "
+                  f"scored {scored}  ok {ok}")
             print(f"      {harness}: {json.dumps(output.adapted, default=str)[:160]}")
             print(f"      {len(spans.adapted)} spans"
                   + (f", error {error}" if error else ""))

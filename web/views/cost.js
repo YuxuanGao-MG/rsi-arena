@@ -6,11 +6,12 @@
  * spend makes a rewrite look free.
  */
 
-import { qAll } from "../data.js";
+import { qAll, topicFilter } from "../data.js";
 import { href } from "../routes.js";
 import { html, raw, stat, pill, n3, usd, pct, dir, empty, day, plural } from "../dom.js";
 import { spendByGeneration } from "../charts.js";
 import { ceilingOf, runStatus } from "../stats.js";
+import { DEFAULT } from "../topics.js";
 
 /**
  * The model account's balance, which no manifest holds.
@@ -29,9 +30,10 @@ function account() {
   return { remaining: num(c.remaining), total: num(c.total), asOf: (c.asOf || "").trim() || null };
 }
 
-export async function costView({ signal }) {
+export async function costView({ signal, topic = DEFAULT }) {
   const runs = await qAll(
-    "runs?select=id,created,accepted,baseline,candidate,decision,search,llm&order=created.asc",
+    "runs?select=id,created,accepted,baseline,candidate,decision,search,llm" +
+    `${topicFilter(topic)}&order=created.asc`,
     { signal, pageSize: 200, max: 2000 });
   if (!runs.length)
     return { title: "Cost", heading: "Nothing has been spent yet",
