@@ -38,7 +38,7 @@ permissions:
   contents: read
   issues: write
 
-# A queued runner and a twenty-five-minute sweep can overlap the next firing:
+# A queued runner and a fifty-five-minute sweep can overlap the next firing:
 # two collectors appending to one file and each spending its own ceiling.
 # Queue instead.
 concurrency:
