@@ -365,7 +365,7 @@ def test_both_harness_files_load_against_the_box():
     jev = Harness.load(JEV)
     assert jev.config.model == "typesafe/jev-1.13"
     step = jev.plan.steps[-1]
-    assert step.questions["move"]["values"] == [-150, -60, -20, 0, 20, 60, 150]
+    assert step.questions["move"]["values"] == [-60, -25, -8, 0, 8, 25, 60]
     piled = {"move": {"type": "score", "score": 6.0,
                       "probabilities": {str(i): (1.0 if i == 6 else 0.0) for i in range(7)}, "confidence": 0.9}}
     out = answers_to_output(step.questions, piled, step.answers)
