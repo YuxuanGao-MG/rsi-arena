@@ -1,11 +1,11 @@
 {
   "run_dir": "runs/crypto-horizon-1m/gen1",
   "topic": "crypto-horizon-1m",
-  "created": "2026-09-22T01:11:13+00:00",
+  "created": "2026-09-22T01:17:16+00:00",
   "parent": null,
   "incumbent": "harnesses/crypto-horizon-1m-jev.json",
   "incumbent_fingerprint": "a129ec2ef33f",
-  "candidate_fingerprint": "a129ec2ef33f",
+  "candidate_fingerprint": "442214179e36",
   "settings": {
     "topic": "crypto-horizon-1m",
     "harness": "harnesses/crypto-horizon-1m-jev.json",
@@ -28,12 +28,12 @@
     "llm_cache": true,
     "reuse_scores": true,
     "concurrency": 4,
-    "max_metric_calls": 1200,
+    "max_metric_calls": 4800,
     "valset": 600,
     "minibatch": 8,
     "max_cost_ratio": 2.0,
     "cost_floor_usd": 0.002,
-    "max_generation_usd": 12.04,
+    "max_generation_usd": 12.2,
     "window_usd": 5e-05,
     "cascade": 20,
     "cascade_floor": -0.005,
@@ -208,34 +208,34 @@
   "candidate": {
     "train": {
       "instances": 480,
-      "statistic": -0.048,
-      "mean_value": 0.4933,
+      "statistic": -0.0026,
+      "mean_value": 0.4996,
       "failed_runs": 0,
       "cost_usd": 0.0,
       "cost_per_instance": 0.0,
-      "skill": -0.048,
-      "skill_on_moves": -0.0151,
-      "mae": 5.4973,
+      "skill": -0.0026,
+      "skill_on_moves": 0.0065,
+      "mae": 5.2442,
       "naive_mae": 5.23,
       "echoed": 8,
-      "coverage": 0.1979,
+      "coverage": 0.2208,
       "moved": 334,
       "unmeasurable": 22,
       "unscored": 0
     },
     "holdout": {
       "instances": 720,
-      "statistic": -0.0156,
-      "mean_value": 0.4977,
+      "statistic": -0.0131,
+      "mean_value": 0.4981,
       "failed_runs": 0,
-      "cost_usd": 0.0,
-      "cost_per_instance": 0.0,
-      "skill": -0.0156,
-      "skill_on_moves": 0.0119,
-      "mae": 5.6354,
+      "cost_usd": 0.2008,
+      "cost_per_instance": 0.00028,
+      "skill": -0.0131,
+      "skill_on_moves": -0.006,
+      "mae": 5.6201,
       "naive_mae": 5.5423,
-      "echoed": 14,
-      "coverage": 0.2528,
+      "echoed": 16,
+      "coverage": 0.2597,
       "moved": 476,
       "unmeasurable": 41,
       "unscored": 0
@@ -244,50 +244,36 @@
   "decision": {
     "accepted": false,
     "reasons": [
-      "the search returned the incumbent unchanged; nothing was proposed to gate"
+      "held-out gain +0.003 is not distinguishable from noise (95% interval -0.033 to +0.038)",
+      "and could not have: on 30 fixtures this test resolves +0.050 at best, so a gain of 0.003 was never visible to it"
     ],
     "holdout": {
       "paired": 720,
       "groups": 30,
-      "diff": 0.0,
-      "low": 0.0,
-      "high": 0.0,
+      "diff": 0.0026,
+      "low": -0.0332,
+      "high": 0.038,
       "usable": true,
-      "se": 0.0,
-      "detectable": 0.0,
-      "underpowered": false
+      "se": 0.01794,
+      "detectable": 0.0502,
+      "underpowered": true
     },
     "train": {
       "paired": 480,
       "groups": 20,
-      "diff": 0.0,
-      "low": 0.0,
-      "high": 0.0,
+      "diff": 0.0454,
+      "low": -0.0011,
+      "high": 0.0935,
       "usable": true,
-      "se": 0.0,
-      "detectable": 0.0,
-      "underpowered": false
+      "se": 0.02392,
+      "detectable": 0.067,
+      "underpowered": true
     }
   },
   "search": {
-    "seed": "a129ec2ef33f",
-    "seed_is_incumbent": true,
+    "seed": "936145fa6d6e",
+    "seed_is_incumbent": false,
     "archive": {
-      "candidates": 0,
-      "flat": 0,
-      "contested": 0,
-      "frontier": 0,
-      "instances": 0,
-      "generations": 0,
-      "promoted": 0,
-      "widest": 0
-    },
-    "valset": 600,
-    "candidates": 2,
-    "metric_calls": 1216,
-    "best_idx": 0,
-    "best_train_value": 0.4932,
-    "archive_after": {
       "candidates": 2,
       "flat": 0,
       "contested": 600,
@@ -296,22 +282,37 @@
       "generations": 1,
       "promoted": 0,
       "widest": 345
+    },
+    "valset": 600,
+    "candidates": 7,
+    "metric_calls": 5080,
+    "best_idx": 3,
+    "best_train_value": 0.4998,
+    "archive_after": {
+      "candidates": 7,
+      "flat": 0,
+      "contested": 600,
+      "frontier": 7,
+      "instances": 600,
+      "generations": 1,
+      "promoted": 0,
+      "widest": 165
     }
   },
   "audit": {},
   "llm": {
     "reserved_usd": 4.8,
     "reserve": "$4.80 to judge a candidate: 1200 windows at $0.0020 each, up to 2.0x the incumbent (priced at the cost floor, which the incumbent is under)",
-    "search_ceiling_usd": 7.24,
+    "search_ceiling_usd": 7.4,
     "reused": {
-      "remembered": 1319,
-      "hits": 2400,
-      "added": 1319
+      "remembered": 3119,
+      "hits": 1200,
+      "added": 1800
     },
-    "calls": 726,
-    "cache_hits": 1210,
-    "spent_usd": 0.2491,
-    "budget_usd": 12.04,
+    "calls": 4048,
+    "cache_hits": 1421,
+    "spent_usd": 5.0868,
+    "budget_usd": 12.2,
     "exhausted": false
   }
 }
