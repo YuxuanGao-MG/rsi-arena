@@ -1,0 +1,125 @@
+# Forecasts on the spot market as it trades, one a minute per coin.
+#
+# The crypto loop scores the harness against bars already on disk. This is the
+# other half - the same harness, the same box, pointed at BTC, ETH and SOL as
+# they trade - and it is the only place the arena sees an order book, which has
+# no history and so no replay form. The market never closes, so the schedule is
+# a cadence rather than a fixture list: a twenty-five-minute sweep every four
+# hours, one forecast per coin per minute, each scored a minute later when the
+# bar prints. Rows go to Postgres and nothing is committed back: runs/live/ is
+# gitignored on purpose.
+#
+# No exchange key. The bars, the tape and the book come from
+# data-api.binance.vision, which answers a GitHub runner; api.binance.com and
+# fapi.binance.com return 451 from one, which is why the perp side reads OKX's
+# public endpoints instead. Needs two repository secrets: OPENROUTER_API_KEY
+# and SUPABASE_DB_URL.
+name: live-crypto
+on:
+  schedule:
+    # Six sweeps a day, five past the hour so a queued runner still lands on
+    # a round minute. On the Jev seed a sweep is seventy-five forecasts at
+    # about two thousandths of a cent each; the ceiling is the runner's time.
+    - cron: "5 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "how long to collect; must leave room under the job timeout"
+        default: "25"
+      max_usd:
+        description: "model spend this invocation may not pass"
+        default: "0.10"
+
+# Read-only on purpose. Live rows belong in Postgres, and the one thing this
+# workflow must never do is write to the branch the loop chains its generations
+# off.
+permissions:
+  contents: read
+  issues: write
+
+# A queued runner and a twenty-five-minute sweep can overlap the next firing:
+# two collectors appending to one file and each spending its own ceiling.
+# Queue instead.
+concurrency:
+  group: live-crypto
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # Twenty-five minutes of collection, a few more waiting out the last tick's
+    # horizon, then the publish. Forty leaves room for a slow checkout without
+    # leaving room for a hang.
+    timeout-minutes: 40
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # At job level, not on the publish step: a step's own `env:` block is not
+      # in scope when that step's `if:` is evaluated.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+
+      - name: Check the key
+        run: |
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      # The tool cache under .cache/tools is deliberately not restored here:
+      # it has no TTL because settled history cannot change, and this market
+      # is still trading, so the collector builds its box through `live_tools`.
+      # The script stops on its own if the key refuses three calls in a row,
+      # and writes its counts into the step summary itself.
+      - name: Collect
+        shell: bash
+        run: |
+          python scripts/collect_live_crypto.py \
+            --harness harnesses/crypto-horizon-1m-jev.json \
+            --minutes "${{ inputs.minutes || '25' }}" \
+            --every 60 \
+            --max-usd "${{ inputs.max_usd || '0.10' }}" \
+            --window-usd 0.01 | tee live.txt
+
+      # `always()`, because a cancelled job still leaves real forecasts on disk
+      # that nothing else will ever publish. A missing database secret is a
+      # warning rather than a failure: the work already happened.
+      - name: Publish to the reader
+        if: always() && env.SUPABASE_DB_URL != ''
+        shell: bash
+        run: |
+          pip install -q psycopg2-binary
+          python scripts/publish_live.py runs/live/crypto-forecasts.jsonl | tee -a live.txt \
+            || echo "::warning::publishing forecasts failed; they are in the run artifact"
+          python scripts/publish_books.py runs/live/crypto-books.jsonl | tee -a live.txt \
+            || echo "::warning::publishing books failed; they are in the run artifact"
+          if [ -s live.txt ]; then
+            { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The only copy outside Postgres. Kept for the days the publish fails,
+      # and kept short: nothing here is worth a month of storage.
+      - name: Keep the forecasts as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-crypto-${{ github.run_id }}
+          path: runs/live
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Say so if this failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "live crypto collection failed: $(date -u +%Y-%m-%d) run ${{ github.run_id }}" \
+            --body "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} failed - most likely a feed (Binance data host, OKX) or the key." \
+            || echo "::warning::could not open an issue about the failure"
