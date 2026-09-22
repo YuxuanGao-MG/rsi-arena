@@ -25,6 +25,36 @@ copied into `rsi_arena/kalshi/`. `docs/sean-runtime-notes.md` describes the
 old codebase; `docs/frameworks.md` is the survey that chose GEPA. Treat the old
 repo as reference only; do not depend on it.
 
+## Read this first (2026-09-22)
+
+**Three topics now, one loop, one reader.** `rsi-arena topic --topic <name> --json`
+prints what each runs on; the workflows read the same spec with `--shell`.
+
+| topic | instance | unit / tick | seed harness | question set | keys |
+|---|---|---|---|---|---|
+| `kalshi-horizon-5m` | a Kalshi soccer contract at an instant, 5 min out | cents / 1c | `harnesses/horizon-5m.json` (Opus 5) | 485 matches, `benchmarks/windows/` | OpenRouter |
+| `crypto-horizon-1m` | BTC/ETH/SOL spot at an instant, 1 min out, every 5 min | bps / 2 | `harnesses/crypto-horizon-1m-jev.json` (Jev) | 92 UTC days, 2,208 windows, `benchmarks/windows-crypto/` + `benchmarks/crypto-data/` | none for data |
+| `news-equity-5m` | a Benzinga item on a US stock/ETF, 5 min out, RTH | bps / 5 | `harnesses/news-equity-5m-jev.json` (Jev) | **empty until Alpaca keys exist**; then `scripts/discover_news.py` | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` |
+
+The two new topics run on TypeSafe's Jev (`typesafe/jev-1.13`, a decisions model:
+typed questions in, probabilities out, no text, no tool calls, ~$0.0002 a window;
+see `docs/design.md`). A plan for it ends in a prompt step with `questions` and
+`answers`; `ask_opus` / `ask_sonnet` / `ask_gpt5_mini` are tools in the pool so a
+plan may delegate one reasoning step. The gate applies its cost ratio to
+`max(incumbent, cost_floor_usd=0.01)` so that delegation is allowed.
+
+What is wired: `loop.yml` resolves the topic from the cron (kalshi 03:17 UTC,
+crypto 07:17, news 11:17, each with a retry) or `inputs.topic`; `live.yml` (Kalshi),
+`live-news.yml` (weekday RTH slots), `live-crypto.yml` (every 4 h). Migration
+`supabase/migrations/008_topics.sql` is applied; the reader at
+https://rsi.up.railway.app has a topic switcher and reads `topic`/`unit` on every row.
+
+What is not yet done: Alpaca keys (news question set), a 30-second crypto horizon
+(needs 1 s klines from a live collector), the first real generations on the new
+topics (crypto's Jev smoke on 48 held-out windows: skill -0.029, $0.012, 0 failed).
+
+The section below is the state as of 2026-09-16 and is kept for its lessons.
+
 ## Read this first (2026-09-16)
 
 **The OpenRouter account has about $12 of credit left**, of $5,626. Nothing runs

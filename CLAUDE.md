@@ -36,4 +36,4 @@ topic) · `rsi_arena/topics/__init__.py` (`TopicSpec`: what each topic runs on)
 - Frozen tools never see past the instant. Split by fixture, never by window.
 - A failed run scores as silence. Promotion goes through `loop/gate.py` only.
 - `loop/` must not import from `topics/`.
-- No model call has been made yet as of the handoff; `HANDOFF.md` lists what to check first.
+- Three topics share one loop; `rsi-arena topic --topic <name> --json` is the spec. `HANDOFF.md` first.
