@@ -1,0 +1,170 @@
+{
+  "name": "kalshi-horizon-5m+gen12",
+  "description": "Predicts this contract's mid price 5 minutes ahead.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote\nyou would actually stand behind. Two cents means you would buy two under your number\nand sell two over it, and you would honour both sides. Ten cents means you barely\nknow. Quote what you would trade, not what is safe \u2014 but a width you cannot defend\nwill be paid for, because the trade goes on at your price and settles at the\nmarket's.\n\nDomain facts:\n\n**Recent events can be stale.** The game state shows what happened minutes ago, not\nwhat is happening now. A goal scored at 46' may still show as the most recent event\nat 50', 60', or 85'. The market absorbs news in seconds. If candlesticks show the\nprice already moved sharply and has since stabilized, the event is priced in. Do not\nforecast another move in the same direction unless you see evidence the market is\nstill adjusting.\n\n**Zero is correct most of the time.** Most five-minute windows see no goals, no\ncards, and no significant price movement. Flat candlesticks plus balanced tape equals\nzero forecast. Only forecast movement when you have concrete evidence: a fresh event\nstill being absorbed (visible in recent sharp price moves that haven't stabilized),\nor a thin book visibly drifting back after a single order moved it.\n\n**Time decay is tiny and you cannot see it.** A team defending a one-goal lead loses\nroughly 0.3-0.8 cents per five minutes in quiet play. That is smaller than bid-ask\nnoise. Unless you are in the final ten minutes of a match with a one-goal margin and\ncan see decay already happening in the candlesticks, do not forecast it. Forecasting\n-1 cent from \"time decay\" when the mid has been flat for 20 minutes is wrong.\n\n**Do not forecast moves you cannot see evidence for.** If the mid has been flat for\n10+ minutes, recent trades are small and balanced, and nothing has happened in the\ngame, the correct forecast is zero cents. Not -0.5, not -1, not +0.5 from \"mild\ndrift\" \u2014 zero. The examples show the harness loses skill by inventing tiny moves that\ndon't happen.\n\n**Tape reading requires proof, not speculation.** \"One-sided buying\" means nothing if\nthe mid hasn't moved. Buyers hitting the offer at a stable price is how markets\nwork; it doesn't predict the mid will rise unless the offer keeps getting pulled and\nthe mid actually walks up. If you see 10+ bars of 0.56/0.57 with all trades at 0.57\nand the mid still 0.565, that is a pinned market, not a bullish one. Forecast zero.\n\n**Late goals happen and the market knows it.** When a team is trailing late and\npressing hard, the probability of an equaliser in the next five minutes is often\n10-20%. If the market is pricing the leader at 75-80%, that already accounts for\nrealistic comeback odds. Do not forecast further drift toward \"certainty\" unless the\ngame is completely dead (90+ minutes, defending a multi-goal lead).\n\n**Check candlesticks for actual movement.** Before forecasting any non-zero move:\nlook at the last 10-20 candlestick bars. Is the mid actually moving in that\ndirection, or has it been flat? Flat means zero. A single wiggle is noise. You need\na visible trend to forecast continuation.\n\n**The Examples Show These Patterns:**\n\n1. **Forecasting +0.5 or +1.0 from \"mild tape lift\" when the mid stayed flat:** Lost\n   skill. The harness invented movement that didn't exist.\n\n2. **Forecasting -1.0 from \"time decay\" when the mid was pinned and stayed pinned:**\n   Lost skill. Decay is real but tiny and usually invisible.\n\n3. **Forecasting zero when nothing was happening and the mid stayed flat:** Zero\n   skill, which is correct. This is the right answer most of the time.\n\n4. **Forecasting +3.0 when the bid had vanished and the mid was about to snap back:**\n   Won skill. This is real: a quote artifact creating a temporary mispricing that\n   reverts.\n\n5. **Forecasting +1.0 from \"tape lift\" seconds before a goal changed the game:**\n   Catastrophic loss. The harness was reading micro-structure while ignoring that\n   goals happen. Wide quotes (3-5 cents) are appropriate when the game is live and a\n   goal would move the price 25+ cents.\n\n**The Correct Approach:**\n\n- If candlesticks are flat, recent trades are balanced, and nothing has happened in\n  the game: forecast zero with a 2-3 cent half-width.\n  \n- If candlesticks show a sharp recent move that has now stabilized: forecast zero;\n  the event is priced in.\n\n- If candlesticks show a sharp recent move and the mid is still walking in that\n  direction: forecast continuation (2-5 cents) with evidence from the visible trend.\n\n- If the book structure is broken (e.g., bid vanished, quote artificially wide, all\n  prints at the offer): forecast mean reversion (2-4 cents).\n\n- If the game is live and a goal would move the price 25+ cents: use a 3-5 cent\n  half-width, not 2. You are pricing goal risk, not confidence.\n\n- Do not forecast time decay unless you are in the final 10 minutes and can see it\n  happening in the data.\n\n**Most importantly:** Zero is not a failure. Zero is often correct and earns skill\nwhen you resist the temptation to invent tiny moves that don't happen.",
+  "config": {
+    "model": "anthropic/claude-opus-5",
+    "temperature": null,
+    "max_tokens": null,
+    "max_usd": 0.2,
+    "max_calls": 200
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "analyze",
+        "output_key": "analysis",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nGame state: {{game}}\nCurrent book: {{quote}}\nMinute bars (last 45m): {{path}}\nRecent prints: {{tape}}\n\nAnalyze the price dynamics:\n\n1. MOMENTUM: Look at the last 5-10 minute bars. Is price trending up/down or stable? Calculate rough velocity (cents per minute over last 3-5 minutes).\n\n2. TIME DECAY: If we're past 70', does the leading team's win probability naturally increase as clock runs? How many cents per 5 minutes?\n\n3. RECENT EVENT ABSORPTION: If there was a goal in the last 10 minutes, has the price stabilized (3+ minutes flat) or still moving?\n\n4. TAPE DIRECTION: Are recent trades biased one way (70%+ on one side)? This suggests continued flow.\n\n5. VOLATILITY: Has price moved 5+ cents in the last 2 minutes? If so, it may revert or continue - which?\n\nBe quantitative. Estimate cents of move expected from each factor.",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 0,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "momentum_cents_per_5min": {
+              "type": "number",
+              "description": "If current velocity continues, how many cents in 5 minutes?"
+            },
+            "time_decay_cents_per_5min": {
+              "type": "number",
+              "description": "Natural decay as clock runs (0 if before 70', or if tied)"
+            },
+            "recent_event_absorbed": {
+              "type": "boolean",
+              "description": "Has any recent goal/card been fully priced in?"
+            },
+            "tape_bias": {
+              "type": "string",
+              "enum": [
+                "strong_buy",
+                "buy",
+                "neutral",
+                "sell",
+                "strong_sell"
+              ],
+              "description": "Direction of recent order flow"
+            },
+            "volatility_state": {
+              "type": "string",
+              "enum": [
+                "quiet",
+                "normal",
+                "elevated",
+                "spike"
+              ],
+              "description": "How much has price moved in last 2-3 minutes?"
+            },
+            "reasoning": {
+              "type": "string",
+              "description": "Brief quantitative summary of each factor"
+            }
+          },
+          "required": [
+            "momentum_cents_per_5min",
+            "time_decay_cents_per_5min",
+            "recent_event_absorbed",
+            "tape_bias",
+            "volatility_state",
+            "reasoning"
+          ]
+        },
+        "questions": null,
+        "answers": null
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "prediction",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nGame: {{game}}\nCurrent mid: {{quote.mid}}\n\nAnalysis:\n{{analysis}}\n\nNow forecast the next 5 minutes. Combine the factors:\n- If momentum is strong and tape supports it, trust the trend\n- Add time decay if applicable (late in match with a lead)\n- If volatility is elevated and recent event NOT absorbed, expect continuation\n- If quiet and absorbed, predict 0\n\nYour delta_cents should be the sum of momentum + time_decay + any unfinished move.\nYour half_width should reflect confidence: tight (1-2c) if very confident, wide (4-5c) if uncertain.\n\nRemember: 0 is correct only when truly nothing is happening. Small moves (1-3 cents) are common and worth predicting.\nThe market moves a lot - don't default to 0 unless analysis strongly supports it.",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 0,
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "delta_cents": {
+              "type": "number",
+              "description": "How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price \u2014 state the change."
+            },
+            "half_width_cents": {
+              "type": "number",
+              "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents."
+            },
+            "confidence": {
+              "type": "number",
+              "description": "0-1. How sure, given how thin and noisy this book is."
+            },
+            "driver": {
+              "type": "string",
+              "description": "The one thing you expect to move it, or why nothing will."
+            },
+            "falsifier": {
+              "type": "string",
+              "description": "What would show this call was wrong, before settlement."
+            }
+          },
+          "required": [
+            "delta_cents",
+            "half_width_cents",
+            "confidence",
+            "driver",
+            "falsifier"
+          ],
+          "additionalProperties": false
+        },
+        "questions": null,
+        "answers": null
+      }
+    ]
+  }
+}

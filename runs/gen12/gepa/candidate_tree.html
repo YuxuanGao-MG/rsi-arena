@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GEPA Candidate Tree</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8f9fa; display: flex; flex-direction: column; }
+  #header { background: #fff; border-bottom: 1px solid #dee2e6; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  #header h1 { font-size: 18px; font-weight: 600; color: #212529; }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: #495057; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #adb5bd; }
+  #graph-container { flex: 1 1 auto; width: 100%; overflow: auto; padding: 20px; text-align: center; }
+  #graph-container svg { width: 100%; height: 100%; }
+  #tooltip {
+    display: none; position: fixed; background: #fff; border: 1px solid #dee2e6;
+    border-radius: 8px; padding: 14px 16px; max-width: 560px; max-height: 70vh; overflow-y: auto;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); z-index: 1000; font-size: 13px; line-height: 1.5;
+  }
+  #tooltip .tt-header { font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #212529; }
+  #tooltip .tt-meta { color: #6c757d; margin-bottom: 4px; }
+  #tooltip .tt-hint { color: #adb5bd; font-size: 11px; font-style: italic; margin-bottom: 10px; }
+  #tooltip .tt-comp-name { font-weight: 600; color: #495057; margin-top: 10px; border-bottom: 1px solid #e9ecef; padding-bottom: 2px; }
+  #tooltip .tt-comp-text {
+    white-space: pre-wrap; word-break: break-word; background: #f8f9fa;
+    border: 1px solid #e9ecef; border-radius: 4px; padding: 8px 10px; margin-top: 4px;
+    font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+    max-height: 200px; overflow-y: auto;
+  }
+  .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+  .role-best { background: #00e5ff33; color: #006064; }
+  .role-pareto { background: #ff980033; color: #e65100; }
+  .role-seed { background: #e0e0e0; color: #424242; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>GEPA Candidate Tree</h1>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:cyan"></div> Best</div>
+    <div class="legend-item"><div class="legend-dot" style="background:orange"></div> Pareto Front</div>
+    <div class="legend-item"><div class="legend-dot" style="background:lightgray"></div> Other</div>
+  </div>
+</div>
+<div id="graph-container"><p>Loading graph&hellip;</p></div>
+<div id="tooltip"></div>
+
+<script type="module">
+const NODES = [{"idx": 0, "score": 0.4976, "parents": "seed", "role": "Pareto Front", "components": {"context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote\nyou would actually stand behind. Two cents means you would buy two under your number\nand sell two over it, and you would honour both sides. Ten cents means you barely\nknow. Quote what you would trade, not what is safe \u2014 but a width you cannot defend\nwill be paid for, because the trade goes on at your price and settles at the\nmarket's.\n\nDomain facts:\n\n**Recent events can be stale.** The game state shows what happened minutes ago, not\nwhat is happening now. A goal scored at 46' may still show as the most recent event\nat 50', 60', or 85'. The market absorbs news in seconds. If candlesticks show the\nprice already moved sharply and has since stabilized, the event is priced in. Do not\nforecast another move in the same direction unless you see evidence the market is\nstill adjusting.\n\n**Time decay is real but slow.** A team defending a one-goal lead loses roughly 0.5-2\ncents per five minutes as the clock runs down in quiet play. Not 5 cents, not 10\ncents. If you forecast -1 cent from pure time decay, you are being aggressive. Be\nmore conservative.\n\n**Late equalisers happen.** When a team is trailing late and pressing hard, the\nprobability of an equaliser in the next five minutes is not zero \u2014 it is often 10-20%.\nIf the market is pricing the leading team at 75-80%, that is already accounting for\nrealistic comeback odds. Do not forecast further drift toward 85-90% unless the game\nis truly dead. Wide quotes (3-5 cents half-width) are appropriate when an equaliser\nwould move the price 30+ cents and the game is still live.\n\n**Zero is the right answer more often than you think.** Most five-minute windows in a\nfootball match see no goals, no cards, and no significant price movement. Copying the\ncurrent mid (predicting zero change) is not a failure \u2014 it is often correct and earns\nskill when the market stays flat. Only forecast movement when you have a concrete\nreason: a fresh event still being absorbed, time decay in a situation where it\nmatters, or a thin book visibly drifting.\n\n**Check for evidence before calling a move.** If candlesticks show the mid has been\nflat for 10+ minutes, recent trades are small and balanced, and nothing has happened\nin the game, the correct forecast is zero cents, not \"maybe -1 from time decay\". Only\nforecast decay when you can see it already happening in the data, or when the\nsituation is so clear (e.g., defending a lead in the 89th minute) that the market\nmust move.", "plan": "{\n  \"steps\": [\n    {\n      \"type\": \"tool\",\n      \"name\": \"quote\",\n      \"output_key\": \"quote\",\n      \"tool\": \"market_quote\",\n      \"args\": {\n        \"ticker\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"path\",\n      \"output_key\": \"path\",\n      \"tool\": \"candlesticks\",\n      \"args\": {\n        \"ticker\": \"{{question}}\",\n        \"hours_back\": 0.75,\n        \"hourly\": false\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"tape\",\n      \"output_key\": \"tape\",\n      \"tool\": \"previous_trades\",\n      \"args\": {\n        \"ticker\": \"{{question}}\",\n        \"limit\": 20\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"prompt\",\n      \"name\": \"analyze\",\n      \"output_key\": \"analysis\",\n      \"prompt\": \"Contract: {{question}}\\nGame state: {{game}}\\nCurrent book: {{quote}}\\nMinute bars (last 45m): {{path}}\\nRecent prints: {{tape}}\\n\\nAnalyze the price dynamics:\\n\\n1. MOMENTUM: Look at the last 5-10 minute bars. Is price trending up/down or stable? Calculate rough velocity (cents per minute over last 3-5 minutes).\\n\\n2. TIME DECAY: If we're past 70', does the leading team's win probability naturally increase as clock runs? How many cents per 5 minutes?\\n\\n3. RECENT EVENT ABSORPTION: If there was a goal in the last 10 minutes, has the price stabilized (3+ minutes flat) or still moving?\\n\\n4. TAPE DIRECTION: Are recent trades biased one way (70%+ on one side)? This suggests continued flow.\\n\\n5. VOLATILITY: Has price moved 5+ cents in the last 2 minutes? If so, it may revert or continue - which?\\n\\nBe quantitative. Estimate cents of move expected from each factor.\",\n      \"tools\": [],\n      \"max_tool_iterations\": 0,\n      \"output_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"momentum_cents_per_5min\": {\n            \"type\": \"number\",\n            \"description\": \"If current velocity continues, how many cents in 5 minutes?\"\n          },\n          \"time_decay_cents_per_5min\": {\n            \"type\": \"number\",\n            \"description\": \"Natural decay as clock runs (0 if before 70', or if tied)\"\n          },\n          \"recent_event_absorbed\": {\n            \"type\": \"boolean\",\n            \"description\": \"Has any recent goal/card been fully priced in?\"\n          },\n          \"tape_bias\": {\n            \"type\": \"string\",\n            \"enum\": [\"strong_buy\", \"buy\", \"neutral\", \"sell\", \"strong_sell\"],\n            \"description\": \"Direction of recent order flow\"\n          },\n          \"volatility_state\": {\n            \"type\": \"string\",\n            \"enum\": [\"quiet\", \"normal\", \"elevated\", \"spike\"],\n            \"description\": \"How much has price moved in last 2-3 minutes?\"\n          },\n          \"reasoning\": {\n            \"type\": \"string\",\n            \"description\": \"Brief quantitative summary of each factor\"\n          }\n        },\n        \"required\": [\"momentum_cents_per_5min\", \"time_decay_cents_per_5min\", \"recent_event_absorbed\", \"tape_bias\", \"volatility_state\", \"reasoning\"]\n      }\n    },\n    {\n      \"type\": \"prompt\",\n      \"name\": \"predict\",\n      \"output_key\": \"prediction\",\n      \"prompt\": \"Contract: {{question}}\\nGame: {{game}}\\nCurrent mid: {{quote.mid}}\\n\\nAnalysis:\\n{{analysis}}\\n\\nNow forecast the next 5 minutes. Combine the factors:\\n- If momentum is strong and tape supports it, trust the trend\\n- Add time decay if applicable (late in match with a lead)\\n- If volatility is elevated and recent event NOT absorbed, expect continuation\\n- If quiet and absorbed, predict 0\\n\\nYour delta_cents should be the sum of momentum + time_decay + any unfinished move.\\nYour half_width should reflect confidence: tight (1-2c) if very confident, wide (4-5c) if uncertain.\\n\\nRemember: 0 is correct only when truly nothing is happening. Small moves (1-3 cents) are common and worth predicting.\\nThe market moves a lot - don't default to 0 unless analysis strongly supports it.\",\n      \"tools\": [],\n      \"max_tool_iterations\": 0,\n      \"output_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"delta_cents\": {\n            \"type\": \"number\",\n            \"description\": \"How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price \u2014 state the change.\"\n          },\n          \"half_width_cents\": {\n            \"type\": \"number\",\n            \"description\": \"Half the width of the tightest two-sided market you would actually stand behind, in cents.\"\n          },\n          \"confidence\": {\n            \"type\": \"number\",\n            \"description\": \"0-1. How sure, given how thin and noisy this book is.\"\n          },\n          \"driver\": {\n            \"type\": \"string\",\n            \"description\": \"The one thing you expect to move it, or why nothing will.\"\n          },\n          \"falsifier\": {\n            \"type\": \"string\",\n            \"description\": \"What would show this call was wrong, before settlement.\"\n          }\n        },\n        \"required\": [\"delta_cents\", \"half_width_cents\", \"confidence\", \"driver\", \"falsifier\"],\n        \"additionalProperties\": false\n      }\n    }\n  ]\n}", "tools": "market_quote, candlesticks, previous_trades"}},
+{"idx": 1, "score": 0.4991, "parents": "0", "role": "Best", "components": {"context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote\nyou would actually stand behind. Two cents means you would buy two under your number\nand sell two over it, and you would honour both sides. Ten cents means you barely\nknow. Quote what you would trade, not what is safe \u2014 but a width you cannot defend\nwill be paid for, because the trade goes on at your price and settles at the\nmarket's.\n\nDomain facts:\n\n**Recent events can be stale.** The game state shows what happened minutes ago, not\nwhat is happening now. A goal scored at 46' may still show as the most recent event\nat 50', 60', or 85'. The market absorbs news in seconds. If candlesticks show the\nprice already moved sharply and has since stabilized, the event is priced in. Do not\nforecast another move in the same direction unless you see evidence the market is\nstill adjusting.\n\n**Zero is correct most of the time.** Most five-minute windows see no goals, no\ncards, and no significant price movement. Flat candlesticks plus balanced tape equals\nzero forecast. Only forecast movement when you have concrete evidence: a fresh event\nstill being absorbed (visible in recent sharp price moves that haven't stabilized),\nor a thin book visibly drifting back after a single order moved it.\n\n**Time decay is tiny and you cannot see it.** A team defending a one-goal lead loses\nroughly 0.3-0.8 cents per five minutes in quiet play. That is smaller than bid-ask\nnoise. Unless you are in the final ten minutes of a match with a one-goal margin and\ncan see decay already happening in the candlesticks, do not forecast it. Forecasting\n-1 cent from \"time decay\" when the mid has been flat for 20 minutes is wrong.\n\n**Do not forecast moves you cannot see evidence for.** If the mid has been flat for\n10+ minutes, recent trades are small and balanced, and nothing has happened in the\ngame, the correct forecast is zero cents. Not -0.5, not -1, not +0.5 from \"mild\ndrift\" \u2014 zero. The examples show the harness loses skill by inventing tiny moves that\ndon't happen.\n\n**Tape reading requires proof, not speculation.** \"One-sided buying\" means nothing if\nthe mid hasn't moved. Buyers hitting the offer at a stable price is how markets\nwork; it doesn't predict the mid will rise unless the offer keeps getting pulled and\nthe mid actually walks up. If you see 10+ bars of 0.56/0.57 with all trades at 0.57\nand the mid still 0.565, that is a pinned market, not a bullish one. Forecast zero.\n\n**Late goals happen and the market knows it.** When a team is trailing late and\npressing hard, the probability of an equaliser in the next five minutes is often\n10-20%. If the market is pricing the leader at 75-80%, that already accounts for\nrealistic comeback odds. Do not forecast further drift toward \"certainty\" unless the\ngame is completely dead (90+ minutes, defending a multi-goal lead).\n\n**Check candlesticks for actual movement.** Before forecasting any non-zero move:\nlook at the last 10-20 candlestick bars. Is the mid actually moving in that\ndirection, or has it been flat? Flat means zero. A single wiggle is noise. You need\na visible trend to forecast continuation.\n\n**The Examples Show These Patterns:**\n\n1. **Forecasting +0.5 or +1.0 from \"mild tape lift\" when the mid stayed flat:** Lost\n   skill. The harness invented movement that didn't exist.\n\n2. **Forecasting -1.0 from \"time decay\" when the mid was pinned and stayed pinned:**\n   Lost skill. Decay is real but tiny and usually invisible.\n\n3. **Forecasting zero when nothing was happening and the mid stayed flat:** Zero\n   skill, which is correct. This is the right answer most of the time.\n\n4. **Forecasting +3.0 when the bid had vanished and the mid was about to snap back:**\n   Won skill. This is real: a quote artifact creating a temporary mispricing that\n   reverts.\n\n5. **Forecasting +1.0 from \"tape lift\" seconds before a goal changed the game:**\n   Catastrophic loss. The harness was reading micro-structure while ignoring that\n   goals happen. Wide quotes (3-5 cents) are appropriate when the game is live and a\n   goal would move the price 25+ cents.\n\n**The Correct Approach:**\n\n- If candlesticks are flat, recent trades are balanced, and nothing has happened in\n  the game: forecast zero with a 2-3 cent half-width.\n  \n- If candlesticks show a sharp recent move that has now stabilized: forecast zero;\n  the event is priced in.\n\n- If candlesticks show a sharp recent move and the mid is still walking in that\n  direction: forecast continuation (2-5 cents) with evidence from the visible trend.\n\n- If the book structure is broken (e.g., bid vanished, quote artificially wide, all\n  prints at the offer): forecast mean reversion (2-4 cents).\n\n- If the game is live and a goal would move the price 25+ cents: use a 3-5 cent\n  half-width, not 2. You are pricing goal risk, not confidence.\n\n- Do not forecast time decay unless you are in the final 10 minutes and can see it\n  happening in the data.\n\n**Most importantly:** Zero is not a failure. Zero is often correct and earns skill\nwhen you resist the temptation to invent tiny moves that don't happen.", "plan": "{\n  \"steps\": [\n    {\n      \"type\": \"tool\",\n      \"name\": \"quote\",\n      \"output_key\": \"quote\",\n      \"tool\": \"market_quote\",\n      \"args\": {\n        \"ticker\": \"{{question}}\"\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"path\",\n      \"output_key\": \"path\",\n      \"tool\": \"candlesticks\",\n      \"args\": {\n        \"ticker\": \"{{question}}\",\n        \"hours_back\": 0.75,\n        \"hourly\": false\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"tool\",\n      \"name\": \"tape\",\n      \"output_key\": \"tape\",\n      \"tool\": \"previous_trades\",\n      \"args\": {\n        \"ticker\": \"{{question}}\",\n        \"limit\": 20\n      },\n      \"fail_ok\": true\n    },\n    {\n      \"type\": \"prompt\",\n      \"name\": \"analyze\",\n      \"output_key\": \"analysis\",\n      \"prompt\": \"Contract: {{question}}\\nGame state: {{game}}\\nCurrent book: {{quote}}\\nMinute bars (last 45m): {{path}}\\nRecent prints: {{tape}}\\n\\nAnalyze the price dynamics:\\n\\n1. MOMENTUM: Look at the last 5-10 minute bars. Is price trending up/down or stable? Calculate rough velocity (cents per minute over last 3-5 minutes).\\n\\n2. TIME DECAY: If we're past 70', does the leading team's win probability naturally increase as clock runs? How many cents per 5 minutes?\\n\\n3. RECENT EVENT ABSORPTION: If there was a goal in the last 10 minutes, has the price stabilized (3+ minutes flat) or still moving?\\n\\n4. TAPE DIRECTION: Are recent trades biased one way (70%+ on one side)? This suggests continued flow.\\n\\n5. VOLATILITY: Has price moved 5+ cents in the last 2 minutes? If so, it may revert or continue - which?\\n\\nBe quantitative. Estimate cents of move expected from each factor.\",\n      \"tools\": [],\n      \"max_tool_iterations\": 0,\n      \"output_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"momentum_cents_per_5min\": {\n            \"type\": \"number\",\n            \"description\": \"If current velocity continues, how many cents in 5 minutes?\"\n          },\n          \"time_decay_cents_per_5min\": {\n            \"type\": \"number\",\n            \"description\": \"Natural decay as clock runs (0 if before 70', or if tied)\"\n          },\n          \"recent_event_absorbed\": {\n            \"type\": \"boolean\",\n            \"description\": \"Has any recent goal/card been fully priced in?\"\n          },\n          \"tape_bias\": {\n            \"type\": \"string\",\n            \"enum\": [\"strong_buy\", \"buy\", \"neutral\", \"sell\", \"strong_sell\"],\n            \"description\": \"Direction of recent order flow\"\n          },\n          \"volatility_state\": {\n            \"type\": \"string\",\n            \"enum\": [\"quiet\", \"normal\", \"elevated\", \"spike\"],\n            \"description\": \"How much has price moved in last 2-3 minutes?\"\n          },\n          \"reasoning\": {\n            \"type\": \"string\",\n            \"description\": \"Brief quantitative summary of each factor\"\n          }\n        },\n        \"required\": [\"momentum_cents_per_5min\", \"time_decay_cents_per_5min\", \"recent_event_absorbed\", \"tape_bias\", \"volatility_state\", \"reasoning\"]\n      }\n    },\n    {\n      \"type\": \"prompt\",\n      \"name\": \"predict\",\n      \"output_key\": \"prediction\",\n      \"prompt\": \"Contract: {{question}}\\nGame: {{game}}\\nCurrent mid: {{quote.mid}}\\n\\nAnalysis:\\n{{analysis}}\\n\\nNow forecast the next 5 minutes. Combine the factors:\\n- If momentum is strong and tape supports it, trust the trend\\n- Add time decay if applicable (late in match with a lead)\\n- If volatility is elevated and recent event NOT absorbed, expect continuation\\n- If quiet and absorbed, predict 0\\n\\nYour delta_cents should be the sum of momentum + time_decay + any unfinished move.\\nYour half_width should reflect confidence: tight (1-2c) if very confident, wide (4-5c) if uncertain.\\n\\nRemember: 0 is correct only when truly nothing is happening. Small moves (1-3 cents) are common and worth predicting.\\nThe market moves a lot - don't default to 0 unless analysis strongly supports it.\",\n      \"tools\": [],\n      \"max_tool_iterations\": 0,\n      \"output_schema\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"delta_cents\": {\n            \"type\": \"number\",\n            \"description\": \"How many cents the mid will MOVE over the next five minutes. Negative for down, 0 for no move. Do not state a price \u2014 state the change.\"\n          },\n          \"half_width_cents\": {\n            \"type\": \"number\",\n            \"description\": \"Half the width of the tightest two-sided market you would actually stand behind, in cents.\"\n          },\n          \"confidence\": {\n            \"type\": \"number\",\n            \"description\": \"0-1. How sure, given how thin and noisy this book is.\"\n          },\n          \"driver\": {\n            \"type\": \"string\",\n            \"description\": \"The one thing you expect to move it, or why nothing will.\"\n          },\n          \"falsifier\": {\n            \"type\": \"string\",\n            \"description\": \"What would show this call was wrong, before settlement.\"\n          }\n        },\n        \"required\": [\"delta_cents\", \"half_width_cents\", \"confidence\", \"driver\", \"falsifier\"],\n        \"additionalProperties\": false\n      }\n    }\n  ]\n}", "tools": "market_quote, candlesticks, previous_trades"}}];
+const DOT = `digraph G {
+    rankdir=TB;
+    node [style=filled, shape=circle, fontsize=14, width=0.6, height=0.6];
+    0 [label="0\\n(0.50)", fillcolor=orange, tooltip=" "];
+    1 [label="1\\n(0.50)", fillcolor=cyan, tooltip=" "];
+    0 -> 1;
+}`;
+
+const nodeMap = {};
+NODES.forEach(n => { nodeMap[n.idx] = n; });
+
+let pinnedIdx = null;   // non-null when tooltip is click-pinned (scrollable)
+let hoverIdx = null;    // non-null when hovering over a node
+
+function renderTooltip(idx) {
+  const n = nodeMap[idx];
+  if (!n) return "";
+  let roleBadge = "";
+  if (n.role === "Best") roleBadge = '<span class="role-badge role-best">BEST</span>';
+  else if (n.role === "Pareto Front") roleBadge = '<span class="role-badge role-pareto">PARETO</span>';
+  else if (n.role === "Seed") roleBadge = '<span class="role-badge role-seed">SEED</span>';
+
+  let comps = "";
+  for (const [name, text] of Object.entries(n.components)) {
+    const escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    comps += '<div class="tt-comp-name">' + name + '</div><div class="tt-comp-text">' + escaped + '</div>';
+  }
+
+  return '<div class="tt-header">Candidate ' + n.idx + roleBadge + '</div>' +
+    '<div class="tt-meta">Score: <strong>' + n.score + '</strong>&nbsp;&nbsp;|&nbsp;&nbsp;Parent(s): ' + n.parents +
+    '</div><div class="tt-hint">' + (pinnedIdx === idx ? 'Click node again to dismiss' : 'Click to pin &amp; scroll') + '</div>' +
+    comps;
+}
+
+function positionTooltip(x, y) {
+  const tt = document.getElementById("tooltip");
+  let tx = x + 16, ty = y + 16;
+  const r = tt.getBoundingClientRect();
+  if (tx + r.width > window.innerWidth - 8) tx = x - r.width - 16;
+  if (ty + r.height > window.innerHeight - 8) ty = y - r.height - 16;
+  if (tx < 8) tx = 8;
+  if (ty < 8) ty = 8;
+  tt.style.left = tx + "px";
+  tt.style.top = ty + "px";
+}
+
+function showTooltip(idx, x, y) {
+  const tt = document.getElementById("tooltip");
+  tt.innerHTML = renderTooltip(idx);
+  tt.style.display = "block";
+  positionTooltip(x, y);
+}
+
+function hideTooltip() {
+  pinnedIdx = null;
+  hoverIdx = null;
+  document.getElementById("tooltip").style.display = "none";
+}
+
+// Click outside tooltip and outside nodes dismisses pinned tooltip
+document.addEventListener("mousedown", function(e) {
+  const tt = document.getElementById("tooltip");
+  if (pinnedIdx !== null && tt.style.display === "block"
+      && !tt.contains(e.target) && !e.target.closest(".node")) {
+    hideTooltip();
+  }
+});
+
+async function render() {
+  const { instance } = await import("https://cdn.jsdelivr.net/npm/@viz-js/viz@3.11.0/lib/viz-standalone.mjs");
+  const viz = await instance();
+  const svg = viz.renderSVGElement(DOT);
+  const container = document.getElementById("graph-container");
+  container.innerHTML = "";
+  container.appendChild(svg);
+
+  // Attach hover listeners and strip native <title> tooltips to avoid double tooltips
+  svg.querySelectorAll(".node").forEach(node => {
+    const title = node.querySelector("title");
+    if (!title) return;
+    const idx = parseInt(title.textContent, 10);
+    if (isNaN(idx)) return;
+    title.remove();  // remove native SVG tooltip
+    node.style.cursor = "pointer";
+    // Hover: show tooltip following the mouse (non-interactive)
+    node.addEventListener("mouseenter", e => {
+      if (pinnedIdx !== null) return;  // don't override a pinned tooltip
+      hoverIdx = idx;
+      showTooltip(idx, e.clientX, e.clientY);
+    });
+    node.addEventListener("mousemove", e => {
+      if (pinnedIdx !== null || hoverIdx !== idx) return;
+      positionTooltip(e.clientX, e.clientY);
+    });
+    node.addEventListener("mouseleave", () => {
+      if (pinnedIdx !== null) return;
+      hoverIdx = null;
+      document.getElementById("tooltip").style.display = "none";
+    });
+    // Click: pin the tooltip so user can scroll it
+    node.addEventListener("click", e => {
+      e.stopPropagation();
+      if (pinnedIdx === idx) { hideTooltip(); return; }
+      pinnedIdx = idx;
+      showTooltip(idx, e.clientX, e.clientY);
+    });
+  });
+  // Also strip <title> from edges and the graph itself
+  svg.querySelectorAll(".edge title").forEach(t => t.remove());
+  const graphTitle = svg.querySelector(":scope > title");
+  if (graphTitle) graphTitle.remove();
+}
+
+render().catch(err => {
+  document.getElementById("graph-container").innerHTML =
+    "<p style='color:red'>Failed to render graph: " + err.message + "</p>" +
+    "<pre>" + DOT.replace(/</g,"&lt;") + "</pre>";
+});
+</script>
+</body>
+</html>
