@@ -104,8 +104,8 @@ export const TOPICS = {
     loopCrons: [[7, 17], [8, 47]],
     loopText: "daily at 07:17 UTC, retried 08:47",
     loopWhen: "07:17 UTC (retried 08:47)",
-    liveCrons: [0, 4, 8, 12, 16, 20].map(h => ({ h, m: 5 })),
-    liveText: "every four hours at :05 UTC",
+    liveCrons: Array.from({ length: 24 }, (_, h) => ({ h, m: 5 })),
+    liveText: "every hour at :05 UTC, fifty-five minutes each",
     /** `BTC@2026-09-21T14:05:00+00:00` → `D20260921`, the UTC day. */
     groupOf(instance) {
       const day = dayOf(instance);
