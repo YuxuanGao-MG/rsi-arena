@@ -1,36 +1,48 @@
 # One turn of the loop, run on GitHub's machines. Trigger it from the Actions tab
-# (Run workflow) or from the API. Results are committed back to main under runs/,
-# the question set under benchmarks/windows/, and a summary is written to the run page.
+# (Run workflow) or from the API. Results are committed back to main under the
+# topic's runs directory, the question set under benchmarks/windows*/, and a
+# summary is written to the run page.
+#
+# One workflow, several topics. Which topic a firing is for comes from the
+# dispatch input or, on a schedule, from the cron string that fired; what that
+# topic runs on - its seed harness, benchmark, prices, sizes - comes from
+# `rsi-arena topic --shell`, evaluated once into the job's environment. No step
+# below names a Kalshi file; the spec does.
 #
 # Needs one repository secret for anything but "windows": OPENROUTER_API_KEY.
+# The news topic also needs APCA_API_KEY_ID and APCA_API_SECRET_KEY to build a
+# question set; without them it says so and fails preflight in a sentence.
 name: loop
 on:
-  # Two generations a day, twelve hours apart. A generation is about an hour of
-  # wall clock and thirty dollars once the incumbent's evaluation is cached, so
-  # this is roughly sixty dollars a day — a pace chosen to be read, not to be
-  # the fastest possible.
+  # A generation a day per topic, with two or three chances to start it.
+  # GitHub's scheduler is documented best-effort and it means it: on 17
+  # September neither this workflow's 03:17 nor live.yml's 01:05 fired at all.
+  # The later crons are the retry; the once-a-day guard below makes them safe,
+  # so two firings can never mean two generations - the day cap is about
+  # money, this is about not running the experiment twice because the
+  # scheduler hiccuped once.
   #
   # Each one continues from the last: `rsi-arena next` finds the deepest
-  # generation and names the one after it, so nobody has to remember whether the
-  # lineage is on gen4 or gen5. A schedule that always started from the seed
-  # would not be a lineage, only the same experiment repeated.
+  # generation of its topic and names the one after it, so nobody has to
+  # remember whether the lineage is on gen4 or gen5.
+  #
+  # The cron string that fired is the topic. The map lives in the `resolve`
+  # job below and this list has to agree with it.
   schedule:
-    # One generation a day, with two chances to start it. GitHub's scheduler is
-    # documented best-effort and it means it: on 17 September neither this
-    # workflow's 03:17 nor live.yml's 01:05 fired at all. The second cron is the
-    # retry; the once-a-day guard below makes the pair safe, so two firings can
-    # never mean two generations - the day cap is about money, this is about
-    # not running the experiment twice because the scheduler hiccuped once.
-    - cron: "17 3 * * *"
-    - cron: "47 5 * * *"
-    # Four crons across two workflows were dropped inside thirty hours - not
-    # delayed, never delivered. The likely cause is our own churn: every push
-    # to this file re-registers its schedules, and the file was pushed all
-    # night. A third chance costs nothing when an earlier one succeeded, and
-    # the guard makes any number of chances mean one generation.
-    - cron: "17 9 * * *"
+    - cron: "17 3 * * *"      # kalshi-horizon-5m
+    - cron: "47 5 * * *"      # kalshi-horizon-5m, the retry
+    - cron: "17 9 * * *"      # kalshi-horizon-5m, a third chance
+    - cron: "17 7 * * *"      # crypto-horizon-1m (the package is not on main yet; a firing ends green)
+    - cron: "47 8 * * *"      # crypto-horizon-1m, the retry
+    - cron: "17 11 * * *"     # news-equity-5m
+    - cron: "47 12 * * *"     # news-equity-5m, the retry
   workflow_dispatch:
     inputs:
+      topic:
+        description: "which loop"
+        type: choice
+        options: [kalshi-horizon-5m, news-equity-5m, crypto-horizon-1m]
+        default: kalshi-horizon-5m
       command:
         description: "windows = build the question set (no key). bench = score a harness. optimize = one generation."
         type: choice
@@ -40,52 +52,40 @@ on:
         description: "ignore harness/run_dir and continue from the deepest generation"
         type: boolean
         default: false
+      # Blank means the topic's. A declared default here would be Kalshi's
+      # file on every topic, so the spec answers unless a person types a value.
       harness:
-        description: "harness file, or a run directory to continue from (runs/gen1)"
-        default: harnesses/horizon-5m.json
+        description: "harness file, or a run directory to continue from; blank uses the topic's seed"
+        default: ""
       run_dir:
-        description: "optimize: where this generation is written"
-        default: runs/gen1
+        description: "optimize: where this generation is written; blank uses <runs dir>/gen1"
+        default: ""
       split:
         description: "bench: which fixtures"
         type: choice
         options: [holdout, train, all]
         default: holdout
       max_metric_calls:
-        description: "optimize: window evaluations GEPA may spend"
-        # A dispatch input's declared default is what a manual run gets - the
-        # || '600' fallbacks downstream apply only on a schedule, where inputs
-        # are empty. This said 200 from the era of the five-match benchmark, so
-        # the first manual dispatch after the valset fix handed preflight
-        # 240 valset against 200 calls and was correctly refused for $0.
-        # Declared default and fallback must agree.
-        default: "600"
+        description: "optimize: window evaluations GEPA may spend; blank uses the topic's"
+        default: ""
       benchmark:
-        description: "the fixture list"
-        default: benchmarks/soccer-2026.json
+        description: "the fixture list; blank uses the topic's"
+        default: ""
       holdout:
-        description: "fixtures kept from the optimizer"
-        default: "100"
+        description: "fixtures kept from the optimizer; blank uses the topic's"
+        default: ""
       audit:
-        description: "fixtures shown to nothing until a promotion needs confirming"
-        default: "60"
+        description: "fixtures shown to nothing until a promotion needs confirming; blank uses the topic's"
+        default: ""
       per_fixture:
-        description: "windows kept per match; 0 keeps all. Power comes from matches, not windows within one"
-        # Four, not eight, and chosen on the science rather than the bill - though
-        # the bill is what prompted the question. What the gate can resolve is set
-        # by the number of *matches*: thirty-four windows of one match share a
-        # scoreline and a five-minute horizon, and a goal moves all of them at
-        # once, so they are closer to one observation than to thirty-four. Halving
-        # the windows within a match costs little resolution; halving the matches
-        # would cost a lot. It also takes a cold generation from $86 to $53, which
-        # is the difference between fitting the ceiling and not.
-        default: "4"
+        description: "windows kept per match; 0 keeps all; blank uses the topic's"
+        default: ""
       max_generation_usd:
         description: "override the ceiling; 0 derives it from what preflight predicts"
         default: "0"
-      max_day_usd:
-        description: "if the key has already spent this much today, start nothing"
-        default: "100"
+      daily_cap:
+        description: "if the key has already spent this much today, start nothing; blank uses the topic's"
+        default: ""
       trace:
         description: "keep every step each harness took, so the reader can show it"
         type: boolean
@@ -101,12 +101,65 @@ permissions:
   contents: write
   issues: write
 
-concurrency:
-  group: loop
-  cancel-in-progress: false
-
 jobs:
+  # Which topic this firing is for, and whether this checkout knows it.
+  #
+  # Its own job because a concurrency key is evaluated before any step runs
+  # and cannot read a step's output or the environment; a job's `needs` it
+  # can. Two topics may run at once; two generations of one topic may not.
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      topic: ${{ steps.pick.outputs.topic }}
+      known: ${{ steps.spec.outputs.known }}
+    steps:
+      - name: Which topic
+        id: pick
+        shell: bash
+        run: |
+          topic="${{ inputs.topic }}"
+          if [ -z "$topic" ]; then
+            # The cron map. Keep it in step with the `schedule:` list above.
+            case "${{ github.event.schedule }}" in
+              "17 3 * * *"|"47 5 * * *"|"17 9 * * *")  topic=kalshi-horizon-5m ;;
+              "17 7 * * *"|"47 8 * * *")               topic=crypto-horizon-1m ;;
+              "17 11 * * *"|"47 12 * * *")             topic=news-equity-5m ;;
+            esac
+          fi
+          if [ -z "$topic" ]; then
+            echo "::error::no topic for schedule '${{ github.event.schedule }}'; add it to the cron map in loop.yml"
+            exit 1
+          fi
+          echo "topic=$topic" >> "$GITHUB_OUTPUT"
+          echo "topic: $topic"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      # A topic can be on the schedule before its package is on main - the
+      # crypto crons above are exactly that. A firing for one ends here,
+      # green, saying so; it is not a failure and must not open an issue
+      # every morning until the package lands.
+      - name: Does this checkout know it
+        id: spec
+        shell: bash
+        run: |
+          topic="${{ steps.pick.outputs.topic }}"
+          if rsi-arena topic --topic "$topic" --shell; then
+            echo "known=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "known=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=topic not in this checkout::$topic is scheduled but this checkout's rsi-arena does not know it yet; nothing runs"
+            { echo "### Skipped - $topic is not in this checkout yet";
+              echo "The cron fired, the package is not on main. Nothing was spent."; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   run:
+    needs: resolve
+    if: needs.resolve.outputs.known == 'true'
     runs-on: ubuntu-latest
     # Measured, not guessed. A baseline of four hundred and forty windows took
     # nineteen minutes, so about twenty-three a minute at concurrency four. A
@@ -122,12 +175,22 @@ jobs:
     # max-generation-usd is, because money is what was being wasted. This just
     # stops a hung job from holding the runner all day.
     timeout-minutes: 150
+    # One generation of a topic at a time; different topics may overlap. The
+    # key reads the resolve job's output because it cannot read the environment.
+    concurrency:
+      group: loop-${{ needs.resolve.outputs.topic }}
+      cancel-in-progress: false
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # At job level, not on the publish step. A step's own `env:` block is not
       # in scope when that step's `if:` is evaluated, so `env.SUPABASE_DB_URL != ''`
       # read empty every time and the reader has never once been fed.
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # The news topic's venue. Unset on a Kalshi run, and unset is fine: the
+      # Alpaca client reads its keys at the first request, never at
+      # construction, so a topic that does not ask never notices.
+      APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+      APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -140,6 +203,36 @@ jobs:
       # a missing driver would not break anything - it would just mean the run
       # goes dark for ninety minutes, which is the thing it exists to prevent.
       - run: pip install -e ".[publish]"
+
+      # What this topic runs on, once, into the environment of every step
+      # after this one. The spec answers; a dispatch input that was actually
+      # typed overrides it. Every later step reads $BENCHMARK, $HOLDOUT and the
+      # rest and none of them repeats a default - a scheduled Kalshi run reads
+      # exactly the values the steps used to carry as literals, because the
+      # Kalshi spec is those values.
+      - name: Resolve the topic
+        shell: bash
+        run: |
+          TOPIC="${{ needs.resolve.outputs.topic }}"
+          eval "$(rsi-arena topic --topic "$TOPIC" --shell)"
+          override() { if [ -n "$2" ]; then printf -v "$1" '%s' "$2"; fi; }
+          override HARNESS          "${{ inputs.harness }}"
+          override BENCHMARK        "${{ inputs.benchmark }}"
+          override HOLDOUT          "${{ inputs.holdout }}"
+          override AUDIT            "${{ inputs.audit }}"
+          override PER_FIXTURE      "${{ inputs.per_fixture }}"
+          override MAX_METRIC_CALLS "${{ inputs.max_metric_calls }}"
+          override MAX_DAY_USD      "${{ inputs.daily_cap }}"
+          RUN_DIR="${{ inputs.run_dir }}"
+          RUN_DIR="${RUN_DIR:-$RUNS_DIR/gen1}"
+          for k in TOPIC HARNESS BENCHMARK WINDOWS_DIR RUNS_DIR RUN_DIR PER_FIXTURE WINDOW_USD \
+                   HOLDOUT AUDIT MAX_METRIC_CALLS VALSET MODEL_CHOICES MAX_DAY_USD JEV_HARNESS; do
+            echo "$k=${!k}" >> "$GITHUB_ENV"
+            echo "  $k=${!k}"
+          done
+          { echo "### Topic: $TOPIC";
+            echo "- seed \`$HARNESS\`, benchmark \`$BENCHMARK\`, runs in \`$RUNS_DIR\`";
+            echo "- holdout $HOLDOUT, audit $AUDIT, $PER_FIXTURE a fixture, $MAX_METRIC_CALLS calls, valset $VALSET, \$$MAX_DAY_USD a day"; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Restore tool and model caches
         uses: actions/cache@v4
@@ -156,19 +249,18 @@ jobs:
             exit 1
           fi
 
-      # `inputs` is empty on a schedule, so every one of these needs the same
-      # default the optimize step uses. It did not have them: a scheduled run
-      # called `--holdout ''`, argparse rejected it, and the question set was
-      # never rebuilt. Nobody noticed because the command is piped into tee, and
-      # a pipeline's exit code is the last command's — so a step that failed
-      # reported success and the job went green. pipefail is on for that reason.
+      # The question set, from the venue's history and whatever discovery left
+      # on disk. pipefail is on because the command is piped into tee, and a
+      # pipeline's exit code is the last command's - a step that failed used to
+      # report success and the job went green.
       - name: Build the question set
         run: |
           set -o pipefail
-          rsi-arena windows \
-            --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
-            --holdout "${{ inputs.holdout || '100' }}" \
-            --audit "${{ inputs.audit || '60' }}" | tee windows.txt
+          rsi-arena windows --topic "$TOPIC" --runs-dir "$RUNS_DIR" \
+            --benchmark "$BENCHMARK" \
+            --holdout "$HOLDOUT" \
+            --audit "$AUDIT" \
+            --per-fixture "$PER_FIXTURE" | tee windows.txt
           { echo "### Question set"; echo '```'; cat windows.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Bench
@@ -176,42 +268,37 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          args=(--harness "${{ inputs.harness }}" --split "${{ inputs.split }}"
-                --benchmark "${{ inputs.benchmark }}" --holdout "${{ inputs.holdout }}"
-                --per-fixture "${{ inputs.per_fixture }}")
+          args=(--topic "$TOPIC" --runs-dir "$RUNS_DIR"
+                --harness "$HARNESS" --split "${{ inputs.split }}"
+                --benchmark "$BENCHMARK" --holdout "$HOLDOUT"
+                --per-fixture "$PER_FIXTURE")
           [ "${{ inputs.trace }}" = "true" ] && args+=(--trace)
           [ -n "${{ inputs.model }}" ] && args+=(--model "${{ inputs.model }}")
-          mkdir -p runs/bench
-          rsi-arena bench "${args[@]}" --out "runs/bench/$(date -u +%Y%m%dT%H%M)-${{ inputs.split }}.rollouts.json" | tee bench.txt
+          mkdir -p "$RUNS_DIR/bench"
+          rsi-arena bench "${args[@]}" --out "$RUNS_DIR/bench/$(date -u +%Y%m%dT%H%M)-${{ inputs.split }}.rollouts.json" | tee bench.txt
           { echo "### Bench"; echo '```'; cat bench.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      # A scheduled run arrives with no inputs at all, so the chain is resolved
-      # here and everything downstream reads these rather than `inputs.*`.
-      # Fifteen things that have to hold before a generation is worth paying
-      # for, none of which need a key. Every one of them is something that went
-      # wrong here and was found after a run rather than before one.
-      # The second cron's safety: a schedule finds a generation already made
-      # today and starts nothing. Reads the manifests in the checkout rather
-      # than asking an API, because the checkout is what the run would chain
-      # from anyway. Manual dispatches skip this on purpose - a person
-      # re-running after a fix knows why they are doing it.
+      # The second cron's safety: a schedule finds a generation of this topic
+      # already made today and starts nothing. Reads the manifests in the
+      # checkout rather than asking an API, because the checkout is what the
+      # run would chain from anyway. Manual dispatches skip this on purpose - a
+      # person re-running after a fix knows why they are doing it.
       - name: One a day means one
         id: today
         if: github.event_name == 'schedule'
         run: |
           latest=$(python - <<'EOF'
-          import json, pathlib
+          import json, os, pathlib
           # Only generations that reached a verdict count. A crashed partial
           # gets committed too (the commit step runs on failure so nothing is
           # lost), and if it counted, an early crash would block the very retry
-          # this guard exists to make safe.
+          # this guard exists to make safe. Only this topic's: the runs
+          # directory of the first topic is the parent of the others'.
+          root, topic = pathlib.Path(os.environ["RUNS_DIR"]), os.environ["TOPIC"]
           done = []
-          for d in pathlib.Path("runs").glob("*"):
-              m = d / "manifest.json"
-              if not m.exists():
-                  continue
+          for m in root.glob("*/manifest.json"):
               j = json.loads(m.read_text())
-              if j.get("decision"):
+              if j.get("decision") and j.get("topic") == topic:
                   done.append(j.get("created", ""))
           print(max(done)[:10] if done else "")
           EOF
@@ -219,17 +306,19 @@ jobs:
           today=$(date -u +%Y-%m-%d)
           if [ "$latest" = "$today" ]; then
             echo "made=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=already ran today::a generation dated $today exists; this firing starts nothing"
-            echo "### Skipped - a generation already ran today ($today)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=already ran today::a $TOPIC generation dated $today exists; this firing starts nothing"
+            echo "### Skipped - a $TOPIC generation already ran today ($today)" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "made=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # A scheduled run arrives with no inputs at all, so the chain is resolved
+      # here and everything downstream reads these rather than `inputs.*`.
       - name: Where this generation goes
         id: chain
         if: steps.today.outputs.made != 'true' && (github.event_name == 'schedule' || inputs.chain)
         run: |
-          eval "$(rsi-arena next --runs-dir runs --seed harnesses/horizon-5m.json)"
+          eval "$(rsi-arena next --runs-dir "$RUNS_DIR" --seed "$HARNESS")"
           # eval of an empty substitution returns 0, so if `next` dies this step
           # goes green with empty outputs — and on a schedule the downstream
           # fallbacks are empty too, which makes Path('') the repository root.
@@ -244,6 +333,10 @@ jobs:
           echo "generations=$generations"  >> "$GITHUB_OUTPUT"
           echo "continuing from ${harness} into ${run_dir} (generation $((generations + 1)))"
 
+      # Fifteen things that have to hold before a generation is worth paying
+      # for, none of which need a key. Every one of them is something that went
+      # wrong here and was found after a run rather than before one.
+      #
       # After the chain, not before it: the held-out set rotates on the
       # generation number, so a preflight that did not know which generation it
       # was checked a different split from the one the run would use - and
@@ -252,14 +345,14 @@ jobs:
         id: preflight
         if: steps.today.outputs.made != 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
-          python scripts/preflight.py \
-            --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}" \
-            --holdout "${{ inputs.holdout || '100' }}" \
-            --audit "${{ inputs.audit || '60' }}" \
-            --per-fixture "${{ inputs.per_fixture || '4' }}" \
-            --max-metric-calls "${{ inputs.max_metric_calls || '600' }}" \
+          python scripts/preflight.py --topic "$TOPIC" --runs-dir "$RUNS_DIR" \
+            --benchmark "$BENCHMARK" \
+            --holdout "$HOLDOUT" \
+            --audit "$AUDIT" \
+            --per-fixture "$PER_FIXTURE" \
+            --max-metric-calls "$MAX_METRIC_CALLS" \
+            --valset "$VALSET" \
             --generation "${{ steps.chain.outputs.generations || '0' }}"
-
 
       # The ceiling, reconciled with what is actually on the key.
       #
@@ -269,18 +362,17 @@ jobs:
       # error the runner scores as silence — a full set of rollouts reading as a
       # harness that chose to stay quiet. The client now treats the first 402 as
       # exhaustion, so that failure is at least honest, but it is better not to
-      # reach it. Half the balance, so a second generation in the same day still
-      # has something to spend.
-      # The budget is what the run costs, plus margin — not a number typed once.
+      # reach it.
       #
+      # The budget is what the run costs, plus margin — not a number typed once.
       # Every generation that failed rather than concluded failed the same way:
       # it started something it could not finish. A flat ceiling cannot know
       # that, because the cost moves with the split, with what the scoreboard
       # already owns, and with the price of the model. Preflight does know, and
       # has just said so. So: take its figure, add a margin, and check the day
-      # and the balance can cover it. If they cannot, run nothing at all — a
-      # skip is honest and finishes green, where a half-funded generation
-      # produces refusals that read like a verdict.
+      # can cover it under the topic's daily cap. If it cannot, run nothing at
+      # all — a skip is honest and finishes green, where a half-funded
+      # generation produces refusals that read like a verdict.
       - name: What this generation may spend
         id: ceiling
         if: steps.today.outputs.made != 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
@@ -288,7 +380,8 @@ jobs:
         run: |
           predicted="${{ steps.preflight.outputs.predicted_usd || '0' }}"
           want="${{ inputs.max_generation_usd || '0' }}"
-          cap="${{ inputs.max_day_usd || '100' }}"
+          # The topic's, unless a daily cap was typed into the dispatch.
+          cap="$MAX_DAY_USD"
           # Was 1.35, when the prediction was one pot priced at the incumbent's
           # rate and the margin was the only allowance for candidates costing
           # more. The prediction is now three shares: a reserve for judging the
@@ -341,22 +434,26 @@ jobs:
             echo "predicted \$$predicted, ceiling \$$usd, \$$today spent today of \$$cap"
             { echo "### Budget";
               echo "- preflight predicts **\$$predicted**, ceiling **\$$usd** (x$margin)";
-              echo "- \$$today spent today of a \$$cap cap"; } >> "$GITHUB_STEP_SUMMARY"
+              echo "- \$$today spent today of a \$$cap cap ($TOPIC)"; } >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "usd=$usd" >> "$GITHUB_OUTPUT"
 
       - name: Optimize
         if: steps.today.outputs.made != 'true' && steps.ceiling.outputs.go == 'true' && (github.event_name == 'schedule' || inputs.command == 'optimize')
         run: |
-          harness="${{ steps.chain.outputs.harness || inputs.harness }}"
-          run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
-          args=(--harness "$harness" --run-dir "$run_dir"
-                --benchmark "${{ inputs.benchmark || 'benchmarks/soccer-2026.json' }}"
-                --holdout "${{ inputs.holdout || '100' }}"
-                --audit "${{ inputs.audit || '60' }}"
+          harness="${{ steps.chain.outputs.harness }}"
+          run_dir="${{ steps.chain.outputs.run_dir }}"
+          harness="${harness:-$HARNESS}"
+          run_dir="${run_dir:-$RUN_DIR}"
+          args=(--topic "$TOPIC" --runs-dir "$RUNS_DIR"
+                --harness "$harness" --run-dir "$run_dir"
+                --benchmark "$BENCHMARK"
+                --holdout "$HOLDOUT"
+                --audit "$AUDIT"
                 --generation "${{ steps.chain.outputs.generations || '0' }}"
-                --per-fixture "${{ inputs.per_fixture || '4' }}"
-                --max-metric-calls "${{ inputs.max_metric_calls || '600' }}"
+                --per-fixture "$PER_FIXTURE"
+                --max-metric-calls "$MAX_METRIC_CALLS"
+                --valset "$VALSET"
                 --max-generation-usd "${{ steps.ceiling.outputs.usd }}"
                 --reflection-model "${{ inputs.reflection_model || 'anthropic/claude-sonnet-4.5' }}")
           [ "${{ inputs.trace || 'true' }}" = "true" ] && args+=(--trace)
@@ -378,7 +475,8 @@ jobs:
           # the shared 500 MB database inside two months, behind a || that kept
           # the job green while the reader silently froze. Republishing an old
           # run after an amendment is a deliberate act, done by hand.
-          run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
+          run_dir="${{ steps.chain.outputs.run_dir }}"
+          run_dir="${run_dir:-$RUN_DIR}"
           if [ -d "$run_dir" ]; then
             python scripts/publish_runs.py "$run_dir" \
               || echo "::warning::publishing failed; the run is still committed"
@@ -389,7 +487,7 @@ jobs:
       # Full working trajectories, off the repository's back.
       #
       # Every tool call and model turn is already recorded three ways: full
-      # traces in runs/<gen>/rollouts when --trace is on, trimmed spans in
+      # traces in <run>/rollouts when --trace is on, trimmed spans in
       # rsi.traces, and the per-run artifact below. What none of those gives is
       # a durable home that is not git - a generation adds ~2,600 files and
       # ~50 MB, which is an 82,000-file repository by day 30. With AWS secrets
@@ -403,7 +501,8 @@ jobs:
           AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
         run: |
           bucket="${{ secrets.TRACE_BUCKET }}"
-          run_dir="${{ steps.chain.outputs.run_dir || inputs.run_dir }}"
+          run_dir="${{ steps.chain.outputs.run_dir }}"
+          run_dir="${run_dir:-$RUN_DIR}"
           if [ -z "$bucket" ]; then
             echo "::notice::AWS key is set but TRACE_BUCKET is not; skipping"
           elif [ -d "$run_dir" ]; then
@@ -415,20 +514,30 @@ jobs:
             # can drop ListBucket entirely and become write-only, which is the
             # tighter shape anyway: a leaked key could add trajectories but
             # never read or enumerate them.
-            aws s3 cp "$run_dir" "s3://$bucket/rsi-arena/$(basename "$run_dir")/" \
+            aws s3 cp "$run_dir" "s3://$bucket/rsi-arena/$TOPIC/$(basename "$run_dir")/" \
                 --recursive --only-show-errors \
-              && echo "- trajectories uploaded to s3://$bucket/rsi-arena/$(basename "$run_dir")/" >> "$GITHUB_STEP_SUMMARY" \
+              && echo "- trajectories uploaded to s3://$bucket/rsi-arena/$TOPIC/$(basename "$run_dir")/" >> "$GITHUB_STEP_SUMMARY" \
               || echo "::warning::S3 upload failed; the artifact below still has everything"
           fi
 
+      # Everything a generation writes that the next one reads: the question
+      # set and the venue data discovery left beside it, the archive and the
+      # scoreboard (flat in runs/, one pair per topic), and the topic's run
+      # directories. For the first topic $RUNS_DIR is runs/ itself, which is
+      # what this step always added.
       - name: Commit results
         if: always()
+        shell: bash
         run: |
           git config user.name "rsi-arena loop"
           git config user.email "loop@users.noreply.github.com"
-          for d in benchmarks/windows runs; do [ -d "$d" ] && git add -A -- "$d"; done
+          shopt -s nullglob
+          for d in benchmarks/windows benchmarks/windows-* benchmarks/crypto-data benchmarks/news-data \
+                   runs/archive*.json runs/scoreboard*.json "$RUNS_DIR"; do
+            [ -e "$d" ] && git add -A -- "$d"
+          done
           if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
-          git commit -m "loop: ${{ inputs.command }} (${{ inputs.harness }}) run ${{ github.run_id }}"
+          git commit -m "loop: $TOPIC ${{ inputs.command || 'optimize' }} run ${{ github.run_id }}"
           for i in 1 2 3; do
             git pull --rebase origin main && git push origin HEAD:main && exit 0
             sleep 5
@@ -452,9 +561,10 @@ jobs:
           path: |
             runs
             benchmarks/windows
+            benchmarks/windows-*
           if-no-files-found: ignore
 
-      # The only alerting there is. Three crons and real money, and until now a
+      # The only alerting there is. Seven crons and real money, and until now a
       # failed run's sole witness was a step summary nobody opens. An issue in
       # the repo notifies its owner the way anything else in the repo does.
       - name: Say so if this failed
@@ -463,6 +573,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh issue create \
-            --title "loop failed: $(date -u +%Y-%m-%d) run ${{ github.run_id }}" \
-            --body "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} failed. A generation may have spent money without producing a record." \
+            --title "loop failed ($TOPIC): $(date -u +%Y-%m-%d) run ${{ github.run_id }}" \
+            --body "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} failed. A $TOPIC generation may have spent money without producing a record." \
             || echo "::warning::could not open an issue about the failure"

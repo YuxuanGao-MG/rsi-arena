@@ -242,6 +242,36 @@ could never buy. The metric is `Metric(tick=5, scale=100, unit="bps",
 relative=True)`; a large cap quotes one to five basis points wide, so a move
 under five is inside the spread.
 
+### One workflow, several topics (2026-09-21)
+
+`loop.yml` runs any topic the CLI knows. Which one a firing is for comes
+from the dispatch input or, on a schedule, from the cron string that fired
+(a `case` in the `resolve` job: 03:17, 05:47 and 09:17 UTC are Kalshi, 07:17
+and 08:47 crypto, 11:17 and 12:47 news). What that topic runs on comes from
+`rsi-arena topic --shell`, evaluated once into the job's environment, and
+every step reads `$BENCHMARK`, `$HOLDOUT` and the rest rather than repeating
+a Kalshi literal; a typed dispatch input overrides the spec. The once-a-day
+guard, the chain, preflight, optimize, publish and the commit all key on the
+topic and its runs directory, and the concurrency group is per topic, which
+is why the resolve step is its own job: a concurrency key cannot read the
+environment, but it can read another job's output. A topic on the schedule
+before its package is on main - the crypto crons today - ends green with a
+notice rather than an issue every morning.
+
+For that to leave a scheduled Kalshi run byte-identical, the Kalshi spec had
+to be what the workflow had carried as literals for a month - soccer-2026,
+a hundred held out, sixty audited, four a fixture - and the spec is read off
+`Settings`, so those four dataclass defaults moved to the production values.
+`epl-2026-09.json` is still there as the five-match dev set.
+
+`live-news.yml` and `scripts/collect_live_news.py` are the news topic's
+live half: four forty-five-minute sweeps a weekday inside regular hours,
+polling the feed every minute and forecasting each new item on the universe
+once through `live_tools` and the Jev harness, graded through
+`topics/_common/live.py` when the bar five minutes on prints, published with
+the topic, symbol, venue and unit that migration 008 added. Without the
+Alpaca secrets it skips, green.
+
 ### Still open
 
 - No generation has been accepted. Two have been rejected honestly.

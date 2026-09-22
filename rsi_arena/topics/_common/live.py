@@ -59,13 +59,17 @@ def resolve(row: dict, *, realised_fn: RealisedFn, score_fn: ScoreFn,
 
 
 def write_resolved(pending: list[dict], out: Path, *, realised_fn: RealisedFn,
-                   score_fn: ScoreFn, horizon_minutes: int) -> list[dict]:
-    """Write every forecast whose horizon has printed; keep the rest waiting."""
+                   score_fn: ScoreFn, horizon_minutes: int,
+                   now: datetime | None = None) -> list[dict]:
+    """Write every forecast whose horizon has printed; keep the rest waiting.
+
+    ``now`` is for tests; a collector leaves it to the clock.
+    """
     still: list[dict] = []
     with out.open("a") as fh:
         for row in pending:
             if resolve(row, realised_fn=realised_fn, score_fn=score_fn,
-                       horizon_minutes=horizon_minutes):
+                       horizon_minutes=horizon_minutes, now=now):
                 fh.write(json.dumps(row, default=str) + "\n")
             else:
                 still.append(row)
