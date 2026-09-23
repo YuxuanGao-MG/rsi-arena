@@ -143,9 +143,12 @@ class FakeBars:
         return [b for b in self._bars(symbol)
                 if b.ts_open >= start and (self.leaky or b.ts_open <= end)]
 
+    def bar_at(self, symbol: str, at: datetime, max_stale_s: int = MAX_STALE_S) -> Bar | None:
+        return last_complete_bar(self.bars(symbol, at - timedelta(seconds=max_stale_s + 60), at),
+                                 at, max_stale_s)
+
     def price_at(self, symbol: str, at: datetime, max_stale_s: int = MAX_STALE_S) -> float | None:
-        bar = last_complete_bar(self.bars(symbol, at - timedelta(seconds=max_stale_s + 60), at),
-                                at, max_stale_s)
+        bar = self.bar_at(symbol, at, max_stale_s)
         return None if bar is None else bar.c
 
     def realised_price(self, symbol: str, at: datetime, horizon: int = 5) -> float | None:

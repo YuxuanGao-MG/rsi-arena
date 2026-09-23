@@ -170,7 +170,8 @@ async def one(harness: Harness, llm: OpenRouter, league: str, game: str,
                                      game=json.dumps(state)[:1200])
     return {"at": at.isoformat(), "topic": "kalshi-horizon-5m",
             "league": league, "game_id": game, "ticker": ticker,
-            "mid_now": candle.mid, "game": state, "harness": harness.name,
+            "mid_now": candle.mid, "yes_bid": candle.yes_bid_close, "yes_ask": candle.yes_ask_close,
+            "game": state, "harness": harness.name,
             "output": run.output, "run": run.to_dict(),
             "ok": run.ok, "error": run.error}
 
@@ -184,20 +185,34 @@ def _realised_for(hist: History):
     return lambda ticker, at: realised_mid(ticker, at, HORIZON_MINUTES, hist)
 
 
+def _quote_for(hist: History):
+    """The touch the book showed at the horizon, for the paper book's exit.
+    The same candle ``realised_mid`` reads; None when there was no fresh
+    two-sided book, which the book then fills with its proxy spread."""
+    def read(ticker: str, at: datetime) -> dict | None:
+        candle = fresh_quote(hist, ticker, at + timedelta(minutes=HORIZON_MINUTES))
+        if candle is None or candle.yes_bid_close is None or candle.yes_ask_close is None:
+            return None
+        return {"bid": candle.yes_bid_close, "ask": candle.yes_ask_close, "mid": candle.mid}
+    return read
+
+
 def resolve(row: dict, hist: History) -> bool:
     """Score a forecast once the horizon has printed. False while it has not.
 
     The grading itself is :func:`rsi_arena.topics._common.live.resolve`; this
-    supplies Kalshi's two answers - the realised mid and the score.
+    supplies Kalshi's two answers - the realised mid and the score - and the
+    touch at the horizon for the paper book.
     """
     return _resolve(row, realised_fn=_realised_for(hist), score_fn=score_output,
-                    horizon_minutes=HORIZON_MINUTES)
+                    horizon_minutes=HORIZON_MINUTES, quote_fn=_quote_for(hist))
 
 
 def write_resolved(pending: list[dict], hist: History, out: Path) -> list[dict]:
     """Write every forecast whose horizon has printed; keep the rest waiting."""
     return _write_resolved(pending, out, realised_fn=_realised_for(hist),
-                           score_fn=score_output, horizon_minutes=HORIZON_MINUTES)
+                           score_fn=score_output, horizon_minutes=HORIZON_MINUTES,
+                           quote_fn=_quote_for(hist))
 
 
 async def main() -> int:

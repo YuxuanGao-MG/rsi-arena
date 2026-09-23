@@ -17,9 +17,12 @@ from ...alpaca._session import session
 from ...alpaca.replay import replay_tools
 from ...harness import Run, ToolCache, Toolbox, model_tool_names
 from ...loop import Outcome, Settings
+from ...trading import TRADING_CONTRACT, TradingSpec
 from .._common.metric import MoveScore
 from .._common.thin import thin
+from .._common.trading import book_line
 from .score import METRIC, pooled, pooled_skill, score_output, silent
+from .trading import trading_spec
 from .windows import DATA_DIR, BenchmarkItem, NewsWindow, build_windows, load_benchmark
 
 #: What a run that produced no usable forecast loses against deliberate
@@ -54,6 +57,8 @@ size of the reaction to material news - guidance, a deal, a downgrade, a recall 
 fading the headlines that are already priced: a story that repeats the morning's, a
 market-wide move mistaken for a stock-specific one, a name that has already run. Large caps
 quote one to five basis points wide, so a useful call is one that clears a spread."""
+
+BACKGROUND = BACKGROUND + "\n\n" + TRADING_CONTRACT
 
 
 #: What the rewriter is told about the models it may choose. Nothing has
@@ -93,6 +98,14 @@ class NewsEquity:
         #: Cap on windows kept per symbol-day. Power comes from groups, not
         #: from the fourth story on one name in one afternoon.
         self.per_fixture = per_fixture
+        self._trading: TradingSpec | None = None
+
+    @property
+    def trading(self) -> TradingSpec:
+        """How a window of this task becomes a paper trade in the shares."""
+        if self._trading is None:
+            self._trading = trading_spec(self)
+        return self._trading
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "NewsEquity":
@@ -184,7 +197,9 @@ def _score_of(o: Outcome) -> MoveScore:
                      half_width=d["half_width"], metric=METRIC)
 
 
-def _feedback(w: NewsWindow, s: MoveScore | None, run: Run | None) -> str:
+def _feedback(w: NewsWindow, s: MoveScore | None, run: Run | None,
+              trade: dict[str, Any] | None = None) -> str:
+    """``trade`` is the paper book's record, present only after a replay."""
     move = METRIC.move(w.mid_now, w.realised)
     lines = [f"{w.symbol} at {w.at.isoformat()[:19]}Z on \"{w.headline[:80]}\": last {w.mid_now:.2f}, "
              f"five minutes later {w.realised:.2f} ({move:+.1f} bps; no-change would miss by "
@@ -211,6 +226,8 @@ def _feedback(w: NewsWindow, s: MoveScore | None, run: Run | None) -> str:
         if bad:
             lines.append("Tool errors: " + "; ".join(f"{t['tool']}: {t['error']}" for t in bad) + ".")
         lines.append(f"Cost ${run.cost_usd:.4f}.")
+    if trade:
+        lines.append(book_line(trade))
     return " ".join(lines)
 
 

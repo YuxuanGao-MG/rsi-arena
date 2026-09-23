@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -76,6 +76,11 @@ class NewsWindow:
     source: str = ""
     symbols: tuple[str, ...] = ()
     edited_after: bool = False
+    #: The vwap of the bar behind ``mid_now`` and of the bar at the horizon,
+    #: for the paper book to cross; None on a window built before they were
+    #: kept, or through a bar source that serves closes only.
+    vwap_now: float | None = None
+    vwap_h: float | None = None
 
     @property
     def id(self) -> str:
@@ -100,7 +105,8 @@ class NewsWindow:
         return {"symbol": self.symbol, "at": self.at.isoformat(), "mid_now": self.mid_now,
                 "realised": self.realised, "news_id": self.news_id, "headline": self.headline,
                 "summary": self.summary, "source": self.source, "symbols": list(self.symbols),
-                "edited_after": self.edited_after, "group": self.group}
+                "edited_after": self.edited_after, "group": self.group,
+                "vwap_now": self.vwap_now, "vwap_h": self.vwap_h}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "NewsWindow":
@@ -108,7 +114,28 @@ class NewsWindow:
                    realised=float(d["realised"]), news_id=str(d["news_id"]),
                    headline=d.get("headline", ""), summary=d.get("summary", "") or "",
                    source=d.get("source", "") or "",
-                   symbols=tuple(d.get("symbols") or ()), edited_after=bool(d.get("edited_after", False)))
+                   symbols=tuple(d.get("symbols") or ()), edited_after=bool(d.get("edited_after", False)),
+                   vwap_now=_opt(d.get("vwap_now")), vwap_h=_opt(d.get("vwap_h")))
+
+
+def _opt(value: Any) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _vwap(bars: Any, symbol: str, at: datetime) -> float | None:
+    """The vwap of the bar ``price_at`` would read at ``at``, through a source
+    that can hand the bar over; None through one that serves closes only."""
+    bar_at = getattr(bars, "bar_at", None)
+    if bar_at is None:
+        return None
+    try:
+        bar = bar_at(symbol, at)
+    except Exception:  # noqa: BLE001 - the close was already read; the vwap is a bonus
+        return None
+    return None if bar is None else float(getattr(bar, "vwap", 0.0) or 0.0) or None
 
 
 def load_benchmark(path: str | Path) -> list[BenchmarkItem]:
@@ -160,7 +187,9 @@ def build_windows(items: list[BenchmarkItem], *, bars: Any, horizon: int = HORIZ
             built.append(NewsWindow(symbol=it.symbol, at=it.at, mid_now=now, realised=later,
                                     news_id=it.news_id, headline=it.headline, summary=it.summary,
                                     source=it.source, symbols=it.symbols or (it.symbol,),
-                                    edited_after=it.edited_after))
+                                    edited_after=it.edited_after,
+                                    vwap_now=_vwap(bars, it.symbol, it.at),
+                                    vwap_h=_vwap(bars, it.symbol, it.at + timedelta(minutes=horizon))))
         log(f"{group}: {len(built)} windows")
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

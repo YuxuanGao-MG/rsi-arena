@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
 from ...kalshi._history import History
-from ...kalshi.replay import HORIZON_MINUTES, MatchTimeline, fresh_quote, match_timeline, realised_mid
+from ...kalshi.replay import HORIZON_MINUTES, MatchTimeline, fresh_quote, match_timeline
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,13 @@ class Window:
     realised: float
     game: dict[str, Any] = field(default_factory=dict)
     event: str = ""
+    #: The touch the candle printed at the instant and at the horizon, for
+    #: the paper book to cross; None on a window built before they were
+    #: kept, which the book fills with the venue's proxy spread.
+    yes_bid: float | None = None
+    yes_ask: float | None = None
+    yes_bid_h: float | None = None
+    yes_ask_h: float | None = None
 
     @property
     def id(self) -> str:
@@ -48,12 +55,22 @@ class Window:
         # unit by that name, and another topic's instance has no event.
         return {"ticker": self.ticker, "at": self.at.isoformat(), "mid_now": self.mid_now,
                 "realised": self.realised, "game": self.game, "event": self.event,
-                "group": self.group}
+                "group": self.group, "yes_bid": self.yes_bid, "yes_ask": self.yes_ask,
+                "yes_bid_h": self.yes_bid_h, "yes_ask_h": self.yes_ask_h}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Window":
         return cls(ticker=d["ticker"], at=datetime.fromisoformat(d["at"]), mid_now=d["mid_now"],
-                   realised=d["realised"], game=d.get("game", {}), event=d.get("event", ""))
+                   realised=d["realised"], game=d.get("game", {}), event=d.get("event", ""),
+                   yes_bid=_opt(d.get("yes_bid")), yes_ask=_opt(d.get("yes_ask")),
+                   yes_bid_h=_opt(d.get("yes_bid_h")), yes_ask_h=_opt(d.get("yes_ask_h")))
+
+
+def _opt(value: Any) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def load_fixtures(path: str | Path) -> list[Fixture]:
@@ -108,9 +125,13 @@ def _windows_for(fixture: Fixture, line: MatchTimeline, hist: History,
             candle = fresh_quote(hist, ticker, at)
             if candle is None:
                 continue
-            realised = realised_mid(ticker, at, horizon, hist)
-            if realised is None:
+            # The same candle ``realised_mid`` reads, kept whole so the
+            # horizon's touch is on the window and not only its mid.
+            later = fresh_quote(hist, ticker, at + timedelta(minutes=horizon))
+            if later is None or later.mid is None:
                 continue
-            built.append(Window(ticker=ticker, at=at, mid_now=candle.mid, realised=realised,
-                                game=line.state_at(at), event=fixture.event))
+            built.append(Window(ticker=ticker, at=at, mid_now=candle.mid, realised=later.mid,
+                                game=line.state_at(at), event=fixture.event,
+                                yes_bid=candle.yes_bid_close, yes_ask=candle.yes_ask_close,
+                                yes_bid_h=later.yes_bid_close, yes_ask_h=later.yes_ask_close))
     return built

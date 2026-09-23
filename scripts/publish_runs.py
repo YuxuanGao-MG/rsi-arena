@@ -33,7 +33,7 @@ try:
 except ImportError:                                   # pragma: no cover
     sys.exit("pip install psycopg2-binary")
 
-from rsi_arena.loop.settings import Settings
+from rsi_arena.loop.generation import qualified     # noqa: E402,F401
 from rsi_arena.topics import TOPICS                   # noqa: E402
 
 # The paper books a generation's rollouts traded, published with them. The
@@ -173,28 +173,6 @@ def rollout_rows(run_id: str, side: str, split: str, path: Path, *,
         rows.append((rollout_row(run_id, side, split, r, topic=topic, unit=unit),
                      [trim_span(x) for x in spans] if spans else None))
     return rows
-
-
-def qualified(path: str | Path | None, topic: str) -> str | None:
-    """A run's id in the reader: ``gen5`` for the first topic, ``gen5@<topic>`` after.
-
-    Every topic numbers its generations from one in its own runs directory,
-    and the reader keys runs by id alone. The crypto loop's first generation
-    was published as ``gen1``: it kept the Kalshi row (the upsert did not
-    touch ``topic``) and replaced Kalshi's gen1 rollouts with its own. The
-    first topic keeps bare names because eleven of them are bookmarked and
-    published; every other topic carries its name in the id, and so does
-    its parent, so a lineage still joins.
-    """
-    if path is None:
-        return None
-    where = Path(path)
-    name, parent = where.name, where.parent.name
-    if topic != Settings.topic:
-        return f"{name}@{topic}"
-    # A second lineage of the first topic (runs/kalshi-jev/gen1) must not
-    # collide with the original's gen1 either; it carries its directory.
-    return name if parent in ("runs", "") else f"{name}@{parent}"
 
 
 def book_files(run_dir: Path) -> list[Path]:

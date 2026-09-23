@@ -36,6 +36,22 @@
               "up 10 bps or more"
             ],
             "values": [-15, -6, -2, 0, 2, 6, 15]
+          },
+          "action": {
+            "type": "choice",
+            "instructions": "What the paper book should do in the perpetual now, given the move you expect against a round trip of about twelve basis points in spread and taker fees.",
+            "criteria": {
+              "open_long": "buy the coin at the ask: the price rises by more than the round trip",
+              "open_short": "sell the coin at the bid: the price falls by more than the round trip",
+              "close": "take an open position off at the touch",
+              "hold": "do nothing: no edge worth the spread and the fee"
+            }
+          },
+          "size": {
+            "type": "score",
+            "instructions": "How much of the book's equity to put in this coin if opening. Nothing when holding or closing; the cap is a tenth.",
+            "criteria": ["nothing", "a toe: 2%", "a normal position: 5%", "the cap: 10%"],
+            "values": [0, 0.02, 0.05, 0.10]
           }
         },
         "answers": {
@@ -43,7 +59,9 @@
           "half_width_bps": {"from": "move", "as": "half_range", "coverage": 0.6, "min": 1},
           "confidence": {"from": "move", "as": "confidence"},
           "driver": {"as": "const", "value": "the expectation of the move distribution"},
-          "falsifier": {"as": "const", "value": "a close outside the quoted band when the minute prints"}
+          "falsifier": {"as": "const", "value": "a close outside the quoted band when the minute prints"},
+          "action": {"from": "action", "as": "choice"},
+          "size": {"from": "size", "as": "mean", "min": 0, "max": 0.1}
         }
       }
     ]

@@ -49,9 +49,20 @@
             "falsifier": {
               "type": "string",
               "description": "What would show this call was wrong, before the minute is up."
+            },
+            "action": {
+              "type": "string",
+              "enum": ["open_long", "open_short", "close", "hold"],
+              "description": "What the paper book should do in the perpetual now. open_long buys the coin at the ask and open_short sells it at the bid, each filled down the book at five basis points a side; close takes an open position off at the touch; hold does nothing. Trade only when the move you expect clears a round trip of about twelve basis points."
+            },
+            "size": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.1,
+              "description": "Fraction of the book's equity to put in this coin if opening, 0 to 0.10. 0 when holding or closing."
             }
           },
-          "required": ["delta_bps", "half_width_bps", "confidence", "driver", "falsifier"],
+          "required": ["delta_bps", "half_width_bps", "confidence", "driver", "falsifier", "action", "size"],
           "additionalProperties": false
         }
       }

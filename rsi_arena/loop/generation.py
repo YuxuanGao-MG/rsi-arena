@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from ..harness import Harness
+from .settings import Settings
 
 MANIFEST = "manifest.json"
 BEST = "best.json"
@@ -48,6 +49,30 @@ def fingerprint(harness: Harness) -> str:
     not the harness.
     """
     return fingerprint_components(harness.to_components(), harness.config.model)
+
+
+def qualified(path: str | Path | None, topic: str) -> str | None:
+    """A run's id in the reader: ``gen5`` for the first topic, ``gen5@<topic>`` after.
+
+    Every topic numbers its generations from one in its own runs directory,
+    and the reader keys runs by id alone. The crypto loop's first generation
+    was published as ``gen1``: it kept the Kalshi row (the upsert did not
+    touch ``topic``) and replaced Kalshi's gen1 rollouts with its own. The
+    first topic keeps bare names because eleven of them are bookmarked and
+    published; every other topic carries its name in the id, and so does
+    its parent, so a lineage still joins. The paper books key themselves
+    ``<this>:<side>:<split>``, which is why it lives here and not only in
+    the publisher.
+    """
+    if path is None:
+        return None
+    where = Path(path)
+    name, parent = where.name, where.parent.name
+    if topic != Settings.topic:
+        return f"{name}@{topic}"
+    # A second lineage of the first topic (runs/kalshi-jev/gen1) must not
+    # collide with the original's gen1 either; it carries its directory.
+    return name if parent in ("runs", "") else f"{name}@{parent}"
 
 
 @dataclass

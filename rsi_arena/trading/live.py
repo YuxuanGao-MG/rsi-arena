@@ -97,7 +97,10 @@ def rows_to_cycles(rows: list[dict], spec_like: Any, books_by_key: dict | None =
         realised = row.get("realised")
         if realised is None or row.get("mid_now") is None:
             continue
-        instrument = row.get("ticker") or row.get("symbol")
+        # The symbol first: a crypto or news row's ``ticker`` is the row's own
+        # id (``BTCUSDT@<at>``), and a book keyed on it would never carry a
+        # position from one cycle to the next. A Kalshi row has only a ticker.
+        instrument = row.get("symbol") or row.get("ticker")
         if not instrument:
             continue
         at = _at(row["at"])
