@@ -196,6 +196,56 @@ jobs:
             { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # The paper book: what this sweep's forecasts would have bought. The
+      # trader starts from the previous run's state, restored here by prefix -
+      # each run saves under its own run id and the newest match wins - so the
+      # book runs on across sweeps. `always()`, for the same reason the publish
+      # is: a cancelled sweep still left forecasts on disk. The cache is a
+      # convenience with a week's TTL, not the record. The database is the
+      # durable copy, and `paper_trade.py --restore-from-db --topic kalshi-horizon-5m`
+      # rebuilds the state from it when the cache has been evicted.
+      - name: Restore the paper book
+        if: always()
+        uses: actions/cache/restore@v4
+        with:
+          path: runs/live/books
+          key: paper-book-kalshi-horizon-5m-${{ github.run_id }}
+          restore-keys: paper-book-kalshi-horizon-5m-
+
+      - name: Paper-trade the sweep
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f runs/live/forecasts.jsonl ]; then
+            echo "no forecasts this run; the book is unchanged"
+            exit 0
+          fi
+          python scripts/paper_trade.py \
+            --topic kalshi-horizon-5m \
+            --forecasts runs/live/forecasts.jsonl \
+            --harness "${{ inputs.harness || 'harnesses/horizon-5m.json' }}" \
+            --state runs/live/books/kalshi-horizon-5m.json | tee -a live.txt \
+            || echo "::warning::paper trading failed; the forecasts are in the run artifact"
+
+      # Saved whenever there is a state to save, whether or not this run
+      # traded, so the next sweep starts where this one stopped.
+      - name: Save the paper book
+        if: always() && hashFiles('runs/live/books/**') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: runs/live/books
+          key: paper-book-kalshi-horizon-5m-${{ github.run_id }}
+
+      # The trades and marks appended this run, and the book's running stats.
+      # Same sidecar as the forecasts: only rows past the last commit go.
+      - name: Publish the paper book
+        if: always() && env.SUPABASE_DB_URL != ''
+        shell: bash
+        run: |
+          pip install -q psycopg2-binary
+          python scripts/publish_trading.py --topic kalshi-horizon-5m | tee -a live.txt \
+            || echo "::warning::publishing the paper book failed; it is in the run artifact"
+
       # The only copy outside Postgres. Kept for the days the publish fails, and
       # kept short: nothing here is worth a month of storage.
       - name: Keep the forecasts as an artifact
@@ -203,7 +253,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: live-${{ github.run_id }}
-          path: runs/live
+          # runs/live/books - the paper book's state - rides in it, so a run
+          # whose cache was evicted still has yesterday's book somewhere.
+          path: |
+            runs/live
+            runs/live/books
           retention-days: 14
           if-no-files-found: ignore
 

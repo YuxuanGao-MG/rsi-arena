@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     import psycopg2
@@ -34,6 +35,11 @@ except ImportError:                                   # pragma: no cover
 
 from rsi_arena.loop.settings import Settings
 from rsi_arena.topics import TOPICS                   # noqa: E402
+
+# The paper books a generation's rollouts traded, published with them. The
+# tables arrive with migration 009; ``has_trading_tables`` says whether this
+# database has them yet.
+from publish_trading import NOT_APPLIED, has_trading_tables, publish_book_file   # noqa: E402
 
 #: Tool answers are the bulk of a trace and the least re-read part of it.
 TRIM = 1200
@@ -191,7 +197,38 @@ def qualified(path: str | Path | None, topic: str) -> str | None:
     return name if parent in ("runs", "") else f"{name}@{parent}"
 
 
-def publish(cur, run_dir: Path) -> tuple[int, int]:
+def book_files(run_dir: Path) -> list[Path]:
+    """The replay books a run wrote: ``<run_dir>/books/<side>.<split>.json``."""
+    return sorted((run_dir / "books").glob("*.json"))
+
+
+def publish_books(cur, run_dir: Path, topic: str, *, trading: bool | None = None) -> int:
+    """Every book file under the run, each replaced whole. Returns how many.
+
+    ``trading`` is whether the database has 009's tables; ``None`` probes. A
+    database without them is not an error - the books stay in the run
+    directory, which is committed, and a re-publish after the migration lands
+    them - but it is said, once per run, so a reader missing its curves knows
+    which migration to apply.
+    """
+    files = book_files(run_dir)
+    if not files:
+        return 0
+    if trading is None:
+        trading = has_trading_tables(cur)
+    if not trading:
+        print(f"  note  {run_dir.name}: {len(files)} paper books not published; {NOT_APPLIED}")
+        return 0
+    for path in files:
+        publish_book_file(cur, path, topic=topic)
+    return len(files)
+
+
+def publish(cur, run_dir: Path, *, trading: bool | None = None) -> tuple[int, int, int]:
+    """One run: its row, its rollouts and traces, then its paper books.
+
+    Returns (rollouts, traced, books).
+    """
     manifest = json.loads((run_dir / "manifest.json").read_text())
     run_id = qualified(run_dir, manifest["topic"])
     cur.execute("""
@@ -216,6 +253,13 @@ def publish(cur, run_dir: Path) -> tuple[int, int]:
           Json(manifest.get("llm")), Json(manifest.get("split"))))
 
     topic = manifest.get("topic") or ""
+    rollouts, traced = publish_rollouts(cur, run_id, run_dir, topic)
+    books = publish_books(cur, run_dir, topic, trading=trading)
+    return rollouts, traced, books
+
+
+def publish_rollouts(cur, run_id: str, run_dir: Path, topic: str) -> tuple[int, int]:
+    """The run's rollouts, replaced whole, and the traces of those that have one."""
     rows: list[tuple[dict[str, Any], list | None]] = []
     for side in ("baseline", "candidate"):
         for split in ("train", "holdout"):
@@ -256,18 +300,24 @@ def main() -> int:
 
     conn = psycopg2.connect(db_url(args.db_url), connect_timeout=30)
     conn.autocommit = False
-    total = 0
+    total = books_total = 0
     with conn, conn.cursor() as cur:
+        # Probed once, not per run: the answer does not change mid-invocation.
+        trading = has_trading_tables(cur)
+        if not trading:
+            print(f"  note  {NOT_APPLIED}")
         for raw in args.run_dirs:
             path = Path(raw)
             if not (path / "manifest.json").exists():
                 print(f"  skip  {path}: no manifest.json")
                 continue
-            rollouts, traced = publish(cur, path)
+            rollouts, traced, books = publish(cur, path, trading=trading)
             total += rollouts
-            print(f"  ok    {path.name:18} {rollouts:>5} rollouts, {traced:>5} traced")
+            books_total += books
+            print(f"  ok    {path.name:18} {rollouts:>5} rollouts, {traced:>5} traced, "
+                  f"{books:>2} books")
     conn.close()
-    print(f"\n{total} rollouts published")
+    print(f"\n{total} rollouts, {books_total} paper books published")
     return 0
 
 
