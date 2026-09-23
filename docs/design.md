@@ -1,5 +1,32 @@
 # Design: the alternative
 
+## Status, 2026-09-23: the first promotion
+
+The Kalshi lineage restarted on Jev on the 22nd (`runs/kalshi-jev/`, held-out
+300 matches, audit 60, eight windows a match) and its first generation was
+**accepted** - the first promotion in the arena's history, after eleven Opus
+generations that could not be told from noise:
+
+| | held-out skill | echoed the mid | on moves |
+| --- | --- | --- | --- |
+| Jev seed | -0.0145 | 206 / 2,400 | -0.0001 |
+| gen1 candidate | -0.0095 | 571 / 2,400 | +0.0002 |
+
+Gain +0.005, interval +0.003 to +0.007 on a test that resolves 0.0024; the
+audit set the search never saw agreed (+0.004, +0.000 to +0.008). Eight
+candidates, 5,376 calls, $5.10. What the rewrite changed was the context
+alone: the tools, plan and model are the seed's. What the context bought is
+visible in the echo column - the candidate says "no move" on a quarter of
+held-out windows where the seed guessed, and on the windows that moved it is
+no better. So this is a real, confirmed improvement in the metric, and an
+honest reading of it is that the harness learned when to stay quiet, not yet
+how to see a move coming. Both numbers are still below zero.
+
+The gate could see it because the price of a window fell two hundred-fold:
+a held-out set of 300 matches resolves 0.0024 where a hundred resolved 0.050.
+Twenty of the twenty-two generations before this one had rejections that
+were statements about sample size; this one is a statement about the harness.
+
 ## Status, 2026-09-22: three topics, and what the price bought
 
 Two new topics run beside Kalshi, on the same loop, gate and reader, both on
