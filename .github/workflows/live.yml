@@ -69,7 +69,7 @@ on:
         default: "0.10"
       harness:
         description: "the harness that forecasts"
-        default: harnesses/horizon-5m.json
+        default: harnesses/horizon-5m-jev.json
 
 # Read-only on purpose. Live rows belong in Postgres, and the one thing this
 # workflow must never do is write to the branch the loop chains its generations
@@ -173,7 +173,7 @@ jobs:
         run: |
           python scripts/collect_live.py \
             --league "${{ inputs.league || 'EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE' }}" \
-            --harness "${{ inputs.harness || 'harnesses/horizon-5m.json' }}" \
+            --harness "${{ inputs.harness || 'harnesses/horizon-5m-jev.json' }}" \
             --minutes "${{ inputs.minutes || '50' }}" \
             --max-contracts "${{ inputs.max_contracts || '2' }}" \
             --max-usd "${{ inputs.max_usd || '2' }}" \
@@ -223,7 +223,7 @@ jobs:
           python scripts/paper_trade.py \
             --topic kalshi-horizon-5m \
             --forecasts runs/live/forecasts.jsonl \
-            --harness "${{ inputs.harness || 'harnesses/horizon-5m.json' }}" \
+            --harness "${{ inputs.harness || 'harnesses/horizon-5m-jev.json' }}" \
             --state runs/live/books/kalshi-horizon-5m.json | tee -a live.txt \
             || echo "::warning::paper trading failed; the forecasts are in the run artifact"
 
