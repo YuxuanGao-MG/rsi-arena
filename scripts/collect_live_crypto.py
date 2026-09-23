@@ -148,16 +148,54 @@ def _realised_for(sources: Any, horizon: int) -> Callable[[str, datetime], float
     return lambda ticker, at: sources.realised(ticker, at, horizon)
 
 
-def resolve(row: dict, sources: Any, horizon: int) -> bool:
+#: How far past the horizon a snapshot may be and still stand for its touch.
+QUOTE_SLACK = timedelta(minutes=3)
+
+
+def _quote_from_snapshots(snapshots: list[dict] | None, horizon: int
+                          ) -> Callable[[str, datetime], dict | None] | None:
+    """The touch nearest the horizon among the books this sweep saw, within
+    three minutes after it; None when there is no such book. The order book
+    has no history, so a sweep's own snapshots are the only place it is."""
+    if not snapshots:
+        return None
+
+    def read(ticker: str, at: datetime) -> dict | None:
+        symbol = ticker.split("@", 1)[0]
+        target = at + timedelta(minutes=horizon)
+        best, best_gap = None, None
+        for snap in snapshots:
+            if snap.get("symbol") != symbol:
+                continue
+            try:
+                when = datetime.fromisoformat(str(snap["at"]))
+            except (KeyError, ValueError):
+                continue
+            gap = when - target
+            if gap < timedelta(0) or gap > QUOTE_SLACK:
+                continue
+            if best_gap is None or gap < best_gap:
+                best, best_gap = snap, gap
+        book = ((best or {}).get("book") or {}).get("order_book") or {}
+        if not book or book.get("bid") is None or book.get("ask") is None:
+            return None
+        return {"bid": book["bid"], "ask": book["ask"], "mid": book.get("mid")}
+    return read
+
+
+def resolve(row: dict, sources: Any, horizon: int, snapshots: list[dict] | None = None) -> bool:
     """Score a forecast once its minute has printed. False while it has not."""
     return _resolve(row, realised_fn=_realised_for(sources, horizon), score_fn=score_output,
-                    horizon_minutes=horizon)
+                    horizon_minutes=horizon, quote_fn=_quote_from_snapshots(snapshots, horizon))
 
 
-def write_resolved(pending: list[dict], sources: Any, out: Path, horizon: int) -> list[dict]:
-    """Write every forecast whose horizon has printed; keep the rest waiting."""
+def write_resolved(pending: list[dict], sources: Any, out: Path, horizon: int,
+                   snapshots: list[dict] | None = None) -> list[dict]:
+    """Write every forecast whose horizon has printed; keep the rest waiting.
+    ``snapshots`` are this sweep's books, for the touch at the horizon."""
     return _write_resolved(pending, out, realised_fn=_realised_for(sources, horizon),
-                           score_fn=score_output, horizon_minutes=horizon)
+                           score_fn=score_output, horizon_minutes=horizon,
+                           quote_fn=_quote_from_snapshots(snapshots, horizon))
 
 
 def append_books(books: list[dict], out: Path) -> None:
@@ -178,6 +216,9 @@ async def sweep(harness: Harness, llm: Any, sources: Any, *, minutes: float, eve
     """Ticks until ``minutes`` are up, then waits out the last forecasts' horizon."""
     deadline = now() + timedelta(minutes=minutes)
     pending: list[dict] = []
+    #: Every book this sweep saw, so a forecast's exit can be priced at the
+    #: touch showing a minute later rather than at a proxy spread.
+    snapshots: list[dict] = []
     made, ticks = 0, 0
     #: Consecutive runs that died in the provider. Three is the signal that
     #: the key, not this invocation, is out of money.
@@ -216,7 +257,8 @@ async def sweep(harness: Harness, llm: Any, sources: Any, *, minutes: float, eve
                 starved = True
                 break
         append_books(books, books_out)
-        pending = write_resolved(pending, sources, out, horizon)
+        snapshots.extend(books)
+        pending = write_resolved(pending, sources, out, horizon, snapshots)
         if getattr(llm, "over_budget", False):
             log(f"  ${llm.spent_usd:.4f} spent of ${max_usd:.2f}; stopping early")
             break
@@ -233,7 +275,7 @@ async def sweep(harness: Harness, llm: Any, sources: Any, *, minutes: float, eve
     while pending and waited < 20:
         await sleep(15)
         waited += 1
-        pending = write_resolved(pending, sources, out, horizon)
+        pending = write_resolved(pending, sources, out, horizon, snapshots)
     return {"forecasts": made, "ticks": ticks, "starved": starved,
             "over_budget": bool(getattr(llm, "over_budget", False)),
             "unresolved": len(pending), "spent_usd": float(getattr(llm, "spent_usd", 0.0))}

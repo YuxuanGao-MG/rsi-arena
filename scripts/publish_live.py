@@ -32,7 +32,10 @@ try:
     import psycopg2
     from psycopg2.extras import Json, execute_values
 except ImportError:                                   # pragma: no cover
-    sys.exit("pip install psycopg2-binary")
+    # Not at import: ``paper_trade.py`` borrows ``read_rows`` and ``db_url``
+    # from here and runs before the publish step installs the driver.
+    psycopg2 = None
+    Json = execute_values = None
 
 #: Tool answers are the bulk of a trace and the least re-read part of it.
 TRIM = 1200
@@ -191,6 +194,8 @@ def publish(cur, rows: list[dict]) -> int:
 
 
 def main() -> int:
+    if psycopg2 is None:                                  # pragma: no cover
+        sys.exit("pip install psycopg2-binary")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("path", nargs="?", default="runs/live/forecasts.jsonl")
     ap.add_argument("--db-url", default="")

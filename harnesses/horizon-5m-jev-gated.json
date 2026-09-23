@@ -61,6 +61,22 @@
               "up 4 cents or more"
             ],
             "values": [-5, -2.5, -1, 0, 1, 2.5, 5]
+          },
+          "action": {
+            "type": "choice",
+            "instructions": "What the paper book should do with this contract now, given the move you expect and the gate's read on whether it moves at all, against a round trip of two to three cents in spread and taker fees.",
+            "criteria": {
+              "open_long": "buy YES at the ask: the mid rises by more than the round trip",
+              "open_short": "buy NO at one minus the bid: the mid falls by more than the round trip",
+              "close": "take an open position off at the touch",
+              "hold": "do nothing: no edge worth the spread and the fee"
+            }
+          },
+          "size": {
+            "type": "score",
+            "instructions": "How much of the book's equity to put in this contract if opening. Nothing when holding or closing; the cap is a tenth.",
+            "criteria": ["nothing", "a toe: 2%", "a normal position: 5%", "the cap: 10%"],
+            "values": [0, 0.02, 0.05, 0.10]
           }
         },
         "answers": {
@@ -68,7 +84,9 @@
           "half_width_cents": {"from": "move", "as": "half_range", "coverage": 0.6, "min": 0.5},
           "confidence": {"from": "move", "as": "confidence"},
           "driver": {"as": "const", "value": "the expectation of the move distribution, after a gate on whether it moves at all"},
-          "falsifier": {"as": "const", "value": "a print outside the quoted band before five minutes are up"}
+          "falsifier": {"as": "const", "value": "a print outside the quoted band before five minutes are up"},
+          "action": {"from": "action", "as": "choice"},
+          "size": {"from": "size", "as": "mean", "min": 0, "max": 0.1}
         }
       }
     ]

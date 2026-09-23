@@ -32,6 +32,14 @@ def harness(step, model="typesafe/jev-1.13"):
                               "plan": {"steps": [step]}})
 
 
+def trade_answers(action: str = "hold", level: int = 0) -> dict:
+    """The seeds ask the paper book's two questions beside the move; a fake
+    that answers only ``move`` has to answer these too."""
+    return {"action": {"type": "choice", "choice": action, "probabilities": {action: 1.0}},
+            "size": {"type": "score", "score": float(level), "confidence": 0.7,
+                     "probabilities": {str(i): (1.0 if i == level else 0.0) for i in range(4)}}}
+
+
 def test_the_jev_harness_loads_and_round_trips_its_components():
     h = Harness.load(JEV)
     assert h.config.model.startswith("typesafe/")
@@ -203,7 +211,8 @@ async def test_a_quiet_gate_skips_opus_and_the_forecast_still_renders(t0, histor
         assert "mid 50c" in state, "the state summary reached the questions"
         n = len(questions["move"]["criteria"])
         return {"move": {"type": "score", "score": 3.0, "confidence": 0.8,
-                         "probabilities": {str(i): (1.0 if i == 3 else 0.0) for i in range(n)}}}
+                         "probabilities": {str(i): (1.0 if i == 3 else 0.0) for i in range(n)}},
+                **trade_answers()}
     llm = FakeLLM(lambda m, s, t: "OPUS WAS ASKED", decisions=decisions, cost=0.03)
     rollouts = await evaluate(tk, Harness.load(GATED), tk.instances(), llm)
     assert all(r.run.ok for r in rollouts), [r.run.error for r in rollouts]
@@ -225,10 +234,12 @@ async def test_a_live_gate_asks_opus_and_the_forecast_reads_the_driver(t0, histo
         assert "Driver, if one was asked for: drifting up on a thin book" in state
         n = len(questions["move"]["criteria"])
         return {"move": {"type": "score", "score": 5.0, "confidence": 0.8,
-                         "probabilities": {str(i): (1.0 if i == 5 else 0.0) for i in range(n)}}}
+                         "probabilities": {str(i): (1.0 if i == 5 else 0.0) for i in range(n)}},
+                **trade_answers("open_long", 2)}
     llm = FakeLLM(lambda m, s, t: "drifting up on a thin book", decisions=decisions, cost=0.03)
     [r] = await evaluate(tk, Harness.load(GATED), tk.instances(), llm)
     assert r.run.ok, r.run.error
+    assert r.output["action"] == "open_long" and r.output["size"] == 0.05, "the book's order rides the output"
     assert len(llm.calls) == 1 and llm.calls[0]["model"] == "anthropic/claude-opus-5"
     assert "mid 60c" in llm.calls[0]["messages"][0]["content"], "Opus reads the same summary"
     assert r.output["delta_cents"] == 2.5

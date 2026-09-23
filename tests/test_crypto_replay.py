@@ -340,12 +340,17 @@ def test_the_harness_files_fit_the_task(path):
         assert last.answers["delta_bps"] == {"from": "move", "as": "mean"}
         answer = {"move": {"type": "score", "score": 6.0,
                            "probabilities": {str(i): (1.0 if i == 6 else 0.0) for i in range(7)},
-                           "confidence": 0.9}}
+                           "confidence": 0.9},
+                  "action": {"type": "choice", "choice": "open_long", "probabilities": {"open_long": 1.0}},
+                  "size": {"type": "score", "score": 1.0,
+                           "probabilities": {"0": 0.0, "1": 1.0, "2": 0.0, "3": 0.0}}}
         out = answers_to_output(last.questions, answer, last.answers)
         assert out["delta_bps"] == pytest.approx(15.0) and out["half_width_bps"] >= 1.0
         assert score_output(out, 100000.0, 100150.0).skill == pytest.approx(1.0)
+        assert out["action"] == "open_long" and out["size"] == 0.02, "the book's order rides the output"
     else:
-        assert set(last.output_schema["required"]) >= {"delta_bps", "half_width_bps"}
+        assert set(last.output_schema["required"]) >= {"delta_bps", "half_width_bps", "action", "size"}
+        assert set(last.output_schema["required"]) == set(last.output_schema["properties"]), "strict mode"
 
 
 def test_the_topic_is_registered_and_the_command_prints_it(capsys):

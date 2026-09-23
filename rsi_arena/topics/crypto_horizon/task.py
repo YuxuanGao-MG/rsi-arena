@@ -16,8 +16,11 @@ from ...crypto._onchain import OnchainStore
 from ...crypto.replay import replay_tools
 from ...harness import Run, ToolCache, Toolbox, model_tool_names
 from ...loop import Outcome, Settings
+from ...trading import TRADING_CONTRACT, TradingSpec
 from .._common.thin import thin
+from .._common.trading import book_line
 from .score import METRIC, MoveScore, pooled, pooled_skill, score_from_details, score_output, silent
+from .trading import trading_spec
 from .windows import Benchmark, CryptoWindow, build_windows, load_benchmark
 
 #: What a run that produced no usable forecast loses against deliberate
@@ -55,6 +58,9 @@ spot, the US cash open, a liquidation cascade visible as a taker-sell surge and 
 open interest, and one major leading the others by a minute. Round-trip fees on spot are
 about 20 bps, several times a typical {horizon}-minute move, so a useful forecast is one
 confident enough to be worth trading, which is rare."""
+
+#: Appended after ``format``: the contract is prose with no fields in it.
+BACKGROUND = BACKGROUND + "\n\n" + TRADING_CONTRACT.replace("{", "{{").replace("}", "}}")
 
 
 #: What the rewriter is told about the models it may choose, measured on this
@@ -97,6 +103,14 @@ class CryptoHorizon:
         self.background = BACKGROUND.format(horizon=self.horizon,
                                             plural="" if self.horizon == 1 else "s",
                                             tick=self.metric.tick)
+        self._trading: TradingSpec | None = None
+
+    @property
+    def trading(self) -> TradingSpec:
+        """How a window of this task becomes a paper trade on the perpetual."""
+        if self._trading is None:
+            self._trading = trading_spec(self)
+        return self._trading
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "CryptoHorizon":
@@ -212,7 +226,9 @@ class CryptoHorizon:
             details=details)
 
 
-def _feedback(w: CryptoWindow, s: MoveScore | None, run: Run | None, horizon: int) -> str:
+def _feedback(w: CryptoWindow, s: MoveScore | None, run: Run | None, horizon: int,
+              trade: dict[str, Any] | None = None) -> str:
+    """``trade`` is the paper book's record, present only after a replay."""
     move = METRIC.move(w.mid_now, w.realised)
     lines = [f"{w.symbol} at {w.at.isoformat()[:16]}Z: last close {w.mid_now:,.2f}, {horizon} minute"
              f"{'' if horizon == 1 else 's'} later {w.realised:,.2f} ({move:+.1f} bps; no-change would "
@@ -238,6 +254,8 @@ def _feedback(w: CryptoWindow, s: MoveScore | None, run: Run | None, horizon: in
         if bad:
             lines.append("Tool errors: " + "; ".join(f"{t['tool']}: {t['error']}" for t in bad) + ".")
         lines.append(f"Cost ${run.cost_usd:.4f}.")
+    if trade:
+        lines.append(book_line(trade))
     return " ".join(lines)
 
 

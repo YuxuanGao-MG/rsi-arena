@@ -124,7 +124,12 @@ def live_tools(at: datetime, spot: Any, tape: Any = None, *,
                "bid_qty": round(bid_qty, 4), "ask_qty": round(ask_qty, 4),
                "imbalance": round((bid_qty - ask_qty) / (bid_qty + ask_qty), 3) if bid_qty + ask_qty else 0.0,
                "levels": int(depth)}
-        return ToolResult(ok=True, text=json.dumps(out), data=out)
+        # The ladder rides in ``data`` for the collector's snapshot and the
+        # paper book's fills; the model reads the summary only, so the text
+        # is unchanged.
+        ladder = {"bids": [[float(p), float(q)] for p, q in bids[:int(depth)]],
+                  "asks": [[float(p), float(q)] for p, q in asks[:int(depth)]]}
+        return ToolResult(ok=True, text=json.dumps(out), data={**out, **ladder})
 
     def mempool() -> ToolResult:
         from ._onchain import mempool_now

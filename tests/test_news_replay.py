@@ -366,12 +366,16 @@ def test_both_harness_files_load_against_the_box():
     assert jev.config.model == "typesafe/jev-1.13"
     step = jev.plan.steps[-1]
     assert step.questions["move"]["values"] == [-60, -25, -8, 0, 8, 25, 60]
+    trade = {"action": {"type": "choice", "choice": "open_short", "probabilities": {"open_short": 1.0}},
+             "size": {"type": "score", "score": 3.0, "probabilities": {"0": 0, "1": 0, "2": 0, "3": 1.0}}}
     piled = {"move": {"type": "score", "score": 6.0,
-                      "probabilities": {str(i): (1.0 if i == 6 else 0.0) for i in range(7)}, "confidence": 0.9}}
+                      "probabilities": {str(i): (1.0 if i == 6 else 0.0) for i in range(7)}, "confidence": 0.9},
+             **trade}
     out = answers_to_output(step.questions, piled, step.answers)
     assert out["delta_bps"] == 60 and out["half_width_bps"] == 2 and out["confidence"] == 0.9
+    assert out["action"] == "open_short" and out["size"] == 0.1, "the book's order rides the output"
     spread = {"move": {"type": "score", "score": 3.0,
-                       "probabilities": {"2": 0.3, "3": 0.4, "4": 0.3}, "confidence": 0.5}}
+                       "probabilities": {"2": 0.3, "3": 0.4, "4": 0.3}, "confidence": 0.5}, **trade}
     out = answers_to_output(step.questions, spread, step.answers)
     assert out["delta_bps"] == 0 and out["half_width_bps"] == 8
 

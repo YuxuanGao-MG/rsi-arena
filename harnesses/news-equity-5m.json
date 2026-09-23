@@ -51,9 +51,20 @@
             "falsifier": {
               "type": "string",
               "description": "What would show this call was wrong, before five minutes are up."
+            },
+            "action": {
+              "type": "string",
+              "enum": ["open_long", "open_short", "close", "hold"],
+              "description": "What the paper book should do in the shares now. open_long buys at the offer and open_short sells short at the bid, at a three-basis-point half spread with SEC and TAF charges on every sale; close takes an open position off at the touch; hold does nothing. Trade only when the move you expect clears a round trip of about six basis points."
+            },
+            "size": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.1,
+              "description": "Fraction of the book's equity to put in this name if opening, 0 to 0.10. 0 when holding or closing."
             }
           },
-          "required": ["delta_bps", "half_width_bps", "confidence", "driver", "falsifier"],
+          "required": ["delta_bps", "half_width_bps", "confidence", "driver", "falsifier", "action", "size"],
           "additionalProperties": false
         }
       }

@@ -13,9 +13,12 @@ from ...harness import Run, Toolbox, model_tool_names
 from ...kalshi._history import History
 from ...kalshi.replay import MatchTimeline, ToolCache, match_timeline, replay_tools
 from ...loop import Outcome, Settings
+from ...trading import TRADING_CONTRACT, TradingSpec
 from .._common.metric import Metric
 from .._common.thin import thin
+from .._common.trading import book_line
 from .score import WindowScore, pooled, pooled_skill, score_output
+from .trading import trading_spec
 from .windows import Window, build_windows, load_fixtures
 
 #: What a run that produced no usable forecast loses against deliberate silence,
@@ -48,6 +51,8 @@ goals and cards that the price has not absorbed yet, time decay on a draw or a l
 as the clock runs down, and thin books drifting back after a single order moved them.
 Round-trip fees on Kalshi are two to three cents, the same size as typical moves, so a
 useful forecast is one confident enough to be worth trading."""
+
+BACKGROUND = BACKGROUND + "\n\n" + TRADING_CONTRACT
 
 
 #: What the rewriter is told about the models it may choose, measured on this
@@ -93,6 +98,15 @@ class KalshiHorizon:
         #: price of eight. Zero keeps all of them.
         self.per_fixture = per_fixture
         self._timelines: dict[str, MatchTimeline | None] = {}
+        self._trading: TradingSpec | None = None
+
+    @property
+    def trading(self) -> TradingSpec:
+        """How a window of this task becomes a paper trade. Built once, so
+        the deadline scan over the question set happens once."""
+        if self._trading is None:
+            self._trading = trading_spec(self)
+        return self._trading
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "KalshiHorizon":
@@ -240,7 +254,11 @@ def _score_of(o: Outcome) -> WindowScore:
                        half_width=d["half_width"])
 
 
-def _feedback(w: Window, s: WindowScore | None, run: Run | None) -> str:
+def _feedback(w: Window, s: WindowScore | None, run: Run | None,
+              trade: dict[str, Any] | None = None) -> str:
+    """The window's result in words. ``trade`` is the paper book's record of
+    it, present only after a replay (``_common/trading.with_trade`` appends
+    the same line to an outcome scored before the book existed)."""
     move = w.realised - w.mid_now
     lines = [f"{w.ticker} at {w.at.isoformat()[:16]}Z: mid {w.mid_now:.3f}, five minutes later "
              f"{w.realised:.3f} ({100 * move:+.1f}c; no-change would miss by {abs(move):.3f})."]
@@ -265,6 +283,8 @@ def _feedback(w: Window, s: WindowScore | None, run: Run | None) -> str:
         if bad:
             lines.append("Tool errors: " + "; ".join(f"{t['tool']}: {t['error']}" for t in bad) + ".")
         lines.append(f"Cost ${run.cost_usd:.4f}.")
+    if trade:
+        lines.append(book_line(trade))
     return " ".join(lines)
 
 

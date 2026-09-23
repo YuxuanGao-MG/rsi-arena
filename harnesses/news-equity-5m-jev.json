@@ -45,6 +45,22 @@
               "up 100 basis points or more"
             ],
             "values": [-60, -25, -8, 0, 8, 25, 60]
+          },
+          "action": {
+            "type": "choice",
+            "instructions": "What the paper book should do in the shares now, given the move you expect against a round trip of about six basis points in spread plus the SEC and TAF charges on a sale.",
+            "criteria": {
+              "open_long": "buy shares at the offer: the price rises by more than the round trip",
+              "open_short": "sell shares short at the bid: the price falls by more than the round trip",
+              "close": "take an open position off at the touch",
+              "hold": "do nothing: no edge worth the spread and the charges"
+            }
+          },
+          "size": {
+            "type": "score",
+            "instructions": "How much of the book's equity to put in this name if opening. Nothing when holding or closing; the cap is a tenth.",
+            "criteria": ["nothing", "a toe: 2%", "a normal position: 5%", "the cap: 10%"],
+            "values": [0, 0.02, 0.05, 0.10]
           }
         },
         "answers": {
@@ -52,7 +68,9 @@
           "half_width_bps": {"from": "move", "as": "half_range", "coverage": 0.6, "min": 2},
           "confidence": {"from": "move", "as": "confidence"},
           "driver": {"as": "const", "value": "the expectation of the move distribution"},
-          "falsifier": {"as": "const", "value": "a print outside the quoted band before five minutes are up"}
+          "falsifier": {"as": "const", "value": "a print outside the quoted band before five minutes are up"},
+          "action": {"from": "action", "as": "choice"},
+          "size": {"from": "size", "as": "mean", "min": 0, "max": 0.1}
         }
       }
     ]

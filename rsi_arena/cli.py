@@ -23,6 +23,7 @@ from .loop import (Archive, Entry, Generation, Progress, Scoreboard, Rollout, Se
                    render_lineage, split_by_group, summarise, three_way_split)
 from .loop.budget import (SpendStopper, cascade_verdict, fresh_rate, holdout_shortfall,
                           judgment_reserve)
+from .loop.books import replay_books
 from .loop.gate import MAX_UNSCORED
 from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_harness
 from .topics import TOPICS, load_topic, spec_of
@@ -149,6 +150,34 @@ def _closing(llm: OpenRouter):
             await llm.close()
 
     return _run
+
+
+def _with_book(task, rollouts: list[Rollout], run_dir: Path | None, side: str, split: str,
+               harness: Harness) -> dict[str, Any]:
+    """``summarise`` plus the paper book: the rollouts replayed through the
+    task's ``trading`` spec, the book written under ``<run_dir>/books/``, its
+    stats under ``"book"`` and each rollout's cycle under its outcome's
+    ``details["trade"]``.
+
+    A task without ``trading`` gets the plain summary. A book that fails
+    gets logged and nothing else: the book is a reading of the generation,
+    never a reason to lose one.
+    """
+    out = summarise(task, rollouts)
+    if getattr(task, "trading", None) is None or not rollouts:
+        return out
+    try:
+        stats, path = replay_books(task, rollouts, run_dir=run_dir, side=side, split=split,
+                                   harness_fp=fingerprint(harness), harness_name=harness.name,
+                                   write=run_dir is not None)
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        log(f"  paper book for {side}.{split} not built: {type(exc).__name__}: {exc}")
+        return out
+    out["book"] = stats
+    log(f"  book {side}.{split}: {stats['total_return']:+.2%} over {stats['trades']} trades, "
+        f"max drawdown {stats['max_drawdown']:.2%}, fees ${stats['fees_usd']:,.0f}"
+        + (f" -> {path}" if path else ""))
+    return out
 
 
 def _dump_rollouts(path: Path, rollouts: list[Rollout], *, trace: bool = False) -> None:
@@ -318,8 +347,12 @@ def cmd_bench(args: argparse.Namespace) -> int:
     llm = _llm(s)
     rollouts = asyncio.run(_closing(llm)(
         evaluate(task, harness, chosen, llm, concurrency=s.concurrency)))
+    # The book goes under --out's directory (``<dir>/books/bench.<split>.json``);
+    # without --out there is nowhere to put it and only the stats are kept.
     summary = {"harness": harness.name, "source": source, "fingerprint": fingerprint(harness),
-               "split": args.split, **summarise(task, rollouts)}
+               "split": args.split,
+               **_with_book(task, rollouts, Path(args.out).parent if args.out else None,
+                            "bench", args.split, harness)}
     if args.out:
         _dump_rollouts(Path(args.out), rollouts, trace=args.trace)
     if args.json:
@@ -399,7 +432,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     if memo is not None:
         log(f"  reused {memo.hits} of {len(probe) + len(hold)}, saving about "
             f"${memo.hits * 0.034:.0f}")
-    gen.baseline = {"train": summarise(task, base_train), "holdout": summarise(task, base_hold)}
+    gen.baseline = {"train": _with_book(task, base_train, run_dir, "baseline", "train", incumbent),
+                    "holdout": _with_book(task, base_hold, run_dir, "baseline", "holdout", incumbent)}
     _dump_rollouts(run_dir / "rollouts" / "baseline.train.json", base_train,
                    trace=args.trace)
     _dump_rollouts(run_dir / "rollouts" / "baseline.holdout.json", base_hold,
@@ -639,7 +673,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         beat.phase("holdout", spent_usd=round(llm.spent_usd, 2))
         cand_hold = _bench(task, candidate, hold, llm, s,
                            memo=memo, fingerprint=gen.candidate_fingerprint)
-    gen.candidate = {"train": summarise(task, cand_train), "holdout": summarise(task, cand_hold)}
+    gen.candidate = {"train": _with_book(task, cand_train, run_dir, "candidate", "train", candidate),
+                     "holdout": _with_book(task, cand_hold, run_dir, "candidate", "holdout", candidate)}
     _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train,
                    trace=args.trace)
     _dump_rollouts(run_dir / "rollouts" / "candidate.holdout.json", cand_hold,
@@ -696,8 +731,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                          candidate_holdout=cand_audit, incumbent_holdout=base_audit,
                          max_cost_ratio=s.max_cost_ratio, cost_floor=s.cost_floor_usd,
                          seed=s.seed)
-        gen.audit = {"baseline": summarise(task, base_audit),
-                     "candidate": summarise(task, cand_audit),
+        gen.audit = {"baseline": _with_book(task, base_audit, run_dir, "baseline", "audit", incumbent),
+                     "candidate": _with_book(task, cand_audit, run_dir, "candidate", "audit", candidate),
                      "decision": confirm.to_dict()}
         _dump_rollouts(run_dir / "rollouts" / "baseline.audit.json", base_audit, trace=args.trace)
         _dump_rollouts(run_dir / "rollouts" / "candidate.audit.json", cand_audit, trace=args.trace)

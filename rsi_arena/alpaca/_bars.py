@@ -259,11 +259,15 @@ class AlpacaBars:
             d += timedelta(days=1)
         return out
 
-    def price_at(self, symbol: str, at: datetime, max_stale_s: int = MAX_STALE_S) -> float | None:
-        """Close of the last bar that had closed by ``at`` and opened within
+    def bar_at(self, symbol: str, at: datetime, max_stale_s: int = MAX_STALE_S) -> Bar | None:
+        """The last bar that had closed by ``at`` and opened within
         ``max_stale_s`` of it; None when the name had gone quiet."""
-        bar = last_complete_bar(self.bars(symbol, at - timedelta(seconds=max_stale_s + BAR_S), at),
-                                at, max_stale_s)
+        return last_complete_bar(self.bars(symbol, at - timedelta(seconds=max_stale_s + BAR_S), at),
+                                 at, max_stale_s)
+
+    def price_at(self, symbol: str, at: datetime, max_stale_s: int = MAX_STALE_S) -> float | None:
+        """Close of :meth:`bar_at`."""
+        bar = self.bar_at(symbol, at, max_stale_s)
         return None if bar is None else bar.c
 
     def realised_price(self, symbol: str, at: datetime, horizon: int = HORIZON_MINUTES) -> float | None:
