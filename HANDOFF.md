@@ -50,6 +50,10 @@ per topic, kalshi 03:17/11:17/19:17 UTC, crypto 05:47/13:47/21:47, news
 `supabase/migrations/008_topics.sql` is applied; the reader at
 https://rsi.up.railway.app has a topic switcher and reads `topic`/`unit` on every row.
 
+Paper trading: every harness keeps a simulated $1M book (`rsi_arena/trading/`,
+migration 009, the reader's Trading page); PnL is reported beside skill, the
+gate still promotes on skill. See `docs/design.md` Status 2026-09-23.
+
 What is not yet done: a 30-second crypto horizon (needs 1 s klines from a live
 collector) and more crypto days (the gate resolves 0.050 on 30 held-out days;
 news resolves 0.009 on 300 symbol-days). Every topic has run at least one

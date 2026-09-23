@@ -1,5 +1,43 @@
 # Design: the alternative
 
+## Status, 2026-09-23: a paper book beside the metric
+
+Every harness now keeps a simulated book (`rsi_arena/trading/`): a million
+dollars, a decision each cycle - open long, open short, close, hold, and a
+size up to a tenth of equity, half of equity gross - fills that cross the
+recorded spread and pay the venue's fees (Kalshi taker fees on YES or NO,
+a perpetual at five basis points a side for crypto, vwap plus a three-basis-
+point half-spread and SEC/TAF for equities), marks at every cycle, force-
+closes at the topic's horizon (match end, sixty minutes, the session close).
+The same engine runs over a generation's rollouts in instance-time order
+(one book per harness per split, published as `<run>:<side>:<split>`) and
+over the live forecasts (one book per topic, `live:<topic>`, carried across
+incumbent changes with a handover mark). The reader's Trading page shows
+the equity curve with drawdown, a leaderboard of every book, Sharpe (per
+cycle, with a daily figure beside it), max drawdown, hit rate, turnover,
+fees, open positions, recent trades, winners and losers.
+
+PnL is a parallel metric. The gate still promotes on skill, on purpose: a
+PnL objective would send the optimizer after the fill and fee model's
+edges rather than after the price, and its noise would cost the gate the
+resolution the cheap window just bought.
+
+A harness may say what to do (`action`, `size`; the seeds now ask Jev a
+choice question and a score question for them); a harness that does not
+trades a default rule - open in the forecast's direction when the move
+clears the round trip plus the quoted half-width, quarter-Kelly, capped.
+Backfilled over the three first generations that rule made **no trade at
+all**: the forecasts' expected moves (1.2c, 4.7 bps, 20 bps at most) never
+clear the round trip (about 6c, 12 bps, 6 bps) once the half-width is
+added, which is the honest reading of harnesses whose skill is still below
+zero. Books with trades will come from harnesses that choose to trade, and
+the leaderboard will say what that costs them.
+
+Limitations stated: Kalshi and equity fills are at the touch with no depth;
+Kalshi replay quotes are a two-cent proxy until the question set is rebuilt
+with the new bid/ask fields; per-cycle Sharpe is inflated by idle cycles;
+funding and borrow are ignored.
+
 ## Status, 2026-09-23: the first promotion
 
 The Kalshi lineage restarted on Jev on the 22nd (`runs/kalshi-jev/`, held-out
