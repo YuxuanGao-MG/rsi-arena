@@ -22,6 +22,25 @@ PnL objective would send the optimizer after the fill and fee model's
 edges rather than after the price, and its noise would cost the gate the
 resolution the cheap window just bought.
 
+PnL is now on the search's frontier, though. `TaskAdapter.evaluate`
+replays every batch it scores - a reflection minibatch of eight or the
+valset - through a book of its own in instance-time order (the honest unit:
+a position carried across batches would credit one candidate's fill to
+another's exit), attaches each cycle's record and its `Book:` line to the
+outcome the rewriter reads, and reports `objectives["pnl"]` beside `skill`
+and `cost`: 0.5 for a cycle that holds, a percent of the book made or lost
+the whole [0, 1] range (`PNL_SCALE_USD`, symmetric with how `value` scales
+skill). GEPA runs with `frontier_type="hybrid"` (gepa 0.1.4: instance,
+objective, hybrid, cartesian; the default was instance): the per-instance
+frontier that selection was measured on, plus one key per objective held
+by the candidate with the best valset mean of it. The candidate that makes
+the most paper money keeps a seat on the frontier and one extra draw as a
+parent; with hundreds of instance keys against three objective keys, the
+instance frontier stays primary, which is why not `cartesian`. The frontier
+only chooses which candidate is rewritten next; GEPA's best candidate is
+still the best mean skill, and `loop/gate.py` is untouched - promotion is
+by skill.
+
 A harness may say what to do (`action`, `size`; the seeds now ask Jev a
 choice question and a score question for them); a harness that does not
 trades a default rule - open in the forecast's direction when the move

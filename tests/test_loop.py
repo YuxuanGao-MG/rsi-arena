@@ -72,7 +72,9 @@ def test_adapter_speaks_gepa(t0, history):
     # well under the ten cents a full point is worth — a perfect forecast on a
     # quiet market is still a small edge, and the value says so.
     assert all(0.5 < v <= 1.0 for v in batch.scores), batch.scores
-    assert set(batch.objective_scores[0]) == {"skill", "cost"}
+    # "pnl" is the batch's paper book, attached by the adapter; the topic's
+    # own objectives are the other two. See test_pnl_objective.py.
+    assert set(batch.objective_scores[0]) == {"skill", "cost", "pnl"}
     assert batch.trajectories[0]["tools"][0]["tool"] == "market_quote"
     data = adapter.make_reflective_dataset(adapter.base.to_components(), batch, ["plan", "context"])
     assert set(data) == {"plan", "context"} and len(data["plan"]) == 3

@@ -29,6 +29,22 @@ from .loop.generation import BEST, fingerprint, fingerprint_components, resolve_
 from .topics import TOPICS, load_topic, spec_of
 from .topics._common.metric import Metric
 
+#: How GEPA keeps its Pareto frontier (gepa 0.1.4: "instance", "objective",
+#: "hybrid", "cartesian"). "hybrid" is the per-instance frontier - one key
+#: per valset window, held by whichever candidates score best on it, which is
+#: what the +12.44% frontier-proportional selection was measured on - plus one
+#: key per named objective (skill, cost, and now pnl), held by the candidate
+#: with the best valset mean of it. So the candidate that makes the most
+#: paper money keeps a seat on the frontier and one extra draw as a parent
+#: even when it wins no single window on skill, and no more than that: with
+#: some hundreds of instance keys against three objective keys, the instance
+#: frontier stays primary. "cartesian" would key every (window, objective)
+#: pair and hand pnl a third of the frontier, which is the fill-and-fee model
+#: driving the search that docs/design.md says it must not. The frontier only
+#: chooses which candidate gets rewritten next; GEPA's best candidate is still
+#: the best scalar (skill) mean, and promotion is loop/gate.py's, on skill.
+FRONTIER_TYPE = "hybrid"
+
 
 def log(message: str) -> None:
     print(message, file=sys.stderr)
@@ -579,6 +595,10 @@ def cmd_optimize(args: argparse.Namespace) -> int:
         reflection_lm=SyncLLM(llm, s.reflection_model),
         reflection_prompt_template=reflection_templates(task, incumbent, s.model_choices),
         reflection_minibatch_size=s.minibatch, max_metric_calls=s.max_metric_calls,
+        # Per-instance keys plus one per objective, so the paper book's P&L
+        # (objectives["pnl"], attached by the adapter) earns a seat on the
+        # frontier without owning it. See FRONTIER_TYPE. Promotion is unchanged.
+        frontier_type=FRONTIER_TYPE,
         # System-Aware Merge: combine the best module versions from two Pareto
         # lineages instead of only mutating one. The archive is full of
         # specialists - candidates uniquely best on 41, 36, 34 instances while

@@ -23,6 +23,20 @@ CYCLES_PER_YEAR = {"kalshi-horizon-5m": 105_120,
                    "crypto-horizon-1m": 525_600,
                    "news-equity-5m": 19_656}
 
+#: One percent of the starting book. A cycle that makes this much is a full
+#: point on the search's frontier and a cycle that loses it is zero, which is
+#: how ``value`` scales skill (ten cents of edge a full point): small enough
+#: that a real trade registers, large enough that the fee model's rounding
+#: does not.
+PNL_SCALE_USD = START_EQUITY / 100
+
+
+def pnl_objective(pnl_usd: float) -> float:
+    """A cycle's realised P&L after fees as a [0, 1] objective, 0.5 for no
+    trade. Symmetric and clipped: a percent of the book either way is the
+    whole range, and nothing a single cycle does can weigh more than that."""
+    return min(1.0, max(0.0, 0.5 + float(pnl_usd) / (2 * PNL_SCALE_USD)))
+
 
 def _sharpe(series: list[float], per_year: float) -> float:
     returns = [b / a - 1.0 for a, b in zip(series, series[1:]) if a > 0]
@@ -95,4 +109,4 @@ def book_stats(book: Any, cycles_per_year: float) -> dict[str, Any]:
                         handovers=len(book.handovers), refusals=len(book.refusals))
 
 
-__all__ = ["CYCLES_PER_YEAR", "equity_stats", "book_stats"]
+__all__ = ["CYCLES_PER_YEAR", "PNL_SCALE_USD", "pnl_objective", "equity_stats", "book_stats"]

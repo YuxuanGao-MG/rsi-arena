@@ -23,7 +23,7 @@ sitting silently in a market that stopped being asked about.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
@@ -100,10 +100,56 @@ def cycles_of(rollouts: list[Any], spec: TradingSpec) -> list[Cycle]:
         delta, half = read if read is not None else (0.0, 0.0)
         run = getattr(r, "run", None)
         out.append(Cycle(at=inst.at, instrument=spec.instrument_of(inst), instance_id=inst.id,
-                         run_id=getattr(run, "run_id", "") or "", output=run.output if run else None,
+                         run_id=getattr(run, "run_id", "") or "",
+                         output=run.output if run else _remembered_order(r.outcome),
                          delta=delta, half_width=half, entry=entry, exit=exit_,
                          horizon_at=exit_.at, deadline=spec.deadline_of(inst)))
     return sorted(out, key=lambda c: (c.at, c.instrument, c.instance_id))
+
+
+def _remembered_order(outcome: Any) -> dict[str, Any] | None:
+    """The order a rollout with no run gave, if an earlier book recorded one.
+
+    A memoised rollout has no output, so its cycle used to trade the default
+    rule whatever the harness had said - which judged a remembered candidate
+    by a rule and a fresh one by its own hand. The record a generation's book
+    left under ``details["trade"]`` keeps the harness's action and size when
+    the harness gave them (``source == "harness"``); a default-rule record is
+    not replayed as an order, because it was not one.
+    """
+    trade = (getattr(outcome, "details", None) or {}).get("trade")
+    if not isinstance(trade, dict) or trade.get("source") != "harness":
+        return None
+    return {"action": trade.get("action"), "size": trade.get("size")}
+
+
+def book_line(record: dict[str, Any]) -> str:
+    """``Book: open_long 5% -> +120 USD (horizon)``, from a replay record."""
+    action, size = record.get("action", "hold"), float(record.get("size") or 0.0)
+    pnl = float(record.get("pnl_usd") or 0.0)
+    reason = record.get("reason") or ("refused" if record.get("refused") else "no trade")
+    return f"Book: {action} {size:.0%} -> {pnl:+.0f} USD ({reason})"
+
+
+def with_trade(outcome: Any, record: dict[str, Any]) -> Any:
+    """The outcome (a frozen dataclass with ``details`` and ``feedback``) with
+    the record under ``details["trade"]`` and the line on the end of its
+    feedback, so a rewriter reads what the forecast was worth as money beside
+    what it was worth as skill.
+
+    A rollout is scored before any book exists, so the line cannot be written
+    at scoring time; it is appended when a replay attaches its record. An
+    outcome that already carries a line - one remembered off a scoreboard
+    whose generation wrote its book - gets that line replaced, not a second
+    one, because the record being attached is the book it is now in.
+    """
+    details = {**outcome.details, "trade": dict(record)}
+    feedback = outcome.feedback.rstrip()
+    if " Book: " in feedback:
+        feedback = feedback.rsplit(" Book: ", 1)[0]
+    elif feedback.startswith("Book: "):
+        feedback = ""
+    return replace(outcome, details=details, feedback=f"{feedback} {book_line(record)}".strip())
 
 
 def _record(res: Any, closed: list[Any]) -> dict[str, Any]:
@@ -179,4 +225,5 @@ def replay_book(cycles: list[Cycle], spec: TradingSpec, *, book_id: str, harness
     return book, records
 
 
-__all__ = ["Cycle", "TradingSpec", "cycles_of", "replay_book", "apply_cycle", "delta_from_details"]
+__all__ = ["Cycle", "TradingSpec", "cycles_of", "replay_book", "apply_cycle", "delta_from_details",
+           "book_line", "with_trade"]

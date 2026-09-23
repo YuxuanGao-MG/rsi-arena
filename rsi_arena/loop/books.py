@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..trading import Book, book_stats, cycles_of, replay_book
+from ..trading import Book, book_stats, cycles_of, replay_book, with_trade
 from .generation import qualified
 from .task import Rollout
 
@@ -45,14 +45,6 @@ def book_file(book: Book, *, run_id: str | None, side: str, split: str, stats: d
             "refusals": list(book.refusals)}
 
 
-def _with_trade(outcome: Any, record: dict[str, Any]) -> Any:
-    """The outcome with the record under ``details["trade"]`` and the line
-    on the end of its feedback. The line is the topics' shared one, imported
-    lazily so this module stays out of ``rsi_arena.topics`` at import."""
-    from ..topics._common.trading import with_trade
-    return with_trade(outcome, record)
-
-
 def replay_books(task: Any, rollouts: list[Rollout], *, run_dir: str | Path | None, side: str,
                  split: str, harness_fp: str, harness_name: str, write: bool = True,
                  ) -> tuple[dict[str, Any], Path | None]:
@@ -72,7 +64,7 @@ def replay_books(task: Any, rollouts: list[Rollout], *, run_dir: str | Path | No
     for i, r in enumerate(rollouts):
         record = records.get(r.instance.id)
         if record is not None:
-            rollouts[i] = replace(r, outcome=_with_trade(r.outcome, record))
+            rollouts[i] = replace(r, outcome=with_trade(r.outcome, record))
     path = None
     if write and run_dir is not None:
         run_id = qualified(run_dir, task.name)

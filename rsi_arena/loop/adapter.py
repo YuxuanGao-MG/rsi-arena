@@ -9,12 +9,15 @@ reflect on. Everything about *how* to mutate is GEPA's; everything about
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from gepa.core.adapter import EvaluationBatch, GEPAAdapter
 
 from ..harness import LLM, Harness, HarnessError, Plan, model_tool_names, run_sync
+from ..trading import cycles_of, pnl_objective, replay_book, with_trade
 from .generation import fingerprint_components
 from .task import Instance, Rollout, Task, evaluate
 
@@ -44,6 +47,9 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
         # much as what was, and asking the topic per trajectory would cost the
         # question set each time.
         self.available = _available(task, base)
+        #: Whether a batch's paper book has already failed to build. A book
+        #: failure is logged once and never fails an evaluation.
+        self._book_failed = False
 
     def evaluate(self, batch: list[Instance], candidate: dict[str, str],
                  capture_traces: bool = False) -> EvaluationBatch[dict, dict]:
@@ -60,24 +66,31 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
                     f"{', '.join(self.model_choices)}")
         except HarnessError as exc:
             rollouts = [Rollout(instance=i, run=None, outcome=self.task.failed(i, str(exc))) for i in batch]
+            fp, remember = fingerprint_components(candidate, None), False
         else:
             # The memo is consulted only when traces are not wanted. A remembered
             # outcome has no trajectory, and the reflection path needs one — so
             # the cheap large scoring passes reuse, and the small minibatch that
             # feeds the rewriter is always run for real.
-            fp = ""
-            if self.memo is not None and not capture_traces:
-                fp = fingerprint_components(candidate, harness.config.model)
+            fp = fingerprint_components(candidate, harness.config.model)
+            remember = self.memo is not None and not capture_traces
             rollouts = run_sync(evaluate(self.task, harness, batch, self.llm,
                                          concurrency=self.concurrency,
-                                         memo=None if capture_traces else self.memo,
-                                         fingerprint=fp))
-            if self.memo is not None and fp:
-                self.memo.absorb(fp, rollouts)
+                                         memo=self.memo if remember else None,
+                                         fingerprint=fp if remember else ""))
             for r in rollouts:
                 if r.run is not None:
                     self._fresh_usd += r.run.cost_usd
                     self._fresh_windows += 1
+        rollouts = self._traded(rollouts, fp)
+        if remember:
+            # Absorbed with the book attached. A remembered rollout has no run
+            # and so no output; the record under details["trade"] is where the
+            # order the harness gave survives, and the next batch's replay
+            # reads it back (``cycles_of``) rather than trading the default
+            # rule on the harness's behalf. The batch-specific parts of the
+            # record - the P&L, the line - are replaced by that replay.
+            self.memo.absorb(fp, rollouts)
         return EvaluationBatch(
             outputs=[_as_dict(r.output) for r in rollouts],
             scores=[r.outcome.value for r in rollouts],
@@ -88,6 +101,52 @@ class TaskAdapter(GEPAAdapter[Instance, dict, dict]):
     def rate(self) -> float:
         """Dollars a window the search has been paying; zero until it has run one."""
         return self._fresh_usd / self._fresh_windows if self._fresh_windows else 0.0
+
+    def _traded(self, rollouts: list[Rollout], harness_fp: str) -> list[Rollout]:
+        """The batch replayed through a paper book, if the task keeps one.
+
+        Each rollout comes back with its cycle's record under
+        ``details["trade"]`` and the ``Book:`` line on its feedback (so the
+        rewriter reads the fill beside the skill), and with ``objectives["pnl"]``:
+        the cycle's realised P&L after fees, scaled so that a percent of the
+        book either way is the whole [0, 1] range and a cycle that holds is
+        exactly 0.5. The gate never reads it - promotion is by skill, on
+        purpose (docs/design.md, 2026-09-23) - but GEPA's frontier does.
+
+        The book is the batch's, in instance-time order, and nothing else: a
+        reflection minibatch of eight windows or the valset of some hundreds.
+        A position carried across batches would credit one candidate's fill to
+        another's exit, so the honest unit the search can be judged on is the
+        book it can see whole. The same cycle can therefore score differently
+        in different batches, which is also true of every other number a
+        minibatch reads.
+
+        A task without ``trading`` is left alone. A book that fails is logged
+        once and the batch is returned untraded: the book is a reading of the
+        evaluation, never a reason to lose one.
+        """
+        spec = getattr(self.task, "trading", None)
+        if spec is None or not rollouts:
+            return rollouts
+        try:
+            _, records = replay_book(cycles_of(rollouts, spec), spec, book_id="search",
+                                     harness_fp=harness_fp)
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            if not self._book_failed:
+                self._book_failed = True
+                print(f"  paper book for the search batch not built: {type(exc).__name__}: {exc}",
+                      file=sys.stderr)
+            return rollouts
+        out = []
+        for r in rollouts:
+            record = records.get(r.instance.id)
+            if record is None:
+                out.append(r)
+                continue
+            outcome = with_trade(r.outcome, record)
+            objectives = {**outcome.objectives, "pnl": pnl_objective(record.get("pnl_usd") or 0.0)}
+            out.append(replace(r, outcome=replace(outcome, objectives=objectives)))
+        return out
 
     @staticmethod
     def _trajectory(r: Rollout) -> dict[str, Any]:
@@ -177,6 +236,16 @@ def _available(task: Task, base: Harness) -> list[str]:
     return sorted(set(found) | set(model_tool_names()))
 
 
+#: One sentence on the "Book:" line, shown to the context and plan rewriters
+#: of a task that keeps a paper book. It says what the line is and what the
+#: search does with it, and no more: the trading contract itself is in the
+#: task's background.
+BOOK_NOTE = ("The \"Book: ...\" line on each example is the paper trade the harness made on that "
+             "forecast and its P&L after fees; a harness may trade only when it expects the move "
+             "to clear the round trip, and should decline otherwise. P&L is reported and rewarded "
+             "on the search's frontier, but promotion is by skill alone.")
+
+
 def reflection_templates(task: Task, base: Harness,
                          model_choices: tuple = ()) -> dict[str, str]:
     """One reflection prompt per component, with the task stated once.
@@ -198,12 +267,16 @@ def reflection_templates(task: Task, base: Harness,
     # the loop's one prompt about models a prompt about Kalshi.
     notes = str(getattr(task, "model_notes", "") or "").strip()
     notes = notes + " " if notes else ""
+    # What the "Book:" line on each example is, for the two components that
+    # decide whether and how much to trade. Only when the task keeps a book:
+    # a task without one has no line to explain.
+    book = BOOK_NOTE + " " if getattr(task, "trading", None) is not None else ""
     return {
         "context": head + "The current context (the system prompt every model step sees):\n```\n<curr_param>\n```\n\n"
-                   + examples + "Write a new context. Keep what works, fix what the feedback shows, and "
+                   + examples + book + "Write a new context. Keep what works, fix what the feedback shows, and "
                    "state the domain facts a model would not otherwise know. Provide it within ``` blocks.",
         "plan": head + "The current plan, as JSON:\n```\n<curr_param>\n```\n\n"
-                + "Plan grammar:\n" + Plan.GRAMMAR + "\n\n" + examples
+                + "Plan grammar:\n" + Plan.GRAMMAR + "\n\n" + examples + book
                 + "Write a new plan as JSON in the same grammar: change the steps, their prompts, "
                 "their order, add or remove tool calls, or add a loop, whatever the feedback "
                 "argues for. The plan may only call tools the harness's CURRENT tool list names "

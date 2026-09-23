@@ -17,8 +17,9 @@ from .costs import (CRYPTO_PROXY_SPREAD_BPS, EQUITY_HALF_SPREAD_BPS, KALSHI_PROX
 from .live import load_state, rows_to_cycles, save_state, step_live
 from .policy import (ACTIONS, GRAMMAR_NOTE, KELLY_FRACTION, TRADING_CONTRACT, Decision, decide,
                      default_decision, read_decision)
-from .replay import Cycle, TradingSpec, apply_cycle, cycles_of, delta_from_details, replay_book
-from .stats import CYCLES_PER_YEAR, book_stats, equity_stats
+from .replay import (Cycle, TradingSpec, apply_cycle, book_line, cycles_of, delta_from_details, replay_book,
+                     with_trade)
+from .stats import CYCLES_PER_YEAR, PNL_SCALE_USD, book_stats, equity_stats, pnl_objective
 
 __all__ = [
     "Book", "Position", "Trade", "Mark", "StepResult", "START_EQUITY", "MAX_POSITION", "MAX_GROSS",
@@ -26,6 +27,7 @@ __all__ = [
     "costs_named", "default_tick", "KALSHI_PROXY_SPREAD", "CRYPTO_PROXY_SPREAD_BPS",
     "EQUITY_HALF_SPREAD_BPS", "TAKER_BPS_PER_SIDE", "ACTIONS", "KELLY_FRACTION", "TRADING_CONTRACT",
     "GRAMMAR_NOTE", "Decision", "read_decision", "default_decision", "decide", "Cycle", "TradingSpec",
-    "cycles_of", "replay_book", "apply_cycle", "delta_from_details", "CYCLES_PER_YEAR", "equity_stats",
-    "book_stats", "rows_to_cycles", "load_state", "save_state", "step_live",
+    "cycles_of", "replay_book", "apply_cycle", "delta_from_details", "book_line", "with_trade",
+    "CYCLES_PER_YEAR", "PNL_SCALE_USD", "pnl_objective", "equity_stats", "book_stats", "rows_to_cycles",
+    "load_state", "save_state", "step_live",
 ]
