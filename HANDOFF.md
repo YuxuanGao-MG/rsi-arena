@@ -32,7 +32,7 @@ prints what each runs on; the workflows read the same spec with `--shell`.
 
 | topic | instance | unit / tick | seed harness | question set | keys |
 |---|---|---|---|---|---|
-| `kalshi-horizon-5m` | a Kalshi soccer contract at an instant, 5 min out | cents / 1c | `harnesses/horizon-5m.json` (Opus 5) | 485 matches, `benchmarks/windows/` | OpenRouter |
+| `kalshi-horizon-5m` | a Kalshi soccer contract at an instant, 5 min out | cents / 1c | `harnesses/horizon-5m-jev.json` (Jev; the Opus lineage's 11 generations stay under `runs/`, the Jev lineage is `runs/kalshi-jev/`) | 485 matches, `benchmarks/windows/`; held-out 300 | OpenRouter |
 | `crypto-horizon-1m` | BTC/ETH/SOL spot at an instant, 1 min out, every 5 min | bps / 2 | `harnesses/crypto-horizon-1m-jev.json` (Jev) | 92 UTC days, 2,208 windows, `benchmarks/windows-crypto/` + `benchmarks/crypto-data/` | none for data |
 | `news-equity-5m` | a Benzinga item on a US stock/ETF, 5 min out, RTH | bps / 5 | `harnesses/news-equity-5m-jev.json` (Jev) | **empty until Alpaca keys exist**; then `scripts/discover_news.py` | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` |
 
@@ -43,15 +43,17 @@ see `docs/design.md`). A plan for it ends in a prompt step with `questions` and
 plan may delegate one reasoning step. The gate applies its cost ratio to
 `max(incumbent, cost_floor_usd=0.01)` so that delegation is allowed.
 
-What is wired: `loop.yml` resolves the topic from the cron (kalshi 03:17 UTC,
-crypto 07:17, news 11:17, each with a retry) or `inputs.topic`; `live.yml` (Kalshi),
-`live-news.yml` (weekday RTH slots), `live-crypto.yml` (every 4 h). Migration
+What is wired: `loop.yml` resolves the topic from the cron - three slots a day
+per topic, kalshi 03:17/11:17/19:17 UTC, crypto 05:47/13:47/21:47, news
+08:17/16:17/00:17, capped by the spec's `runs_per_day` - or `inputs.topic`; `live.yml` (Kalshi),
+`live-news.yml` (weekday RTH slots), `live-crypto.yml` (55 minutes every hour). Migration
 `supabase/migrations/008_topics.sql` is applied; the reader at
 https://rsi.up.railway.app has a topic switcher and reads `topic`/`unit` on every row.
 
-What is not yet done: Alpaca keys (news question set), a 30-second crypto horizon
-(needs 1 s klines from a live collector), the first real generations on the new
-topics (crypto's Jev smoke on 48 held-out windows: skill -0.029, $0.012, 0 failed).
+What is not yet done: a 30-second crypto horizon (needs 1 s klines from a live
+collector) and more crypto days (the gate resolves 0.050 on 30 held-out days;
+news resolves 0.009 on 300 symbol-days). Every topic has run at least one
+generation on Actions; see `docs/design.md` Status 2026-09-22.
 
 The section below is the state as of 2026-09-16 and is kept for its lessons.
 
