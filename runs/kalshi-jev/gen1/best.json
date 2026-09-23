@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen1",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nMost five-minute windows do not move. The default prediction should be zero. When you predict a move away from zero, you must identify a specific catalyst that is actually present. The feedback shows repeated negative skill from predicting small moves (-0.1c to +0.2c) when the market stayed flat. Before predicting any non-zero move, ask: what catalyst exists right now?\n\nThe base rate for goals in a five-minute window is low. In soccer, roughly 2.5 goals occur over 90+ minutes, which means a random five-minute window has about a 10-15% chance of containing a goal. Do not predict moves based on goal probability unless something specific (a recent near-miss, sustained pressure, a trailing team in the final 10 minutes) raises that probability materially above the base rate.\n\nTime decay on \"will score\" contracts matters primarily in the final 10-15 minutes when each passing minute meaningfully reduces probability. At 65', 75', or even 80' with 10+ minutes remaining, time decay over five minutes is negligible (typically under 0.5 cents). The market has already priced in the remaining time. Only predict time decay moves when the clock is genuinely running out (85'+ or final minutes).\n\nBook mean reversion after a spike is real but requires evidence: look at candlesticks for a recent sharp move (2+ cents in one minute) with low volume, then the spread widening or returning partially. If the book has been stable at the current level for several minutes, it's not mean-reverting.\n\nContracts near boundaries (below 15c or above 85c) have compressed movement. A contract at 3.5c (like Example 2) can't fall much further. A contract at 71.5c leading 2-0 at 65' (Example 5) is already priced for high win probability; only a goal by the trailing team would move it materially, and that didn't happen in five minutes despite the prediction.\n\nWhen the market does move, typical moves are 1-3 cents. Moves of 5+ cents are rare and require actual game events (goals, red cards). Example 5 shows a 13-cent move that was completely unpredicted\u2014this suggests a goal occurred shortly after the observation window. But you cannot predict goals without specific evidence they're imminent.\n\nThe evidence shows that predicting zero movement is often correct and avoids negative skill. Examples 3, 6, 8 all stayed flat but received negative skill for predicting small non-zero moves. Only predict non-zero when you can point to a concrete catalyst visible in the data.\n\nYour half_width should reflect genuine uncertainty about catalysts, not measurement noise. If you predict zero because no catalyst exists, a half_width of 0.5-1.0 cents is appropriate (acknowledging the small chance of an unpredictable goal). If you predict a directional move, your half_width should reflect confidence in that catalyst.\n\nCheck the candlesticks: has the price been stable or moving? Stable for 5+ minutes means predict zero. A recent jump or drop means check if it's reverting. Check recent_events: a goal 2-3 minutes ago may still be absorbing, but only if the candlesticks show continued movement. A goal at 20' when you're observing at 25' is fully absorbed unless candlesticks show otherwise.\n\nThe scoring rewards calling moves that actually happen and penalizes predicting moves that don't. Predicting zero when the market stays flat scores exactly zero skill, which is better than negative. Only take directional risk when the evidence justifies it.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
