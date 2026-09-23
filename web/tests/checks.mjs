@@ -286,8 +286,8 @@ check("countdown text", untilText(wed2am + 4 * 3600e3 + 12 * 60e3, wed2am), "in 
 // The other topics' crons, from topics.js.
 check("crypto loop from 02:00 is 05:47",
       new Date(nextLoopRun(wed2am, "crypto-horizon-1m")).toISOString(), "2026-09-16T05:47:00.000Z");
-check("crypto live is every hour at :05",
-      new Date(nextLiveRun(wed2am, "crypto-horizon-1m")).toISOString(), "2026-09-16T02:05:00.000Z");
+check("crypto live is every four hours at :05",
+      new Date(nextLiveRun(wed2am, "crypto-horizon-1m")).toISOString(), "2026-09-16T04:05:00.000Z");
 check("news loop from 02:00 is 08:17",
       new Date(nextLoopRun(wed2am, "news-equity-5m")).toISOString(), "2026-09-16T08:17:00.000Z");
 check("news live on a weekday is 13:35",

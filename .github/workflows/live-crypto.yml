@@ -4,7 +4,7 @@
 # other half - the same harness, the same box, pointed at BTC, ETH and SOL as
 # they trade - and it is the only place the arena sees an order book, which has
 # no history and so no replay form. The market never closes, so the schedule is
-# a cadence rather than a fixture list: a fifty-five-minute sweep every hour,
+# a cadence rather than a fixture list: a four-hour sweep every four hours,
 # one forecast per coin per minute, each scored a minute later when the bar
 # prints - near-continuous, because a forecast costs two thousandths of a cent
 # and the book snapshots are the only record of the book there will ever be. Rows go to Postgres and nothing is committed back: runs/live/ is
@@ -21,12 +21,17 @@ on:
     # Six sweeps a day, five past the hour so a queued runner still lands on
     # a round minute. On the Jev seed a sweep is seventy-five forecasts at
     # about two thousandths of a cent each; the ceiling is the runner's time.
-    - cron: "5 * * * *"
+    # Every four hours, not every hour: GitHub's scheduler fired the hourly
+    # cron three to five hours apart on this repository (seven runs in a day
+    # against twenty-four asked for), so continuous coverage cannot lean on
+    # the cron. A sweep is nearly four hours long instead, and the concurrency
+    # group queues the next firing behind it.
+    - cron: "5 */4 * * *"
   workflow_dispatch:
     inputs:
       minutes:
         description: "how long to collect; must leave room under the job timeout"
-        default: "55"
+        default: "230"
       max_usd:
         description: "model spend this invocation may not pass"
         default: "0.30"
@@ -38,7 +43,7 @@ permissions:
   contents: read
   issues: write
 
-# A queued runner and a fifty-five-minute sweep can overlap the next firing:
+# A queued runner and a four-hour sweep can overlap the next firing:
 # two collectors appending to one file and each spending its own ceiling.
 # Queue instead.
 concurrency:
@@ -48,11 +53,11 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    # Fifty-five minutes of collection, a few more waiting out the last tick's
-    # horizon, then the publish. Seventy leaves room for a slow checkout without
+    # Nearly four hours of collection, a few more waiting out the last tick's
+    # horizon, then the publish. Two-fifty leaves room for a slow checkout without
     # leaving room for a hang; the concurrency group keeps the next hour's sweep
     # from starting on top of this one.
-    timeout-minutes: 70
+    timeout-minutes: 250
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # At job level, not on the publish step: a step's own `env:` block is not
@@ -84,7 +89,7 @@ jobs:
         run: |
           python scripts/collect_live_crypto.py \
             --harness harnesses/crypto-horizon-1m-jev.json \
-            --minutes "${{ inputs.minutes || '55' }}" \
+            --minutes "${{ inputs.minutes || '230' }}" \
             --every 60 \
             --max-usd "${{ inputs.max_usd || '0.30' }}" \
             --window-usd 0.01 | tee live.txt
