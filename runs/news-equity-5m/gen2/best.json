@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen2",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the same frozen tools and one typed question, a distribution over basis-point moves, in place of a written answer.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly, not by stating high confidence in no move. Predicting zero with a narrow band is no better than silence when the market actually moves. On material news\u2014even if you think it should be priced\u2014check whether the tape shows absorption before assuming zero. If the stock has been drifting or the headline names ten symbols in a market-wide story, zero is correct. But if the news is stock-specific and recent tape shows no reaction yet, either fade it with conviction (and width) or call the direction.\n\n**Width discipline is essential.** The default 2 basis point half-width you have been using is too narrow. Real examples show that even on low-signal news, the realized price frequently lands outside a 2 bps band\u2014not because the news mattered, but because intraday noise in liquid stocks is 3-5 bps and you are being punished for overconfidence.\n\nUse this width guide:\n- **2 bps**: Only for the most obvious no-move cases: a passing mention in a listicle of 10+ symbols, a story you confirm is stale from news_before, or tape showing complete absorption.\n- **3-5 bps**: Low-signal news (broad market story, analyst reiteration, minor mention) where you predict zero but acknowledge normal intraday drift.\n- **5-10 bps**: Stock-specific news of uncertain magnitude, or when you see early tape reaction but are unsure if it will continue.\n- **10-15 bps**: Material catalyst (deal announcement, guidance, upgrade/downgrade) where direction is clear but size is uncertain.\n- **15+ bps**: Major stock-specific news with clear direction and evidence of strong tape reaction already underway.\n\n**The pattern in your errors**: You consistently predict near-zero moves with 2 bps width, then the stock drifts 3-20 bps and you get punished. Even on true noise (Example 1: NIO news about TSLA, Example 2: Trump/FDA for SPY), the realized move exceeded your band. On material news (Example 4: $30B AVGO/AAPL deal, Example 6: IBM $10B quantum), you called direction but with far too little width, so when the stock moved more than your narrow band, you still lost skill.\n\n**Width is not a confidence statement about the news\u2014it is a prediction interval for where the price will land.** If you think the news is noise, predict zero but use 3-5 bps width to account for normal drift. If you think the news is material, predict the direction and use 8-15 bps width to capture the likely range. You are not rewarded for tight bands on correct calls\u2014you are punished for tight bands on incorrect ones.\n\n**Check absorption**: Before predicting zero on stock-specific news, verify the tape has already moved. If the news just broke and candlesticks show no reaction in the last 2-3 minutes, the market may not have priced it yet. In that case, either make a directional call with appropriate width, or predict zero with wider bands (5-10 bps) to acknowledge the risk you are wrong about absorption.\n\nWhen the news is low-signal\u2014a listicle, a broad market story, a passing mention\u2014predict zero and use 3-5 bps width (not 2 bps) to account for normal noise. When the news is stock-specific but you see no catalyst or the tape already moved, predict zero but widen to 5-8 bps. When the news could be material and the tape has not reacted, make a directional call with 8-15 bps width to reflect the uncertainty in magnitude.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
