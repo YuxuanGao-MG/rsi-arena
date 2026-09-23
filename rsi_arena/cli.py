@@ -143,9 +143,18 @@ def _bench(task, harness, instances, llm, s: Settings, *, memo=None,
            fingerprint: str = "") -> list[Rollout]:
     rollouts = asyncio.run(evaluate(task, harness, instances, llm, concurrency=s.concurrency,
                                     memo=memo, fingerprint=fingerprint))
+    # Not absorbed here: the scoreboard keeps the first record it sees of an
+    # answer, and the paper book's cycle is attached to the outcome only when
+    # `_with_book` runs. Remembering before that stored answers with no order,
+    # and a remembered answer then traded the default rule instead of its own.
+    # `_remember` is called once the book has been attached.
+    return rollouts
+
+
+def _remember(memo, fingerprint: str, rollouts: list[Rollout]) -> None:
+    """Put a finished, book-attached evaluation on the scoreboard."""
     if memo is not None and fingerprint:
         memo.absorb(fingerprint, rollouts)
-    return rollouts
 
 
 def _closing(llm: OpenRouter):
@@ -450,6 +459,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
             f"${memo.hits * 0.034:.0f}")
     gen.baseline = {"train": _with_book(task, base_train, run_dir, "baseline", "train", incumbent),
                     "holdout": _with_book(task, base_hold, run_dir, "baseline", "holdout", incumbent)}
+    _remember(memo, gen.incumbent_fingerprint, base_train)
+    _remember(memo, gen.incumbent_fingerprint, base_hold)
     _dump_rollouts(run_dir / "rollouts" / "baseline.train.json", base_train,
                    trace=args.trace)
     _dump_rollouts(run_dir / "rollouts" / "baseline.holdout.json", base_hold,
@@ -695,6 +706,8 @@ def cmd_optimize(args: argparse.Namespace) -> int:
                            memo=memo, fingerprint=gen.candidate_fingerprint)
     gen.candidate = {"train": _with_book(task, cand_train, run_dir, "candidate", "train", candidate),
                      "holdout": _with_book(task, cand_hold, run_dir, "candidate", "holdout", candidate)}
+    _remember(memo, gen.candidate_fingerprint, cand_train)
+    _remember(memo, gen.candidate_fingerprint, cand_hold)
     _dump_rollouts(run_dir / "rollouts" / "candidate.train.json", cand_train,
                    trace=args.trace)
     _dump_rollouts(run_dir / "rollouts" / "candidate.holdout.json", cand_hold,
