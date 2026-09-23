@@ -6,7 +6,9 @@ each instance, each outcome's details and each run's output - and nothing
 that needs a model or a network. This replays them the way ``cmd_optimize``
 now does as it goes, and writes ``<run_dir>/books/<side>.<split>.json`` in
 the shape ``publish_trading.py`` publishes. The rollouts files are read,
-never rewritten.
+never rewritten. Each instance is the question set's copy when the set
+agrees it is the same question, so a set quoted after the run was scored
+(``scripts/quote_windows.py``) lends its touch to the replay.
 
     python scripts/backfill_books.py runs/kalshi-jev/gen1 runs/crypto-horizon-1m/gen1
 """
@@ -16,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +63,31 @@ def load_rollouts(task: Any, path: Path) -> list[Rollout]:
     return out
 
 
+def with_set_quotes(task: Any, rollouts: list[Rollout]) -> list[Rollout]:
+    """The rollouts with each instance swapped for the question set's own copy
+    when that copy is the same question and carries more.
+
+    A rollout dumped before the touch was kept has an instance with mids and
+    nothing else, and a book built from it can only cross the proxy. The set
+    on disk may since have been quoted (``scripts/quote_windows.py``), and it
+    is the same question exactly when the id and the two numbers the
+    scoreboard keys on agree - so that copy, touch and all, is what the book
+    replays. Anything else about the rollout stays as dumped.
+    """
+    try:
+        fresh = {w.id: w for w in task.instances()}
+    except Exception:  # noqa: BLE001 - a set that cannot be listed leaves the rollouts as they are
+        return rollouts
+    out = []
+    for r in rollouts:
+        w = fresh.get(r.instance.id)
+        if w is not None and w is not r.instance and all(
+                getattr(w, f, None) == getattr(r.instance, f, None) for f in ("mid_now", "realised")):
+            r = replace(r, instance=w)
+        out.append(r)
+    return out
+
+
 def harness_of(run_dir: Path, manifest: dict[str, Any], side: str,
                rollouts: list[Rollout]) -> tuple[str, str]:
     """(fingerprint, name) of the harness behind a side, from the manifest and
@@ -87,7 +115,7 @@ def backfill(run_dir: Path, *, log=print) -> dict[str, dict[str, Any]]:
         log(f"{run_dir}: {topic} has no trading spec; nothing to build")
         return {}
     files = sorted((run_dir / "rollouts").glob("*.json"))
-    loaded = {p: load_rollouts(task, p) for p in files}
+    loaded = {p: with_set_quotes(task, load_rollouts(task, p)) for p in files}
     # Every instance the run scored, so a deadline that falls back to "the
     # last window on this contract" reads the whole set and not one split.
     seen: dict[str, Any] = {}

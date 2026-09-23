@@ -250,6 +250,27 @@ def test_backfill_rebuilds_the_books_of_a_run_from_its_rollouts(tmp_path):
     assert backfill.main([str(run_dir)]) == 0 and backfill.main([str(tmp_path)]) == 1
 
 
+def test_backfill_replays_a_bare_rollout_with_the_touch_the_set_has_since_kept():
+    quoted = Window(ticker="K", at=T0, mid_now=0.5, realised=0.52, yes_bid=0.47, yes_ask=0.53,
+                    yes_bid_h=0.51, yes_ask_h=0.53)
+    other = Window(ticker="K", at=T0 + 5 * M, mid_now=0.6, realised=0.6, yes_bid=0.59, yes_ask=0.61)
+    task = KalshiHorizon(windows=[quoted, other])
+    bare = Window.from_dict({"ticker": "K", "at": T0.isoformat(), "mid_now": 0.5, "realised": 0.52})
+    rebuilt = Window.from_dict({"ticker": "K", "at": (T0 + 5 * M).isoformat(), "mid_now": 0.61, "realised": 0.6})
+    outcome = Outcome(value=0.5, feedback="", details={})
+    rollouts = [Rollout(instance=bare, run=None, outcome=outcome, remembered_cost=0.001),
+                Rollout(instance=rebuilt, run=None, outcome=outcome, remembered_cost=0.001)]
+    backfill = load_script("backfill_books")
+    out = backfill.with_set_quotes(task, rollouts)
+    assert out[0].instance is quoted and out[0].remembered_cost == 0.001, "same question: the set's copy"
+    assert out[1].instance is rebuilt, "a different mid is a different question; the dump stands"
+    entry, _ = task.trading.quote_of(out[0].instance)
+    assert (entry.bid, entry.ask, entry.proxy) == (0.47, 0.53, False)
+    # A task that cannot list its set leaves the rollouts alone.
+    broken = SimpleNamespace(instances=lambda: (_ for _ in ()).throw(RuntimeError("no set")))
+    assert backfill.with_set_quotes(broken, rollouts) is rollouts
+
+
 # -- the seeds ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name", ["horizon-5m-jev.json", "horizon-5m-jev-gated.json",
