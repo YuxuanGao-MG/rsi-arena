@@ -53,6 +53,11 @@ const refFrontier = (() => {
 })();
 
 // -- archive.js, on the same data -------------------------------------------
+// The Kalshi topic now points at its Jev lineage's archive, which starts empty;
+// this test is about the arithmetic, so it reads the eleven-generation Opus
+// archive the reference above was computed from.
+const TP = await import(`${W}/topics.js`);
+TP.TOPICS["kalshi-horizon-5m"].archive = "/archive.json";
 const entries = await A.loadArchive({});
 const disputed = A.contested(entries);
 const best = A.instanceBest(entries, disputed);

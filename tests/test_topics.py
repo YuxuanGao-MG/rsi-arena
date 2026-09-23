@@ -48,7 +48,7 @@ def test_unset_flags_are_filled_from_the_topic():
 def test_the_topic_command_prints_the_spec(capsys):
     assert main(["topic", "--topic", "kalshi-horizon-5m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["harness"] == BASE and "factory" not in out
+    assert out["harness"] == Settings().harness and "factory" not in out
     assert out["model_choices"] == list(Settings().model_choices)
 
     assert main(["topic", "--shell"]) == 0

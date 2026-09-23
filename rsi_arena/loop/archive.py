@@ -51,14 +51,20 @@ def archive_path(runs_root: str | Path, topic: str = "") -> Path:
     that file from rejected runs, and the workflow commits it by that name.
     """
     root = Path(runs_root)
-    # A topic's own runs directory (runs/<topic>/) keeps the flat file beside
-    # the first topic's, in the parent: the web image copies runs/archive*.json
-    # and .railwayignore cannot re-include a file inside an excluded directory.
+    # Flat files in the top-level runs directory, tagged by what they belong
+    # to: the web image copies runs/archive*.json and .railwayignore cannot
+    # re-include a file inside an excluded directory. A topic's own runs
+    # directory (runs/<topic>/) tags by topic; a second lineage of the first
+    # topic (runs/kalshi-jev/) tags by the directory; the original lineage
+    # keeps the bare name it has always had.
+    tag = ""
     if root.name == topic:
-        root = root.parent
-    if not topic or topic == Settings.topic:
-        return root / ARCHIVE
-    return root / f"archive.{topic}.json"
+        tag, root = topic, root.parent
+    elif topic and topic != Settings.topic:
+        tag = topic
+    elif root.name != "runs" and root.parent.name == "runs":
+        tag, root = root.name, root.parent
+    return root / (ARCHIVE if not tag else f"archive.{tag}.json")
 
 #: How hard to discount a parent that has already been mined.
 #:

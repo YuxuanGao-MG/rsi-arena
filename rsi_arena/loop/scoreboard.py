@@ -42,14 +42,20 @@ def scoreboard_path(runs_root: str | Path, topic: str = "") -> Path:
     orphan, and the workflow reads it by that name.
     """
     root = Path(runs_root)
-    # A topic's own runs directory (runs/<topic>/) keeps the flat file beside
-    # the first topic's, in the parent: the web image copies runs/archive*.json
-    # and .railwayignore cannot re-include a file inside an excluded directory.
+    # Flat files in the top-level runs directory, tagged by what they belong
+    # to: the web image copies runs/archive*.json and .railwayignore cannot
+    # re-include a file inside an excluded directory. A topic's own runs
+    # directory (runs/<topic>/) tags by topic; a second lineage of the first
+    # topic (runs/kalshi-jev/) tags by the directory; the original lineage
+    # keeps the bare name it has always had.
+    tag = ""
     if root.name == topic:
-        root = root.parent
-    if not topic or topic == Settings.topic:
-        return root / SCOREBOARD
-    return root / f"scoreboard.{topic}.json"
+        tag, root = topic, root.parent
+    elif topic and topic != Settings.topic:
+        tag = topic
+    elif root.name != "runs" and root.parent.name == "runs":
+        tag, root = root.name, root.parent
+    return root / (SCOREBOARD if not tag else f"scoreboard.{tag}.json")
 
 
 def key(fingerprint: str, instance: Instance) -> str:

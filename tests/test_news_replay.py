@@ -403,7 +403,7 @@ def test_the_spec_and_the_cli_know_the_topic(capsys):
     assert spec.benchmark == "benchmarks/news-2026-09.json" and spec.windows_dir == "benchmarks/windows-news"
     assert spec.runs_dir == "runs/news-equity-5m" and spec.per_fixture == 0
     assert spec.window_usd == 0.00005 and spec.model_choices == ("typesafe/jev-1.13", "openai/gpt-5-mini")
-    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset, spec.max_day_usd) == (300, 100, 4800, 400, 60)
+    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset, spec.max_day_usd) == (300, 100, 4800, 400, 100)
     assert main(["topic", "--topic", "news-equity-5m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["harness"] == spec.harness and out["unit"] == "bps" and "factory" not in out
@@ -413,12 +413,14 @@ def test_the_spec_and_the_cli_know_the_topic(capsys):
     assert s.harness == spec.harness and s.benchmark == spec.benchmark
     assert s.runs_dir == spec.runs_dir and s.window_usd == spec.window_usd
     assert s.model_choices == spec.model_choices
-    assert Settings().harness == "harnesses/horizon-5m.json", "the first topic keeps the dataclass"
+    assert Settings().harness == "harnesses/horizon-5m-jev.json", "the first topic keeps the dataclass"
     # The question set is real now (5,275 items, 2026-09-22); every item names a
     # symbol, an instant and the story it came from.
     items = json.loads((ROOT / "benchmarks" / "news-2026-09.json").read_text())
     assert items and all({"symbol", "news_id", "at", "headline"} <= set(i) for i in items)
-    assert json.loads((ROOT / "runs" / "archive.news-equity-5m.json").read_text()) == {"entries": []}
+    # The archive was committed empty and the first generation filled it; either
+    # way it is the shape Archive.save writes.
+    assert "entries" in json.loads((ROOT / "runs" / "archive.news-equity-5m.json").read_text())
     universe = [l for l in (ROOT / "benchmarks" / "universe-us.txt").read_text().splitlines()
                 if l and not l.startswith("#")]
     assert {"AAPL", "SPY", "TLT", "BRK.B"} <= set(universe) and len(universe) >= 100

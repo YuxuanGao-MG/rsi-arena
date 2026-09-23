@@ -274,9 +274,9 @@ const { nextLoopRun, nextLiveRun, untilText } = await import(`${W}/clock.js`);
 const wed2am = Date.UTC(2026, 8, 16, 2, 0);        // a Wednesday
 check("loop cron from 02:00 is 03:17 same day",
       new Date(nextLoopRun(wed2am)).toISOString(), "2026-09-16T03:17:00.000Z");
-check("after 03:17 the retry at 05:47 is next",
+check("after 03:17 the next slot is 11:17",
       new Date(nextLoopRun(Date.UTC(2026, 8, 16, 4, 0))).toISOString(),
-      "2026-09-16T05:47:00.000Z");
+      "2026-09-16T11:17:00.000Z");
 check("live cron on a weekday is 19:05",
       new Date(nextLiveRun(wed2am)).toISOString(), "2026-09-16T19:05:00.000Z");
 check("live cron after Saturday 15:05 is Sunday 01:05",
@@ -284,12 +284,12 @@ check("live cron after Saturday 15:05 is Sunday 01:05",
       "2026-09-20T01:05:00.000Z");
 check("countdown text", untilText(wed2am + 4 * 3600e3 + 12 * 60e3, wed2am), "in 4h 12m");
 // The other topics' crons, from topics.js.
-check("crypto loop from 02:00 is 07:17",
-      new Date(nextLoopRun(wed2am, "crypto-horizon-1m")).toISOString(), "2026-09-16T07:17:00.000Z");
+check("crypto loop from 02:00 is 05:47",
+      new Date(nextLoopRun(wed2am, "crypto-horizon-1m")).toISOString(), "2026-09-16T05:47:00.000Z");
 check("crypto live is every hour at :05",
       new Date(nextLiveRun(wed2am, "crypto-horizon-1m")).toISOString(), "2026-09-16T02:05:00.000Z");
-check("news loop from 02:00 is 11:17",
-      new Date(nextLoopRun(wed2am, "news-equity-5m")).toISOString(), "2026-09-16T11:17:00.000Z");
+check("news loop from 02:00 is 08:17",
+      new Date(nextLoopRun(wed2am, "news-equity-5m")).toISOString(), "2026-09-16T08:17:00.000Z");
 check("news live on a weekday is 13:35",
       new Date(nextLiveRun(wed2am, "news-equity-5m")).toISOString(), "2026-09-16T13:35:00.000Z");
 check("news live after Friday 20:05 is Monday 13:35",

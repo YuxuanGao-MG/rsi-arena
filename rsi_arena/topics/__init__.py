@@ -47,6 +47,9 @@ class TopicSpec:
     #: window - one Opus call on roughly every eighth window, which is what a
     #: gated plan does - and the reserve is under five dollars.
     cost_floor_usd: float = 0.01
+    #: Generations a UTC day may hold on this topic; the workflow's crons offer
+    #: this many slots and the guard refuses a further one.
+    runs_per_day: int = 3
 
     #: The settings a flag left unset takes from the spec. Everything else on
     #: ``Settings`` keeps the dataclass default whatever the topic.
@@ -74,7 +77,7 @@ class TopicSpec:
                  ("MAX_METRIC_CALLS", self.max_metric_calls), ("VALSET", self.valset),
                  ("MODEL_CHOICES", ",".join(self.model_choices)),
                  ("MAX_DAY_USD", self.max_day_usd), ("JEV_HARNESS", self.jev_harness),
-                 ("COST_FLOOR_USD", self.cost_floor_usd)]
+                 ("COST_FLOOR_USD", self.cost_floor_usd), ("RUNS_PER_DAY", self.runs_per_day)]
         return "export " + " ".join(f"{k}={shlex.quote(str(v))}" for k, v in pairs)
 
 
@@ -103,6 +106,7 @@ TOPICS: dict[str, TopicSpec] = {
         max_day_usd=100.0,
         unit=KalshiHorizon.metric.unit,
         cost_floor_usd=_defaults.cost_floor_usd,
+        runs_per_day=3,
     ),
     NewsEquity.name: TopicSpec(
         name=NewsEquity.name,
@@ -136,9 +140,12 @@ TOPICS: dict[str, TopicSpec] = {
         # spent by the crypto generation before it. Sixty leaves the three
         # topics' expected spend (about seventy, eleven and eleven) under the
         # key's own hundred.
-        max_day_usd=60.0,
+        # One cap for every topic, because it is checked against the shared
+        # key's spend for the whole UTC day.
+        max_day_usd=100.0,
         unit=NewsEquity.metric.unit,
         cost_floor_usd=0.002,
+        runs_per_day=3,
     ),
     CryptoHorizon.name: TopicSpec(
         name=CryptoHorizon.name,
@@ -172,9 +179,12 @@ TOPICS: dict[str, TopicSpec] = {
         # spent by the crypto generation before it. Sixty leaves the three
         # topics' expected spend (about seventy, eleven and eleven) under the
         # key's own hundred.
-        max_day_usd=60.0,
+        # One cap for every topic, because it is checked against the shared
+        # key's spend for the whole UTC day.
+        max_day_usd=100.0,
         unit=CryptoHorizon.metric.unit,
         cost_floor_usd=0.002,
+        runs_per_day=3,
     ),
 }
 

@@ -9,7 +9,13 @@ from typing import Any
 @dataclass
 class Settings:
     topic: str = "kalshi-horizon-5m"
-    harness: str = "harnesses/horizon-5m.json"     # a harness file, or a run directory to continue from
+    # The first topic's lineage restarted on 2026-09-22 with TypeSafe's Jev as
+    # the seed: paired on 1,388 windows it was not worse than Opus 5 (-0.015
+    # against -0.035) at a two-hundredth of the price, which buys a held-out
+    # set of three hundred matches instead of a hundred. The Opus lineage,
+    # eleven generations under runs/, is kept as it was; this one lives in
+    # runs/kalshi-jev/ with its own archive and scoreboard.
+    harness: str = "harnesses/horizon-5m-jev.json"     # a harness file, or a run directory to continue from
     # What the loop runs on, not the five-match set it was written against.
     # These four were the workflow's literals for a month while the dataclass
     # still said epl-2026-09 / 2 / 0 / 0; the first topic's TopicSpec is read
@@ -20,7 +26,7 @@ class Settings:
     # Instance groups (fixtures) the optimizer never sees. A hundred, because
     # the gate's interval narrows with matches and thirty-five could not
     # resolve any rewrite anyone has produced.
-    holdout: int = 100
+    holdout: int = 300
     # Matches cut away before anything else and never shown to the search or the
     # gate. Scored only to confirm a promotion. Free until something is promoted,
     # which is why it can be generous.
@@ -36,22 +42,14 @@ class Settings:
     # Cap on windows kept per match; 0 keeps all. Four: a match's windows share
     # a scoreline and a horizon, so power comes from matches, and four takes a
     # cold generation from $86 to $53.
-    per_fixture: int = 4
+    per_fixture: int = 8
     model: str | None = None                       # override the harness model
     # Models the search may put in a rewrite. Measured on the same 68 held-out
     # windows before any of this ran on a schedule: Opus 5 +0.106 at $0.035 a
     # window, gpt-5-mini -0.008 at $0.0025, Sonnet 4.5 -0.011 at $0.013. Three
     # entries, all under the per-window ledger; a name outside the list fails
     # the harness before a call is made, and scores like any other breakage.
-    model_choices: tuple = ("anthropic/claude-opus-5",
-                            "anthropic/claude-sonnet-4.5",
-                            "openai/gpt-5-mini",
-                            # A decisions model: answers typed questions with
-                            # probabilities, writes nothing, and costs about two
-                            # thousandths of a cent a window. A plan for it ends
-                            # in a prompt step with "questions"; see harnesses/
-                            # horizon-5m-jev.json.
-                            "typesafe/jev-1.13")
+    model_choices: tuple = ("typesafe/jev-1.13", "openai/gpt-5-mini")
     # The model that reads traces and rewrites harnesses. Deliberately the
     # strongest available and deliberately not the one under test: it runs tens
     # of times a generation against the task model's thousands, so it is under
@@ -73,7 +71,7 @@ class Settings:
     # The search is the largest recurring line now that the probe replaced the
     # full train evaluation, so it is the number to revisit if a generation ever
     # gets accepted and the loop is worth running deeper.
-    max_metric_calls: int = 600                    # instance evaluations GEPA may spend
+    max_metric_calls: int = 4800                    # instance evaluations GEPA may spend
     # Instances GEPA scores a candidate on to place it on its Pareto frontier.
     #
     # Not the train split, which is what it used to be, and that quietly stopped
@@ -87,7 +85,7 @@ class Settings:
     # Sized so the seed evaluation leaves room to iterate: at 600 calls, 240
     # leaves about 360, which buys roughly forty-five proposals at a minibatch
     # of eight.
-    valset: int = 240
+    valset: int = 600
     minibatch: int = 8                             # instances per reflection step
     max_cost_ratio: float = 2.0                    # a candidate may cost at most this times the incumbent
     # The least an incumbent is priced at when the ratio is applied. A Jev
@@ -97,7 +95,7 @@ class Settings:
     # tools exist for. A penny a window is the price the gate compares against
     # when the incumbent is cheaper than that; an incumbent dearer than the
     # floor is priced at its own rate as before.
-    cost_floor_usd: float = 0.01
+    cost_floor_usd: float = 0.002
     # What a whole generation may spend. The per-window ledger caps one run at
     # twenty cents; until today nothing capped the thousand runs around it, so
     # the real ceiling was `max_metric_calls` times whatever a window happened
@@ -114,7 +112,7 @@ class Settings:
     # what preflight prices the split at, and what the judgment reserve falls
     # back to when the baseline was served from a scoreboard that recorded no
     # cost. Measured, from gen5: $12.08 for 357 windows that reached Opus 5.
-    window_usd: float = 0.034
+    window_usd: float = 0.00005
     # Train matches the candidate is scored on. Doubles as the regression
     # check, so the full train set is never re-scored: the gate asks of train
     # only "did this get worse", which twenty matches answer as well as a
@@ -134,7 +132,7 @@ class Settings:
     # Where the archive and the scoreboard live, and where run directories are
     # made. One root for every topic; the files inside it carry the topic's
     # name once there is more than one (see ``Archive.path_for``).
-    runs_dir: str = "runs"
+    runs_dir: str = "runs/kalshi-jev"
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

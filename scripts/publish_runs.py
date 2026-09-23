@@ -182,8 +182,13 @@ def qualified(path: str | Path | None, topic: str) -> str | None:
     """
     if path is None:
         return None
-    name = Path(path).name
-    return name if topic == Settings.topic else f"{name}@{topic}"
+    where = Path(path)
+    name, parent = where.name, where.parent.name
+    if topic != Settings.topic:
+        return f"{name}@{topic}"
+    # A second lineage of the first topic (runs/kalshi-jev/gen1) must not
+    # collide with the original's gen1 either; it carries its directory.
+    return name if parent in ("runs", "") else f"{name}@{parent}"
 
 
 def publish(cur, run_dir: Path) -> tuple[int, int]:

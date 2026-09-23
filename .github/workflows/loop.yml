@@ -30,12 +30,14 @@ on:
   # job below and this list has to agree with it.
   schedule:
     - cron: "17 3 * * *"      # kalshi-horizon-5m
-    - cron: "47 5 * * *"      # kalshi-horizon-5m, the retry
-    - cron: "17 9 * * *"      # kalshi-horizon-5m, a third chance
-    - cron: "17 7 * * *"      # crypto-horizon-1m (the package is not on main yet; a firing ends green)
-    - cron: "47 8 * * *"      # crypto-horizon-1m, the retry
-    - cron: "17 11 * * *"     # news-equity-5m
-    - cron: "47 12 * * *"     # news-equity-5m, the retry
+    - cron: "17 11 * * *"     # kalshi-horizon-5m
+    - cron: "17 19 * * *"     # kalshi-horizon-5m
+    - cron: "47 5 * * *"      # crypto-horizon-1m
+    - cron: "47 13 * * *"     # crypto-horizon-1m
+    - cron: "47 21 * * *"     # crypto-horizon-1m
+    - cron: "17 8 * * *"      # news-equity-5m
+    - cron: "17 16 * * *"     # news-equity-5m
+    - cron: "17 0 * * *"      # news-equity-5m
   workflow_dispatch:
     inputs:
       topic:
@@ -122,9 +124,9 @@ jobs:
           if [ -z "$topic" ]; then
             # The cron map. Keep it in step with the `schedule:` list above.
             case "${{ github.event.schedule }}" in
-              "17 3 * * *"|"47 5 * * *"|"17 9 * * *")  topic=kalshi-horizon-5m ;;
-              "17 7 * * *"|"47 8 * * *")               topic=crypto-horizon-1m ;;
-              "17 11 * * *"|"47 12 * * *")             topic=news-equity-5m ;;
+              "17 3 * * *"|"17 11 * * *"|"17 19 * * *")  topic=kalshi-horizon-5m ;;
+              "47 5 * * *"|"47 13 * * *"|"47 21 * * *")  topic=crypto-horizon-1m ;;
+              "17 8 * * *"|"17 16 * * *"|"17 0 * * *")   topic=news-equity-5m ;;
             esac
           fi
           if [ -z "$topic" ]; then
@@ -226,7 +228,7 @@ jobs:
           RUN_DIR="${{ inputs.run_dir }}"
           RUN_DIR="${RUN_DIR:-$RUNS_DIR/gen1}"
           for k in TOPIC HARNESS BENCHMARK WINDOWS_DIR RUNS_DIR RUN_DIR PER_FIXTURE WINDOW_USD \
-                   HOLDOUT AUDIT MAX_METRIC_CALLS VALSET MODEL_CHOICES MAX_DAY_USD JEV_HARNESS; do
+                   HOLDOUT AUDIT MAX_METRIC_CALLS VALSET MODEL_CHOICES MAX_DAY_USD JEV_HARNESS COST_FLOOR_USD RUNS_PER_DAY; do
             echo "$k=${!k}" >> "$GITHUB_ENV"
             echo "  $k=${!k}"
           done
@@ -283,31 +285,34 @@ jobs:
       # checkout rather than asking an API, because the checkout is what the
       # run would chain from anyway. Manual dispatches skip this on purpose - a
       # person re-running after a fix knows why they are doing it.
-      - name: One a day means one
+      - name: The day's slots
         id: today
         if: github.event_name == 'schedule'
         run: |
-          latest=$(python - <<'EOF'
+          made=$(python - <<'EOF'
           import json, os, pathlib
           # Only generations that reached a verdict count. A crashed partial
           # gets committed too (the commit step runs on failure so nothing is
           # lost), and if it counted, an early crash would block the very retry
-          # this guard exists to make safe. Only this topic's: the runs
-          # directory of the first topic is the parent of the others'.
+          # this guard exists to make safe. Only this topic's, and only today's:
+          # the spec says how many a UTC day may hold, and the crons offer that
+          # many slots.
+          import datetime
           root, topic = pathlib.Path(os.environ["RUNS_DIR"]), os.environ["TOPIC"]
-          done = []
+          today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+          n = 0
           for m in root.glob("*/manifest.json"):
               j = json.loads(m.read_text())
-              if j.get("decision") and j.get("topic") == topic:
-                  done.append(j.get("created", ""))
-          print(max(done)[:10] if done else "")
+              if j.get("decision") and j.get("topic") == topic and str(j.get("created", ""))[:10] == today:
+                  n += 1
+          print(n)
           EOF
           )
-          today=$(date -u +%Y-%m-%d)
-          if [ "$latest" = "$today" ]; then
+          cap="${RUNS_PER_DAY:-1}"
+          if [ "$made" -ge "$cap" ]; then
             echo "made=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=already ran today::a $TOPIC generation dated $today exists; this firing starts nothing"
-            echo "### Skipped - a $TOPIC generation already ran today ($today)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=the day is full::$made $TOPIC generations today, the spec allows $cap; this firing starts nothing"
+            echo "### Skipped - $made $TOPIC generations already today (the spec allows $cap)" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "made=false" >> "$GITHUB_OUTPUT"
           fi
