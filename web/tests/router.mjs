@@ -54,8 +54,10 @@ const routes = ["#/", "#/metrics", "#/about",
                 "#/generation/gen5?side=baseline", "#/generation/gen4",
                 "#/window/3", "#/lineage", "#/archive", "#/compare",
                 "#/compare/gen1-floored", "#/compare/gen1-floored/401878780",
-                "#/votes", "#/live", "#/cost", "#/nonsense",
+                "#/votes", "#/live", "#/trading", "#/cost", "#/nonsense",
                 "#/t/crypto-horizon-1m/", "#/t/crypto-horizon-1m/metrics",
+                "#/t/crypto-horizon-1m/trading",
+                "#/t/crypto-horizon-1m/trading?book=cgen1:candidate:holdout",
                 "#/t/crypto-horizon-1m/about", "#/t/crypto-horizon-1m/generation/cgen1",
                 "#/t/crypto-horizon-1m/compare/cgen1/D20260919",
                 "#/t/crypto-horizon-1m/live", "#/t/crypto-horizon-1m/archive",
@@ -97,6 +99,11 @@ say("withTopic on the root", withTopic("#/", "news-equity-5m"), "#/t/news-equity
 location.hash = "#/t/crypto-horizon-1m/";
 say("href.run carries the page's topic", href.run("cgen1"), "#/t/crypto-horizon-1m/generation/cgen1");
 say("href.compare carries the page's topic", href.compare("cgen1", "D1"), "#/t/crypto-horizon-1m/compare/cgen1/D1");
+say("href.trading carries the page's topic", href.trading(), "#/t/crypto-horizon-1m/trading");
+say("href.trading names a book in the query",
+    href.trading("cgen1:candidate:holdout"), "#/t/crypto-horizon-1m/trading?book=cgen1%3Acandidate%3Aholdout");
+say("the book survives the parse",
+    parse("#/t/crypto-horizon-1m/trading?book=cgen1%3Acandidate%3Aholdout").query.book, "cgen1:candidate:holdout");
 location.hash = "#/";
 say("href.run on Kalshi is the old link", href.run("gen5"), "#/generation/gen5");
 localStorage.setItem("rsi_topic", "crypto-horizon-1m");

@@ -394,5 +394,142 @@ try {
 check("GitHub 403 surfaces as a typed http error", got403, true);
 state.gh403 = false;
 
+// ---------------------------------------------------------------------------
+// The trading page: the paper books, in each of their states.
+
+{
+  const { tradingView } = await import(`${W}/views/trading.js`);
+  const { fmtUsd, fmtPct, positionWord, TOPICS } = await import(`${W}/topics.js`);
+  const { equityCurve } = await import(`${W}/charts.js`);
+  const sig = () => new AbortController().signal;
+
+  // Before migration 009: the view is missing, and the page says which one.
+  invalidate();
+  state.failNext = async () => ({ ok: false, status: 404, headers: { get: () => "application/json" },
+                                  text: async () => '{"code":"PGRST205"}' });
+  const off = await tradingView({ params: {}, query: {}, signal: sig() });
+  check("missing trading tables explain themselves", /not installed/.test(toHTML(off.heading)), true);
+  check("and name migration 009", /migration 009/.test(toHTML(off.body)), true);
+
+  // A topic nothing has traded on paper: the fixture has no Kalshi book.
+  invalidate();
+  const none = await tradingView({ params: {}, query: {}, signal: sig() });
+  check("a topic with no books says so", /No paper books/.test(toHTML(none.heading)), true);
+  check("and says what would create one",
+        /paper_trade/.test(toHTML(none.body)) && /publish/.test(toHTML(none.body)), true);
+
+  // The synthetic live book: the tiles must agree with the marks, recomputed here.
+  invalidate();
+  const tv = await tradingView({ params: {}, query: {}, topic: "crypto-horizon-1m", signal: sig() });
+  const tvHTML = toHTML(tv.body);
+  const liveMarks = FX.book_marks.filter(m => m.book_id === "live:crypto-horizon-1m")
+    .sort((a, b) => a.at.localeCompare(b.at));
+  const eq = liveMarks.map(m => m.equity_usd);
+  const ret = eq[eq.length - 1] / eq[0] - 1;
+  let peak = 0, dd = 0;
+  for (const e of eq) { peak = Math.max(peak, e); dd = Math.max(dd, 1 - e / peak); }
+  const tiles = tvHTML.slice(tvHTML.indexOf('<div class="cards">'), tvHTML.indexOf("<section"));
+  check("live book is the one shown by default", /data-book="live:crypto-horizon-1m" class="shown"/.test(tvHTML), true);
+  check("equity tile is the last mark", tiles.includes(fmtUsd(eq[eq.length - 1], { sign: false })), true);
+  check(`total return tile recomputed from the marks (${fmtPct(ret)})`, tiles.includes(fmtPct(ret)), true);
+  check(`max drawdown tile recomputed from the marks (${fmtPct(-dd)})`, tiles.includes(fmtPct(-dd)), true);
+  check("the drawdown is real, not zero", dd > 0.01, true);
+  check("Sharpe note carries the topic's cycles a year",
+        tiles.includes(`${TOPICS["crypto-horizon-1m"].cyclesPerYear} cycles a year`), true);
+  check("open positions tile counts the open trade", /<b class="">1<\/b>/.test(tiles), true);
+  check("the curve has somewhere to go", /id="equity-curve"/.test(tvHTML), true);
+  check("open positions table lists the ETH long",
+        /Open positions[\s\S]*?<span class="mono ticker">ETH<\/span>[\s\S]*?<td>long<\/td>/.test(tvHTML), true);
+  check("winners and losers both have rows",
+        /Winners[\s\S]*?<tbody>[\s\S]*?BTC/.test(tvHTML) && /Losers[\s\S]*?<tbody>[\s\S]*?SOL/.test(tvHTML), true);
+  check("a losing P&L wears the down class", /<span class="down">-\$1,830\.10<\/span>/.test(tvHTML), true);
+  check("a default-sized trade is marked", /pill warn">default</.test(tvHTML), true);
+  check("the handover event is in a mark", liveMarks.some(m => m.event === "handover"), true);
+  // Leaderboard order: every book on the topic, best total return first.
+  const order = [...tvHTML.matchAll(/<tr data-book="([^"]+)"/g)].map(m => m[1]);
+  const want = FX.books.filter(b => b.topic === "crypto-horizon-1m")
+    .sort((a, b) => b.stats.total_return - a.stats.total_return).map(b => b.book_id);
+  check("leaderboard lists every book", order.length, want.length);
+  check("leaderboard is best return first", order.join(" "), want.join(" "));
+  // Hrefs carry the browser's topic prefix, which this harness has no
+  // location for — the same as every other view's links under these checks.
+  check("a replay row links its generation", /href="(#\/t\/crypto-horizon-1m)?#?\/generation\/cgen1\?side=baseline"/.test(tvHTML), true);
+  check("a replay row offers a view link", /href="(#\/t\/crypto-horizon-1m)?#?\/trading\?book=cgen1%3Acandidate%3Aholdout"/.test(tvHTML), true);
+
+  // ?book= moves the curve and the trades to a replay book; the ranking stays.
+  invalidate();
+  const tv2 = await tradingView({ params: {}, query: { book: "cgen1:candidate:holdout" },
+                                  topic: "crypto-horizon-1m", signal: sig() });
+  const tv2HTML = toHTML(tv2.body);
+  check("?book= selects the replay book", /data-book="cgen1:candidate:holdout" class="shown"/.test(tv2HTML), true);
+  check("and the live row is no longer shown", /data-book="live:crypto-horizon-1m" class=""/.test(tv2HTML), true);
+  check("the replay's trades replace the live ones", /SOL/.test(tv2HTML) && !/1,830\.10/.test(tv2HTML), true);
+  check("the replay book names its run", /<dt>run<\/dt><dd><a href="(#\/t\/crypto-horizon-1m)?#?\/generation\/cgen1">cgen1<\/a>/.test(tv2HTML), true);
+  check("leaderboard still has every book", [...tv2HTML.matchAll(/<tr data-book="/g)].length, want.length);
+  invalidate();
+  const tv3 = await tradingView({ params: {}, query: { book: "nope" }, topic: "crypto-horizon-1m", signal: sig() });
+  check("an unknown ?book= falls back and says so", /There is no book called <code>nope<\/code>/.test(toHTML(tv3.body)), true);
+
+  // The formatters, by hand.
+  check("fmtUsd signs a gain", fmtUsd(1234.5), "+$1,234.50");
+  check("fmtUsd unsigned", fmtUsd(1234.5, { sign: false }), "$1,234.50");
+  check("fmtUsd keeps a loss's minus", fmtUsd(-629.8), "-$629.80");
+  check("fmtUsd compacts thousands", fmtUsd(12345), "+$12.3k");
+  check("fmtUsd compacts millions", fmtUsd(1012150, { sign: false }), "$1.01M");
+  check("fmtUsd zero", fmtUsd(0), "$0.00");
+  check("fmtUsd null", fmtUsd(null), "—");
+  check("fmtUsd uncompacted for a tooltip", fmtUsd(1004200, { sign: false, compact: false }), "$1,004,200.00");
+  const { fmtTradePrice } = await import(`${W}/topics.js`);
+  check("a Kalshi fill is in cents", fmtTradePrice(0.435, "kalshi-horizon-5m"), "43.5c");
+  check("a crypto fill keeps its half-dollar", fmtTradePrice(2610.5, "crypto-horizon-1m"), "2610.50");
+  check("a sub-dollar fill gets four decimals", fmtTradePrice(0.1234, "news-equity-5m"), "0.1234");
+  check("fmtTradePrice null", fmtTradePrice(null, "crypto-horizon-1m"), "—");
+  check("fmtPct", fmtPct(0.0123), "+1.23%");
+  check("fmtPct negative", fmtPct(-0.01327), "-1.33%");
+  check("fmtPct zero", fmtPct(0), "0.00%");
+  check("fmtPct digits", fmtPct(0.5, 0), "+50%");
+  check("fmtPct null", fmtPct(null), "—");
+  check("positionWord long on Kalshi", positionWord("long", "kalshi-horizon-5m"), "YES");
+  check("positionWord short on Kalshi", positionWord("short", "kalshi-horizon-5m"), "NO");
+  check("positionWord long on crypto", positionWord("long", "crypto-horizon-1m"), "long");
+  check("positionWord short on news", positionWord("short", "news-equity-5m"), "short");
+  check("words.instrument on Kalshi", TOPICS["kalshi-horizon-5m"].words.instrument, "contract");
+  check("words.instrument on crypto", TOPICS["crypto-horizon-1m"].words.instrument, "symbol");
+
+  // The curve, rendered into the stub DOM.
+  const el = document.createElement("div");
+  equityCurve(el, liveMarks, { start: 1e6 });
+  const svg = el.innerHTML;
+  check("curve draws a point per mark", (svg.match(/data-tip="/g) || []).length, liveMarks.length);
+  check("curve shades the drawdown", /<path class="dd"/.test(svg), true);
+  check("curve draws the running peak", /class="peak"/.test(svg), true);
+  check("curve draws the event as a diamond", /<path class="event"[^>]*handover/.test(svg), true);
+  check("curve marks the start", /start \$1\.00M/.test(svg), true);
+  const axisLabels = [...svg.matchAll(/class="tnum">(\$[^<]+)</g)].map(m => m[1]);
+  check("curve labels equity in dollars", axisLabels.length >= 4 && axisLabels.every(l => /^\$/.test(l)), true);
+  check("curve axis labels are all different", new Set(axisLabels).size, axisLabels.length);
+  check("curve tips carry the full equity", /equity \$1,004,200\.00/.test(svg), true);
+  check("curve points are focusable", /<circle tabindex="0"/.test(svg), true);
+  check("curve tips carry the drawdown", new RegExp(`${fmtPct(-dd).replace(/[+.]/g, "\\$&")} from peak`).test(svg), true);
+  // Thinning keeps the shape's landmarks and the events.
+  const many = Array.from({ length: 2000 }, (_, i) => ({
+    at: new Date(Date.UTC(2026, 8, 1, 0, i)).toISOString(),
+    equity_usd: 1e6 + 5000 * Math.sin(i / 90) - (i === 1200 ? 40000 : 0),
+    event: i === 1500 ? "handover" : null,
+  }));
+  const big = document.createElement("div");
+  equityCurve(big, many, { start: 1e6 });
+  const tips = (big.innerHTML.match(/data-tip="/g) || []).length;
+  check("curve thins to at most 400 points", tips <= 400 && tips > 300, true);
+  check("thinning keeps the event", /handover/.test(big.innerHTML), true);
+  check("thinning keeps the trough", /deepest drawdown/.test(big.innerHTML), true);
+  check("thinning keeps the last mark", big.innerHTML.includes("2026-09-02 09:19"), true);
+  // A select naming a column the views do not have is a 400, as in production.
+  invalidate();
+  let colErr = null;
+  try { await q("trades?select=id,pnl&book_id=eq.x"); } catch (e) { colErr = e; }
+  check("the fixture refuses an unknown trades column", colErr && colErr.status, 400);
+}
+
 console.log(bad ? `\n${bad} check(s) failed` : "\nall checks passed");
 process.exit(bad ? 1 : 0);

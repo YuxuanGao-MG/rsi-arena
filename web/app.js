@@ -27,14 +27,15 @@ import { lineageView } from "./views/lineage.js";
 import { compareView } from "./views/compare.js";
 import { votesView } from "./views/votes.js";
 import { liveView } from "./views/live.js";
+import { tradingView } from "./views/trading.js";
 import { costView } from "./views/cost.js";
 import { archiveView } from "./views/archive.js";
 
 const VIEWS = {
   overview: overviewView, metrics: metricsView, about: aboutView,
   run: runView, window: windowView, lineage: lineageView,
-  compare: compareView, votes: votesView, live: liveView, cost: costView,
-  archive: archiveView,
+  compare: compareView, votes: votesView, live: liveView, trading: tradingView,
+  cost: costView, archive: archiveView,
 };
 
 const viewEl = document.getElementById("view");

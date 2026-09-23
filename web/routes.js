@@ -44,6 +44,8 @@ export const href = {
   votes: () => withTopic("#/votes"),
   archive: () => withTopic("#/archive"),
   live: () => withTopic("#/live"),
+  /** The paper books; `book` picks one other than the live book for the curve. */
+  trading: book => withTopic("#/trading" + (book ? `?book=${e(book)}` : "")),
   cost: () => withTopic("#/cost"),
   /** The same page, on another topic. Always explicit, so it overrides what
    *  the browser remembered — that is the whole point of clicking it. */
@@ -61,6 +63,7 @@ export const NAV = [
 export const METRICS_NAV = [
   ["Generations", href.metrics, "metrics"],
   ["Live", href.live, "live"],
+  ["Trading", href.trading, "trading"],
   ["Archive", href.archive, "archive"],
   ["Lineage", href.lineage, "lineage"],
   ["Compare", href.compare, "compare"],
@@ -117,6 +120,7 @@ export function parse(hash) {
     case "votes":         return { name: "votes", params: {}, query, topic };
     case "archive":       return { name: "archive", params: { id: rest[0] }, query, topic };
     case "live":          return { name: "live", params: {}, query, topic };
+    case "trading":       return { name: "trading", params: {}, query, topic };
     case "cost":          return { name: "cost", params: {}, query, topic };
     default:              return { name: "missing", params: { path }, query, topic };
   }

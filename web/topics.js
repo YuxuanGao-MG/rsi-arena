@@ -42,7 +42,11 @@ export const TOPICS = {
     relative: false,
     deltaKey: "delta_cents",
     widthKey: "half_width_cents",
-    words: { instance: "window", group: "match", groups: "matches", subject: "contract" },
+    words: { instance: "window", group: "match", groups: "matches", subject: "contract",
+             instrument: "contract" },
+    // How many decision cycles a year holds, for annualising a per-cycle
+    // Sharpe: one every five minutes, around the clock.
+    cyclesPerYear: 105120,
     archive: "/archive/kalshi-jev.json",
     // The loop fires twice a day and a guard keeps the second firing from
     // meaning a second generation; the live collector follows the football.
@@ -71,7 +75,10 @@ export const TOPICS = {
     relative: true,
     deltaKey: "delta_bps",
     widthKey: "half_width_bps",
-    words: { instance: "news item", group: "symbol-day", groups: "symbol-days", subject: "symbol" },
+    words: { instance: "news item", group: "symbol-day", groups: "symbol-days", subject: "symbol",
+             instrument: "symbol" },
+    // Five-minute cycles across a 6.5-hour session, 252 sessions a year.
+    cyclesPerYear: 19656,
     archive: "/archive/news-equity-5m.json",
     loopCrons: [[8, 17], [16, 17], [0, 17]],
     loopText: "three a day: 08:17, 16:17 and 00:17 UTC",
@@ -99,7 +106,10 @@ export const TOPICS = {
     relative: true,
     deltaKey: "delta_bps",
     widthKey: "half_width_bps",
-    words: { instance: "window", group: "day", groups: "days", subject: "symbol" },
+    words: { instance: "window", group: "day", groups: "days", subject: "symbol",
+             instrument: "symbol" },
+    // One-minute cycles, and the market never closes.
+    cyclesPerYear: 525600,
     archive: "/archive/crypto-horizon-1m.json",
     loopCrons: [[5, 47], [13, 47], [21, 47]],
     loopText: "three a day: 05:47, 13:47 and 21:47 UTC",
@@ -247,6 +257,68 @@ export function forecastOf(output, topic) {
 
 /** The words a topic uses for its parts. */
 export const wordsOf = topic => topicOf(topic).words;
+
+/* ---------- money and positions --------------------------------------------
+ *
+ * The trading page reads a paper book in dollars whatever the topic, so these
+ * do not vary by topic — except the word for a side, which does: a Kalshi
+ * contract is bought YES or NO, a quote is held long or short.
+ */
+
+/** A number with a sign and two decimals, grouped in thousands. */
+function grouped(n, digits) {
+  const [whole, frac] = Math.abs(n).toFixed(digits).split(".");
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (frac ? "." + frac : "");
+}
+
+/**
+ * "$1.01M", "+$12.3k", "-$629.80", "—" for nothing. Compacted at ten thousand
+ * and a million so an equity tile and a fee cell read at the same glance;
+ * `sign` puts a plus on a gain, which a P&L wants and an equity does not.
+ * `compact: false` writes every digit — for a tooltip, where "$1.00M" would
+ * hide the four thousand dollars the point is about.
+ */
+export function fmtUsd(v, { sign = true, compact = true } = {}) {
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  const n = Number(v);
+  const a = Math.abs(n);
+  const body = !compact ? grouped(a, 2)
+             : a >= 1e6 ? `${(a / 1e6).toFixed(2)}M`
+             : a >= 1e4 ? `${(a / 1e3).toFixed(1)}k`
+             : grouped(a, 2);
+  const s = n < 0 ? "-" : (sign && n > 0 ? "+" : "");
+  return `${s}$${body}`;
+}
+
+/** A fraction as a signed percentage: 0.0123 → "+1.23%". */
+export function fmtPct(v, digits = 2) {
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  const n = Number(v) * 100;
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(digits)}%`;
+}
+
+/**
+ * A price a trade was done at: cents of the 0-1 contract price on Kalshi
+ * ("43.5c"), else two decimals for a quote and four for one under a dollar.
+ * `fmtPrice` is the forecasting pages' formatter, where a quote in the
+ * thousands is rounded to the dollar; a fill wants the half-dollar back.
+ */
+export function fmtTradePrice(v, topic) {
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  const t = topicOf(topic);
+  const n = Number(v);
+  if (t.id === DEFAULT) return `${(n * 100).toFixed(1)}c`;
+  return n.toFixed(Math.abs(n) < 1 ? 4 : 2);
+}
+
+/** The side of a position, in the topic's words: YES/NO on Kalshi, long/short elsewhere. */
+export function positionWord(side, topic) {
+  const t = topicOf(topic);
+  const s = String(side || "").toLowerCase();
+  if (t.id === DEFAULT) return s === "short" ? "NO" : s === "long" ? "YES" : s;
+  return s;
+}
 
 /** The next firing of a list of UTC crons, each `{h, m, dows?}`. */
 export function nextCron(crons, now = Date.now()) {
