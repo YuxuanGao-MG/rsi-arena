@@ -10,6 +10,8 @@
  *                     wedge inside which it beat saying nothing
  *   skillHistogram    where the mass sits — and it sits on exactly zero
  *   sparkline         the same shape, small enough for a list row
+ *   equityCurve       a paper book's equity against its own running peak, so
+ *                     every drawdown is a shaded gap rather than a number
  *
  * Marks are deliberately thin and the grid is a hairline: the data is the only
  * thing allowed to be loud. The colours are two validated categorical steps
@@ -20,8 +22,8 @@
  * fixed viewBox, because a viewBox that fits a phone renders 5px axis labels.
  */
 
-import { esc, n3, clock } from "./dom.js";
-import { topicOf, moveOf, saidOf, fmtMove, fmtPrice } from "./topics.js";
+import { esc, n3, clock, day, stamp } from "./dom.js";
+import { topicOf, moveOf, saidOf, fmtMove, fmtPrice, fmtUsd, fmtPct } from "./topics.js";
 
 const observers = [];
 
@@ -536,6 +538,142 @@ export function archiveFrontier(el, points, { silence = 0.5 } = {}) {
       <text x="${m.l + plotW}" y="${H - 6}" text-anchor="end" font-size="11"
             fill="var(--faint)">mean score across every instance it was asked</text>
       <text x="${m.l - 50}" y="${m.t - 8}" font-size="11" fill="var(--faint)">instances it is best on</text>
+    </svg>`;
+  });
+}
+
+/* ---------- 8. a paper book's equity ---------------------------------------- */
+
+/**
+ * At most this many drawn marks. A live book marks once a cycle, which on the
+ * one-minute topic is fourteen hundred points a day; the browser would draw
+ * them all, but a tooltip per point is a keyboard's worth of tab stops, and
+ * the shape is the same at four hundred.
+ */
+const CURVE_POINTS = 400;
+
+/**
+ * Which marks to draw: evenly sampled, but never dropping the first, the last,
+ * the trough of the deepest drawdown, or a mark that carries an event — a
+ * handover or a cap refusal is the thing the reader came to see.
+ */
+function thinMarks(pts, trough) {
+  if (pts.length <= CURVE_POINTS) return pts.map((_, i) => i);
+  const keep = new Set([0, pts.length - 1]);
+  if (trough >= 0) keep.add(trough);
+  pts.forEach((p, i) => { if (p.event) keep.add(i); });
+  const budget = Math.max(0, CURVE_POINTS - keep.size);
+  const step = pts.length / Math.max(1, budget);
+  for (let k = 0; k < budget; k++) keep.add(Math.min(pts.length - 1, Math.round(k * step)));
+  return [...keep].sort((a, b) => a - b);
+}
+
+/**
+ * Equity over time against its own running peak. The peak is a faint line
+ * and the gap under it is shaded, so a drawdown is a visible area rather
+ * than a percentage in a tile; a hairline marks the starting equity so a
+ * book that is below where it began is below a line, not below a number.
+ *
+ * Marks are drawn time-ordered, never sorted by value — this is the one
+ * chart here whose x axis is the clock, and `sparkline` would put the
+ * trough first.
+ */
+export function equityCurve(el, marks, { start = 1e6 } = {}) {
+  const pts = (marks || [])
+    .filter(m => m && m.at && m.equity_usd != null)
+    .map(m => ({ t: new Date(m.at).getTime(), y: Number(m.equity_usd), at: m.at,
+                 event: m.event || null, open: m.open_positions,
+                 exposure: m.gross_exposure_usd }))
+    .filter(p => Number.isFinite(p.t) && Number.isFinite(p.y))
+    .sort((a, b) => a.t - b.t);
+  let peak = -Infinity, trough = -1, worst = 0;
+  pts.forEach((p, i) => {
+    peak = Math.max(peak, p.y);
+    p.peak = peak;
+    p.dd = peak > 0 ? 1 - p.y / peak : 0;
+    if (p.dd > worst) { worst = p.dd; trough = i; }
+  });
+  const drawn = thinMarks(pts, trough).map(i => pts[i]);
+
+  host(el, width => {
+    if (!pts.length) return "";
+    const H = 300, m = { t: 26, r: 24, b: 42, l: 66 };
+    const plotW = width - m.l - m.r, plotH = H - m.t - m.b;
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+    const x = t => t1 > t0 ? m.l + ((t - t0) / (t1 - t0)) * plotW : m.l + plotW / 2;
+    const ys = pts.map(p => p.y);
+    const [lo, hi] = pad(Math.min(start, ...ys), Math.max(start, ...ys), 0.12);
+    const y = v => m.t + plotH - ((v - lo) / (hi - lo)) * plotH;
+    const P = (px, py) => `${px.toFixed(1)} ${py.toFixed(1)}`;
+
+    // Axis labels compact like fmtUsd but keep enough decimals to tell the
+    // ticks apart: on a million-dollar book the grid is a few thousand
+    // apart, and "$1.00M" five times over is no axis.
+    const ticks = niceTicks(lo, hi, 5);
+    const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1;
+    const decimals = (unit, min, max) =>
+      Math.min(max, Math.max(min, Math.ceil(-Math.log10(step / unit))));
+    const axis = v => {
+      const a = Math.abs(v), s = v < 0 ? "-" : "";
+      if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(decimals(1e6, 2, 4))}M`;
+      if (a >= 1e4) return `${s}$${(a / 1e3).toFixed(decimals(1e3, 1, 3))}k`;
+      return fmtUsd(v, { sign: false });
+    };
+    const grid = ticks.map(v => `
+      <line x1="${m.l}" x2="${m.l + plotW}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"
+            stroke="var(--c-grid)" stroke-width="1"/>
+      <text x="${m.l - 10}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" font-size="11"
+            fill="var(--faint)" class="tnum">${esc(axis(v))}</text>`).join("");
+    const xLabels = t1 > t0 ? [0, 1 / 3, 2 / 3, 1].map(f => {
+      const t = t0 + f * (t1 - t0);
+      const iso = new Date(t).toISOString();
+      return `<text x="${x(t).toFixed(1)}" y="${m.t + plotH + 18}" font-size="11"
+        text-anchor="${f === 0 ? "start" : f === 1 ? "end" : "middle"}" fill="var(--faint)"
+        class="tnum">${day(iso).slice(5)} ${clock(iso)}</text>`;
+    }).join("") : "";
+
+    // The drawdown: forward along the running peak, back along the equity.
+    const fwd = drawn.map((p, i) => `${i ? "L" : "M"} ${P(x(p.t), y(p.peak))}`).join(" ");
+    const back = [...drawn].reverse().map(p => `L ${P(x(p.t), y(p.y))}`).join(" ");
+    const shade = `<path class="dd" d="${fwd} ${back} Z" fill="var(--down)"
+      fill-opacity="var(--c-wash)" stroke="none"/>`;
+    const peakLine = `<polyline class="peak" fill="none" stroke="var(--ghost)" stroke-width="1"
+      stroke-dasharray="3 4" points="${drawn.map(p => P(x(p.t), y(p.peak))).join(" ")}"/>`;
+    const line = `<polyline class="equity" fill="none" stroke="var(--c-cand)" stroke-width="2"
+      stroke-linejoin="round" stroke-linecap="round"
+      points="${drawn.map(p => P(x(p.t), y(p.y))).join(" ")}"/>`;
+    const startLine = `
+      <line x1="${m.l}" x2="${m.l + plotW}" y1="${y(start).toFixed(1)}" y2="${y(start).toFixed(1)}"
+            stroke="var(--c-zero)" stroke-width="1"/>
+      <text x="${m.l + plotW}" y="${(y(start) - 6).toFixed(1)}" text-anchor="end" font-size="11"
+            font-weight="600" fill="var(--soft)">start ${esc(fmtUsd(start, { sign: false }))}</text>`;
+
+    const r = drawn.length > 150 ? 2.2 : 3.5;
+    const dots = drawn.map(p => {
+      const isTrough = trough >= 0 && p === pts[trough];
+      const tip = `${stamp(p.at)} · equity ${fmtUsd(p.y, { sign: false, compact: false })}` +
+        ` · ${fmtPct(-p.dd)} from peak` +
+        (p.open != null ? ` · ${p.open} open` : "") +
+        (p.exposure != null ? ` · exposure ${fmtUsd(p.exposure, { sign: false })}` : "") +
+        (p.event ? ` · ${p.event}` : "") + (isTrough ? " · deepest drawdown" : "");
+      const cx = x(p.t).toFixed(1), cy = y(p.y).toFixed(1);
+      if (p.event) {
+        const px = x(p.t), py = y(p.y), d = 6;
+        return `<path class="event" tabindex="0" data-tip="${esc(tip)}" role="img"
+          aria-label="${esc(tip)}" d="M ${P(px, py - d)} L ${P(px + d, py)} L ${P(px, py + d)}
+          L ${P(px - d, py)} Z" fill="var(--warn)" stroke="var(--panel)" stroke-width="1.5"/>`;
+      }
+      return `<circle tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}"
+        cx="${cx}" cy="${cy}" r="${isTrough ? r + 1.5 : r}"
+        fill="${isTrough ? "var(--down)" : "var(--c-cand)"}" stroke="var(--panel)" stroke-width="1.5"/>`;
+    }).join("");
+
+    return `<svg viewBox="0 0 ${width} ${H}" width="${width}" height="${H}" role="group"
+      aria-label="Equity of the book over time, with its running peak and every drawdown shaded">
+      <text x="${m.l - 56}" y="14" font-size="11" fill="var(--faint)">equity</text>
+      ${grid}${shade}${startLine}${peakLine}${line}${dots}${xLabels}
+      <line x1="${m.l}" x2="${m.l + plotW}" y1="${m.t + plotH}" y2="${m.t + plotH}"
+            stroke="var(--line)" stroke-width="1"/>
     </svg>`;
   });
 }

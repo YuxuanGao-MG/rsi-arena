@@ -24,6 +24,7 @@ const views = {
             { params: { runId: "gen1-floored", fixture: "401878780" }, query: {} }],
   votes: [(await import(`${W}/views/votes.js`)).votesView, { params: {}, query: {} }],
   live: [(await import(`${W}/views/live.js`)).liveView, { params: {}, query: {} }],
+  trading: [(await import(`${W}/views/trading.js`)).tradingView, { params: {}, query: {} }],
   cost: [(await import(`${W}/views/cost.js`)).costView, { params: {}, query: {} }],
   archive: [(await import(`${W}/views/archive.js`)).archiveView, { params: {}, query: {} }],
   // The same pages on another topic, with its own words and unit.
@@ -40,6 +41,11 @@ const views = {
                     topic: "crypto-horizon-1m" }],
   archiveNews: [(await import(`${W}/views/archive.js`)).archiveView,
                 { params: {}, query: {}, topic: "news-equity-5m" }],
+  // The paper books: the live book, and a replay book picked by the query.
+  tradingCrypto: [(await import(`${W}/views/trading.js`)).tradingView,
+                  { params: {}, query: {}, topic: "crypto-horizon-1m" }],
+  tradingReplay: [(await import(`${W}/views/trading.js`)).tradingView,
+                  { params: {}, query: { book: "cgen1:baseline:holdout" }, topic: "crypto-horizon-1m" }],
 };
 
 let bad = 0;
@@ -104,6 +110,27 @@ if (!/<nav class="topics" aria-label="Topic"><ul id="topics">/.test(shell))
   if (!/crypto-horizon-1m/.test(current[0] || "")) fail("switcher", "the wrong link is current");
   if (/onclick|<button/.test(nav)) fail("switcher", "a control that is not a link");
   console.log(`  switcher ${String(nav.length).padStart(6)}b  ${links.length} links, 1 current`);
+}
+// The Metrics sub-nav, as app.js paints it: every entry a named link with a
+// real route, and the Trading page among them.
+{
+  const { METRICS_NAV, parse } = await import(`${W}/routes.js`);
+  const { html, raw } = await import(`${W}/dom.js`);
+  const sub = toHTML(html`${METRICS_NAV.map(([label, to, name]) => html`<li>
+    <a href="${raw(to())}" ${raw(name === "trading" ? 'aria-current="page"' : "")}>${label}</a></li>`)}`);
+  const links = sub.match(/<a\b[^>]*>[\s\S]*?<\/a>/g) || [];
+  if (links.length !== METRICS_NAV.length) fail("subnav", `${links.length} links for ${METRICS_NAV.length} entries`);
+  for (const a of links) {
+    if (!a.replace(/<[^>]+>/g, "").trim()) fail("subnav", `an unnamed link: ${a.slice(0, 60)}`);
+    if (!/href="#\//.test(a)) fail("subnav", `a link that is not a route: ${a.slice(0, 60)}`);
+  }
+  for (const [label, to, name] of METRICS_NAV)
+    if (parse(to()).name !== name) fail("subnav", `${label} links to ${to()}, which parses as ${parse(to()).name}`);
+  const trading = METRICS_NAV.find(([, , name]) => name === "trading");
+  if (!trading) fail("subnav", "no Trading entry");
+  else if (trading[0] !== "Trading") fail("subnav", `the trading entry is labelled ${trading[0]}`);
+  if ((sub.match(/aria-current="page"/g) || []).length !== 1) fail("subnav", "not exactly one current entry");
+  console.log(`  subnav   ${String(sub.length).padStart(6)}b  ${links.length} links, Trading ${trading ? "present" : "missing"}`);
 }
 if (!/name="theme-color"/.test(shell)) fail("shell", "no theme-color");
 if (!/color-scheme/.test(shell)) fail("shell", "no color-scheme");

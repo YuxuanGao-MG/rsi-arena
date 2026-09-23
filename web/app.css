@@ -569,3 +569,15 @@ a.door:hover { text-decoration:none; border-color:var(--brand); }
 
 .row.row-disabled { cursor:default; opacity:.75; }
 .row.row-disabled:hover { background:transparent; }
+
+/* ---- the trading page: one book shown, the rest ranked ------------------- */
+tr.shown th, tr.shown td { background:var(--raise); }
+.legend i.dash { height:0; background:none; border-top:2px dashed var(--ghost); }
+.legend i.wash.down { background:var(--down); }
+.legend i.diamond { width:9px; height:9px; border-radius:1px; background:var(--warn);
+  transform:rotate(45deg); }
+.book-meta { display:flex; flex-wrap:wrap; gap:var(--s1) var(--s4); margin:0;
+  font-size:var(--t-sm); color:var(--soft); }
+.book-meta dt { display:inline; font-weight:var(--w-semi); }
+.book-meta dd { display:inline; margin:0 0 0 var(--s1); }
+.book-meta div { white-space:nowrap; }

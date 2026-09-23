@@ -80,6 +80,15 @@ const SCHEMA = {
   trace_feedback: ["id", "created", "rollout_id", "verdict", "voter"],
   guesses: ["id", "created", "guess", "voter", "topic"],
   book_snapshots: ["topic", "symbol", "at", "book"],
+  // 009: the paper books. One row per book (live per topic, replay per run
+  // side), the trades it made, and an equity mark per cycle.
+  books: ["topic", "book_id", "harness_fp", "harness_name", "kind", "run_id",
+          "side", "split", "started_at", "updated_at", "stats"],
+  trades: ["id", "topic", "book_id", "harness_fp", "run_id", "instance_id",
+           "side", "instrument", "opened_at", "closed_at", "entry_px", "exit_px",
+           "qty", "size_usd", "fees_usd", "pnl_usd", "reason", "source"],
+  book_marks: ["topic", "book_id", "at", "equity_usd", "cash_usd",
+               "gross_exposure_usd", "open_positions", "drawdown", "event"],
 };
 
 // The three RPCs' argument names, from their SQL signatures. PostgREST

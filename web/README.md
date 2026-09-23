@@ -52,11 +52,11 @@ status dot degrades to the unfiltered read and the other topics are empty.
 |---|---|
 | `index.html` | The shell: head, header (with the topic switcher), `<main>`, the live region, and the config the server substitutes. |
 | `app.js` | Router, theme toggle, focus and announcements, the skeleton and its slow-fetch notice. |
-| `topics.js` | The topics table: unit, tick, words, crons, archive path and grouping per topic, plus the arithmetic that differs between them (`moveOf`, `predictedOf`, `fmtMove`, `tickOf`). Imports nothing. |
+| `topics.js` | The topics table: unit, tick, words, crons, cycles a year, archive path and grouping per topic, plus the arithmetic that differs between them (`moveOf`, `predictedOf`, `fmtMove`, `tickOf`) and the money formatters the Trading page shares (`fmtUsd`, `fmtPct`, `positionWord`). Imports nothing. |
 | `routes.js` | Every href, with the optional `#/t/<topic>/` prefix — omitted for the default topic, so old links and bookmarks still mean Kalshi. |
 | `data.js` | Every request. Timeouts, cancellation on route change, `Range` pagination, an in-memory cache, and typed errors. |
 | `dom.js` | The `html` tagged template, which escapes every interpolation unless it is explicitly `raw`, plus the fragments every view reuses. |
-| `charts.js` | Seven pictures, as inline SVG, re-rendered at the width they are actually given. |
+| `charts.js` | Eight pictures, as inline SVG, re-rendered at the width they are actually given. |
 | `stats.js` | Pooled skill, recomputed from `err` and `naive_error` — `topics/kalshi_horizon/score.py` in JavaScript. |
 | `archive.js` | The candidate archive: frontier, wins, lineage — `loop/archive.py` in JavaScript. |
 | `views/` | One module per page. |
@@ -88,7 +88,9 @@ at — and it is the same material GEPA reflects over.
 
 `scripts/publish_runs.py` pushes a run directory into Supabase. Tables live in
 an `rsi` schema and are read through views in `public` (`rsi_runs`,
-`rsi_rollouts`, `rsi_traces`, `rsi_votes`, `rsi_live_forecasts`). The Supabase
+`rsi_rollouts`, `rsi_traces`, `rsi_votes`, `rsi_live_forecasts`, and from
+migration 009 the paper books: `rsi_books`, `rsi_trades`, `rsi_book_marks`,
+which the Trading page reads and says so by name when they are absent). The Supabase
 project is shared with another arena, so exposing a second schema through the
 API would have changed that arena's API too; views reach the same rows without
 touching anything anyone else depends on.
