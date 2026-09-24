@@ -1,5 +1,45 @@
 # Design: the alternative
 
+## Status, 2026-09-23: the books trade, and the first thing they say is "quote wider"
+
+The book became a market maker: the forecast is the quote. Every cycle the
+harness posts its predicted mid plus and minus the half-width it already
+states, with a size; the realised five-minute path decides the rest. A bar
+whose low crosses the bid fills the buy, a bar whose high crosses the ask
+fills the sell, both in one window is a round trip worth the spread, and
+neither is a quote nobody wanted. Fills pay the maker fee. Taking is still
+available and still optional. Positions carry until the harness closes them
+or the deadline: a settled Kalshi market pays zero or one, everything else
+closes at the mid.
+
+That needed the realised path, which the question sets did not carry.
+`scripts/path_windows.py` filled it: 16,234 of 16,469 Kalshi windows (the
+rest are five-minute spans nobody traded in, or five markets that now 404),
+every crypto window, every news window. Replaying the three first
+generations with it:
+
+| book | quote sides filled | trades | return | fees |
+| --- | --- | --- | --- | --- |
+| kalshi held-out | 2,598 of 4,800 | 1,561 | **-96.2%** | $186,523 |
+| crypto held-out | 737 of 1,440 | 660 | -0.5% | $7,418 |
+| news held-out | 878 of 1,422 | 532 | +0.1% | $316 |
+
+The Kalshi number is not a bug; it is the answer to a question nobody had
+asked yet. The seeds state a half-width below the venue tick, so the engine
+widens it to the tick and the harness ends up quoting a **one-cent** market
+on a contract whose five-minute path routinely travels four cents (p50 4c,
+p90 18c; 71% of windows move at least twice the quoted half-width). Both
+sides get taken, every fill is adversely selected, and the maker fee alone
+is eighteen per cent of the book over 1,561 trades. Crypto is the same shape
+at a fifth of the intensity; news, whose five-basis-point half-width sits
+against an eighteen-basis-point path, is the one topic near break-even.
+
+So the book's first finding is about the harnesses, not the venues: they
+quote far too tight. Half-width has until now been a number nobody was
+scored on - the metric only floors the error at a tick - and the paper book
+is the first thing that charges for it. That is exactly the lever the
+rewriter can pull, and PnL is on the search's frontier as of this morning.
+
 ## Status, 2026-09-23: a paper book beside the metric
 
 Every harness now keeps a simulated book (`rsi_arena/trading/`): a million
