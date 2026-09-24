@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen3",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nThe default answer is zero. Most five-minute windows do not move. A quiet book at a stable score with nothing scheduled to happen stays where it is.\n\nCRITICAL: The feedback shows you are making a systematic error. You repeatedly predict small negative moves (-0.1c to -0.3c) that do not happen, scoring negative skill. Example 1: predicted -0.22c, actual -0.5c (skill +0.22, but you were wrong on direction). Example 2: predicted -0.115c, actual 0.0c (skill -0.11). Example 5: predicted -0.095c, actual -4.0c (skill +0.02, but the -4c was a goal you couldn't predict). Example 8: predicted -0.105c, actual +1.0c (skill -0.10, you were wrong on direction).\n\nThe pattern is clear: you are predicting small downward drifts that are not supported by catalysts. These predictions accumulate negative skill because the market either stays flat or moves in the opposite direction.\n\nTHE SOLUTION: Predict zero unless you can identify one of these four catalysts:\n\n1. GOAL ABSORPTION IN PROGRESS: Check recent_trades timestamp. If a goal occurred in the last 2-3 minutes AND recent_trades shows heavy volume with timestamps in the last 60-90 seconds, the market may still be absorbing. But if the last trades are 4+ minutes old, or if they're scattered and light, absorption is complete. Predict zero.\n\n2. BOOK REVERSION: Check candlesticks for a recent sharp move. If the mid jumped 2+ cents in the last 1-2 minutes (e.g., from 0.36 to 0.38) and then recent_trades shows the last trade was small size (under 100 contracts) more than 2 minutes ago, the book may revert 0.5-1c. But if candlesticks show the mid has been stable at the same level for 3+ minutes, there is no reversion catalyst. Predict zero.\n\n3. TIME DECAY (final 10 minutes only): \"Will X score\" contracts decay toward zero as time runs out, but this is only material in the final 10 minutes of a match. At 85' with 5+ minutes left, time decay might move the price 1-2c over five minutes if the team is trailing. At 80' with 10 minutes left, decay is 0.5-1c. At 75' with 15 minutes left, decay is negligible (under 0.3c). At 65' or earlier, decay is effectively zero. Predict zero unless the clock shows 80'+ AND the team is behind or it's a draw and the contract is \"will score.\"\n\n4. GOAL LIKELIHOOD: Goals happen randomly at a base rate of one every 35-40 minutes (~2.5 per 90-minute match). A random five-minute window has ~10-15% chance of containing a goal. You CANNOT predict goals from score and clock alone. Do not predict a move based on vague \"attacking momentum\" or \"expectation.\" Goals cause large moves (10-30 cents), but they are not forecastable. When a goal happens and you predicted zero, you score zero skill (not negative)\u2014this is correct.\n\nIF NONE OF THESE FOUR APPLY, PREDICT ZERO. Do not predict -0.1c, -0.2c, or -0.3c because you sense \"downward pressure\" or \"drift.\" The feedback proves these hunches are wrong and cost skill.\n\nExample 2 (15' into a 1-0 game): You predicted -0.115c. No catalyst existed\u2014no recent goal to absorb, no sharp move to revert, no time pressure at 15'. The market stayed flat at 0.855. You scored -0.11 skill. Correct answer: zero.\n\nExample 8 (75' into a 0-3 game, trailing): You predicted -0.105c for a \"Seattle will score\" contract at 0.225. With 15 minutes left, time decay is weak (maybe -0.3c over five minutes). Recent_trades shows the last trades were 200 and 18 contracts just seconds ago\u2014this is normal book activity, not a reversion setup. No catalyst existed. The market moved +1.0c (possibly on late trading or a small shift). You scored -0.10 skill. Correct answer: zero.\n\nExample 1 (75' into a 1-0 game): You predicted -0.22c. The clock is 75' with 15 minutes left\u2014time decay is negligible. Candlesticks show the mid has been stable around 0.36-0.38 for several minutes. The last trades were small (71 and 6 contracts) just seconds ago\u2014this is normal activity. No catalyst existed. The market moved -0.5c, which you happened to get the direction right on by luck, but this was likely noise or a small order. Correct answer: zero (your prediction was not justified by a catalyst, even though the market happened to drift your direction).\n\nWhen you predict zero, use half_width 0.3-0.5c to reflect the fact that nothing will happen. When a strong catalyst exists (e.g., clear book reversion visible in candlesticks, or final 5 minutes with time decay), use half_width 0.5-1.0c to reflect genuine uncertainty about timing.\n\nContracts near boundaries (below 15c or above 85c) have compressed ranges. A contract at 4c can only fall 4c but could spike 20c+ on a goal. A contract at 98c can only rise 2c but could fall 10c+ on an opponent goal. Time decay on a 4c contract at 75' when trailing might be -0.3c, which is noise\u2014predict zero.\n\nCheck candlesticks to see if the mid has been stable. If the last 5-10 candlestick entries show the same mid (within 1 cent), the book is stable. Predict zero unless a new catalyst arrives.\n\nCheck recent_trades for recency. If the last trade timestamp is more than 3 minutes old, the book is quiet\u2014predict zero. If trades are clustered in the last 60 seconds with heavy volume, check if this aligns with a recent goal in recent_events.\n\nYour goal is to score positive skill, which means calling moves that actually happen. Small directional predictions without catalysts score negative skill. When in doubt, predict zero. Zero earns zero skill, which is better than negative skill.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
