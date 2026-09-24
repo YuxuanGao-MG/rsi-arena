@@ -27,6 +27,7 @@ from typing import Any, Callable
 
 from ...crypto._binance import MAX_STALE_S, close_at
 from ...crypto._futures import next_funding
+from ...trading import PathBar
 
 UTC = timezone.utc
 
@@ -72,6 +73,12 @@ class CryptoWindow:
     mid_now: float
     realised: float
     context: dict[str, Any] = field(default_factory=dict)
+    #: The minute bars between the instant and the horizon, for the quote the
+    #: book posts to be filled by; empty on a window built before they were kept.
+    path: tuple[PathBar, ...] = ()
+    #: A perpetual never settles, so this stays None; the field is here because
+    #: every topic's window answers the same two questions for the book.
+    settlement: float | None = None
 
     @property
     def id(self) -> str:
@@ -88,12 +95,15 @@ class CryptoWindow:
 
     def to_dict(self) -> dict[str, Any]:
         return {"symbol": self.symbol, "at": self.at.isoformat(), "mid_now": self.mid_now,
-                "realised": self.realised, "context": self.context, "group": self.group}
+                "realised": self.realised, "context": self.context, "group": self.group,
+                "path": [b.to_dict() for b in self.path], "settlement": self.settlement}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "CryptoWindow":
         return cls(symbol=d["symbol"], at=datetime.fromisoformat(d["at"]), mid_now=d["mid_now"],
-                   realised=d["realised"], context=d.get("context", {}))
+                   realised=d["realised"], context=d.get("context", {}),
+                   path=tuple(PathBar.from_dict(b) for b in d.get("path") or ()),
+                   settlement=None if d.get("settlement") is None else float(d["settlement"]))
 
 
 def context_at(at: datetime) -> dict[str, Any]:
@@ -119,6 +129,19 @@ def price_at(spot: Any, symbol: str, at: datetime) -> float | None:
     """The close of the last complete, fresh bar at ``at``, through any ``klines`` source."""
     k = close_at(spot.klines(symbol, at - timedelta(seconds=MAX_STALE_S), at), at)
     return None if k is None else k.close
+
+
+def path_at(spot: Any, symbol: str, at: datetime, horizon: int) -> tuple[PathBar, ...]:
+    """The bars that close inside ``(at, at + horizon]``, as the path a resting
+    quote is filled by. The bar opening at ``at`` is the first one the forecast
+    could not already see, which is exactly where the quote starts working."""
+    end = at + timedelta(minutes=horizon)
+    try:
+        bars = spot.klines(symbol, at, end)
+    except Exception:  # noqa: BLE001 - no path is a quote that never fills, not a failed day
+        return ()
+    return tuple(PathBar(ts=k.ts_close, high=float(k.high), low=float(k.low), close=float(k.close))
+                 for k in bars if at < k.ts_close <= end)
 
 
 def build_windows(benchmark: Benchmark, spot: Any, *, every_minutes: int | None = None,
@@ -150,7 +173,8 @@ def build_windows(benchmark: Benchmark, spot: Any, *, every_minutes: int | None 
                     if later is None:
                         continue
                     built.append(CryptoWindow(symbol=symbol, at=at, mid_now=now, realised=later,
-                                              context=context_at(at)))
+                                              context=context_at(at),
+                                              path=path_at(spot, symbol, at, ahead)))
         except Exception as exc:  # noqa: BLE001 - one day's failure is not the build's
             log(f"skipped D{day:%Y%m%d}: {type(exc).__name__}: {exc}")
             continue
@@ -168,4 +192,4 @@ def build_windows(benchmark: Benchmark, spot: Any, *, every_minutes: int | None 
 
 
 __all__ = ["Benchmark", "CryptoWindow", "load_benchmark", "build_windows", "instants", "context_at",
-           "price_at", "DEFAULT_DATA_DIR"]
+           "price_at", "path_at", "DEFAULT_DATA_DIR"]

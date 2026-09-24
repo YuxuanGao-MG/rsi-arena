@@ -12,6 +12,7 @@ import json
 import math
 import random
 import statistics
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -382,31 +383,48 @@ def test_replay_is_deterministic_over_shuffled_rollouts():
     assert abs(sum(r["pnl_usd"] for r in ra.values()) - sum(t.pnl_usd for t in a.trades)) < 1e-9
 
 
-def test_a_position_carries_when_the_next_cycle_is_soon_and_closes_at_the_horizon_otherwise():
+def test_a_position_carries_past_every_horizon_and_out_at_the_deadline():
     spec = kalshi_spec(horizon_min=5)
-    # A is asked every 5 minutes: the first position carries into the next
-    # cycle (the same side, so the rule holds), then closes at the horizon
-    # when the questions stop.
+    # A is asked twice, five minutes apart, and says the same thing both times.
+    # Neither horizon closes anything; the deadline does, at minute 15.
     rollouts = [roll("A", 0, 0.50, 0.52, 0.60), roll("A", 5, 0.52, 0.53, 0.62)]
     b, rec = replay_book(cycles_of(rollouts, spec), spec, book_id="x", harness_fp="fp")
     first = rec["A@" + at(0).isoformat()]
     assert first["action"] == "open_long" and first["pnl_usd"] == 0.0 and first["reason"] is None
-    assert len(b.trades) == 1 and b.trades[0].reason == "horizon"
-    assert b.trades[0].closed_at == at(10) and b.trades[0].opened_at == at(0)
-    # Asked again only twenty minutes later: closed at the first horizon.
+    assert len(b.trades) == 1 and b.trades[0].reason == "force_close"
+    assert b.trades[0].closed_at == at(15) and b.trades[0].opened_at == at(0)
+    assert not any(m.event == "horizon" for m in b.marks), "nothing happens at a horizon"
+    # The wind-down is credited to the last cycle that carried the position.
+    last = rec["A@" + at(5).isoformat()]
+    assert last["pnl_usd"] == b.trades[0].pnl_usd and last["reason"] == "force_close"
+    # Asked again only twenty minutes later: the deadline still bounds it, and
+    # the second cycle opens a position of its own that is wound down after.
     rollouts = [roll("A", 0, 0.50, 0.52, 0.60), roll("A", 20, 0.52, 0.53, 0.62)]
     b, rec = replay_book(cycles_of(rollouts, spec), spec, book_id="x", harness_fp="fp")
-    assert b.trades[0].closed_at == at(5) and b.trades[0].reason == "horizon"
-    assert rec["A@" + at(0).isoformat()]["reason"] == "horizon"
-    assert rec["A@" + at(0).isoformat()]["pnl_usd"] == b.trades[0].pnl_usd
-    assert any(m.event == "horizon" and m.at == at(5) for m in b.marks)
+    assert [t.reason for t in b.trades] == ["force_close", "force_close"]
+    # The sweep runs at a cycle, so the first is found out of time at minute 20,
+    # and the second is wound down at its own deadline once the cycles stop.
+    assert b.trades[0].closed_at == at(20) and b.trades[1].closed_at == at(35)
+    # Both are realised during the cycle at minute 20: the sweep and then the
+    # wind-down of what that cycle opened.
+    second = rec["A@" + at(20).isoformat()]
+    assert second["pnl_usd"] == pytest.approx(sum(t.pnl_usd for t in b.trades))
+    assert rec["A@" + at(0).isoformat()]["pnl_usd"] == 0.0, "it was still carrying"
 
 
-def test_the_deadline_bounds_the_carry():
+def test_the_deadline_settles_a_resolved_market_at_zero_or_one():
     spec = kalshi_spec(horizon_min=5)
-    rollouts = [roll("A", 0, 0.50, 0.52, 0.60, deadline_min=3), roll("A", 5, 0.52, 0.53, 0.62)]
+    rollouts = [roll("A", 0, 0.50, 0.52, 0.60, deadline_min=3)]
+    for settles, entry in ((1.0, 1.0), (0.0, 0.0)):
+        settled = replace(spec, settlement_of=lambda i, s=settles: s)
+        b, rec = replay_book(cycles_of(rollouts, settled), settled, book_id="x", harness_fp="fp")
+        assert [t.reason for t in b.trades] == ["settled"] and b.trades[0].exit_px == entry
+        assert b.trades[0].closed_at == at(3), "out at the deadline, not the horizon"
+        # Settlement is free; the entry's fee is the whole of the round trip's.
+        assert abs(b.trades[0].fees_usd - taker_fee(b.trades[0].entry_px, b.trades[0].qty)) < 1e-9
+    # No settlement known: the last mid, and a fee on the way out.
     b, _ = replay_book(cycles_of(rollouts, spec), spec, book_id="x", harness_fp="fp")
-    assert b.trades[0].reason == "horizon" and b.trades[0].closed_at == at(5), "deadline < next cycle"
+    assert b.trades[0].reason == "force_close" and b.trades[0].fees_usd > taker_fee(0.51, b.trades[0].qty)
 
 
 def test_a_harness_output_in_the_run_drives_the_replay():

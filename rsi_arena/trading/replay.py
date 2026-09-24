@@ -10,24 +10,25 @@ where the topic wrote what it scored.
 
 The book is topic-agnostic; what a topic has to say is small and arrives as
 a :class:`TradingSpec` of functions: how to quote an instance at its instant
-and at its horizon, which instrument it is, when a position in it must be
-out, and how to read the forecast off an outcome.
+and at its horizon, the price path the venue printed after it, which
+instrument it is, what it settles at if it settles, when a position in it
+must be out, and how to read the forecast off an outcome.
 
-The exit rule is the one thing here that is not a plain fill. A forecast is
-for one horizon; a position taken on it is closed *at that horizon* unless
-the same instrument is asked again soon enough - within one more horizon and
-before the deadline - in which case the next forecast decides. That is what
-lets a harness ride a trend it keeps calling, and what stops a position from
-sitting silently in a market that stopped being asked about.
+Nothing closes at a horizon. A forecast's horizon is where the *score* is
+taken, not where a position ends: the quote a cycle posts rests, the take a
+cycle crosses stays on, and both carry until the agent closes them or the
+deadline arrives - a resolved Kalshi market settling at zero or one, every
+other venue force-closing at the last mid. A cycle's record is therefore
+what it *realised*; what it is still carrying sits in the marks.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
-from .book import MAX_POSITION, Book
+from .book import MAX_POSITION, Book, PathBar
 from .costs import Quote, VenueCosts
 from .policy import decide
 
@@ -35,7 +36,8 @@ from .policy import decide
 @dataclass(frozen=True)
 class Cycle:
     """One forecast, ready to trade: the quote it was made against, the quote
-    printed at its horizon, and what it said."""
+    printed at its horizon, the bars the price walked through afterwards, and
+    what it said."""
 
     at: datetime
     instrument: str
@@ -48,13 +50,28 @@ class Cycle:
     exit: Quote
     horizon_at: datetime
     deadline: datetime
+    #: The realised path over ``(at, horizon_at]``, in the instrument's own
+    #: price space; what the posted quote is filled by. Empty on a window
+    #: built before paths were kept, which simply never fills a quote.
+    path: tuple[PathBar, ...] = ()
+    #: What the instrument pays at its deadline when that is already known
+    #: (a Kalshi contract that resolved: 0 or 1); None for everything else.
+    settlement: float | None = None
+
+
+def _no_path(instance: Any) -> tuple[PathBar, ...]:
+    return ()
+
+
+def _no_settlement(instance: Any) -> float | None:
+    return None
 
 
 @dataclass(frozen=True)
 class TradingSpec:
     """How a topic's instances become cycles. ``delta_of`` reads
     ``(delta, half_width)`` in ``unit`` from an outcome, or None when it
-    said nothing; the other three read an instance."""
+    said nothing; the others read an instance."""
 
     costs: VenueCosts
     unit: str
@@ -67,6 +84,11 @@ class TradingSpec:
     topic: str = ""
     #: What live rows fall back on when they carry no horizon of their own.
     horizon: timedelta = timedelta(minutes=5)
+    #: The bars the price walked after the instant, and the settlement the
+    #: instrument is already known to pay. Both default to nothing, so a topic
+    #: that keeps neither still builds cycles.
+    path_of: Callable[[Any], "tuple[PathBar, ...]"] = field(default=_no_path)
+    settlement_of: Callable[[Any], "float | None"] = field(default=_no_settlement)
 
 
 def delta_from_details(details: dict[str, Any], unit: str) -> tuple[float, float] | None:
@@ -103,7 +125,9 @@ def cycles_of(rollouts: list[Any], spec: TradingSpec) -> list[Cycle]:
                          run_id=getattr(run, "run_id", "") or "",
                          output=run.output if run else _remembered_order(r.outcome),
                          delta=delta, half_width=half, entry=entry, exit=exit_,
-                         horizon_at=exit_.at, deadline=spec.deadline_of(inst)))
+                         horizon_at=exit_.at, deadline=spec.deadline_of(inst),
+                         path=tuple(spec.path_of(inst) or ()),
+                         settlement=spec.settlement_of(inst)))
     return sorted(out, key=lambda c: (c.at, c.instrument, c.instance_id))
 
 
@@ -124,11 +148,20 @@ def _remembered_order(outcome: Any) -> dict[str, Any] | None:
 
 
 def book_line(record: dict[str, Any]) -> str:
-    """``Book: open_long 5% -> +120 USD (horizon)``, from a replay record."""
+    """``Book: quote 0.49/0.51 2% bid hit, open_long 5% -> +120 USD (quote)``,
+    from a replay record. The quote clause is dropped from a record that has
+    none, which is what a hand-built record and an older book file are."""
     action, size = record.get("action", "hold"), float(record.get("size") or 0.0)
     pnl = float(record.get("pnl_usd") or 0.0)
     reason = record.get("reason") or ("refused" if record.get("refused") else "no trade")
-    return f"Book: {action} {size:.0%} -> {pnl:+.0f} USD ({reason})"
+    quote, posted = "", record.get("quote")
+    if posted:
+        sides = {f["side"] for f in record.get("fills") or ()}
+        hit = "both" if len(sides) == 2 else next(iter(sides), "")
+        quote = (f"quote {posted['bid']:.4g}/{posted['ask']:.4g} "
+                 f"{float(posted.get('size_frac') or 0.0):.0%} "
+                 f"{hit + ' hit' if hit else 'unhit'}, ")
+    return f"Book: {quote}{action} {size:.0%} -> {pnl:+.0f} USD ({reason})"
 
 
 def with_trade(outcome: Any, record: dict[str, Any]) -> Any:
@@ -152,11 +185,44 @@ def with_trade(outcome: Any, record: dict[str, Any]) -> Any:
     return replace(outcome, details=details, feedback=f"{feedback} {book_line(record)}".strip())
 
 
-def _record(res: Any, closed: list[Any]) -> dict[str, Any]:
+def _path_summary(path: "tuple[PathBar, ...]", posted: Any) -> dict[str, Any] | None:
+    """What the market actually did between the instant and the horizon, and
+    whether it reached either side of the quote.
+
+    ``crossed`` is not ``filled``: a cap can cut a side that the tape reached
+    down to nothing, and the difference between "nobody traded there" and "we
+    could not afford it" is the difference between a bad quote and a full book.
+    """
+    if not path:
+        return {"bars": 0, "high": None, "low": None, "close": None,
+                "crossed_bid": False, "crossed_ask": False}
+    return {"bars": len(path),
+            "high": max(b.high for b in path), "low": min(b.low for b in path),
+            "close": path[-1].close,
+            "crossed_bid": posted is not None and any(b.low <= posted.bid for b in path),
+            "crossed_ask": posted is not None and any(b.high >= posted.ask for b in path)}
+
+
+def _fill_row(f: Any) -> dict[str, Any]:
+    return {"side": f.side, "px": f.px, "qty": f.qty, "notional_usd": f.notional_usd,
+            "fees_usd": f.fees_usd, "at": f.at.isoformat(), "bar_ts": f.bar_ts.isoformat(),
+            "effect": f.effect}
+
+
+def _record(res: Any, closed: list[Any], cycle: Cycle, unit: str) -> dict[str, Any]:
+    """One cycle, whole: what was quoted, what the path did, what crossed, what
+    filled and what it cost. A reader should never have to re-derive a fill."""
     trades = list(res.trades) + closed
+    posted = res.quote
     return {"action": res.action, "size": res.size, "source": res.source,
+            "quote": None if posted is None else {
+                "bid": posted.bid, "ask": posted.ask, "size_frac": posted.size_frac,
+                "size_usd": posted.size_usd, "source": posted.source,
+                "mid_now": cycle.entry.mid, "unit": unit},
+            "fills": [_fill_row(f) for f in res.fills],
+            "path_summary": _path_summary(cycle.path, posted),
             "pnl_usd": sum(t.pnl_usd for t in trades),
-            "fees_usd": sum(t.fees_usd for t in trades) + (res.fill.fees_usd if res.fill else 0.0),
+            "fees_usd": res.fees_usd + sum(t.fees_usd for t in closed),
             "reason": trades[-1].reason if trades else None, "refused": res.refused}
 
 
@@ -167,17 +233,22 @@ def _credit(record: dict[str, Any], trade: Any) -> None:
 
 
 def apply_cycle(book: Book, cycle: Cycle, tick: float) -> Any:
-    """The per-cycle sequence every driver shares: expire, quote, mark,
-    decide, step. Returns the book's StepResult. The round-trip cost the
-    default rule sees is priced at the position cap, which is the size the
-    rule will ask for whenever the edge is worth having."""
+    """The per-cycle sequence every driver shares: learn the settlement, sweep
+    the deadlines, take the entry quote, mark, decide, step. Returns the
+    book's StepResult. The round-trip cost the default rule sees is priced at
+    the position cap, which is the size the rule will ask for whenever the
+    edge is worth having; the quote is posted off the entry's mid, in the
+    venue's own unit, whatever the take turns out to be."""
+    if cycle.settlement is not None:
+        book.settlements[cycle.instrument] = float(cycle.settlement)
     book.expire(cycle.at)
     book.last_quote[cycle.instrument] = cycle.entry
     book.mark(cycle.at)
     open_pos = book.positions.get(cycle.instrument)
     cost = book.costs.round_trip_cost(cycle.entry, book.equity() * MAX_POSITION)
     decision = decide(cycle.output, cycle.delta, cycle.half_width, cost, tick,
-                      open_pos.side if open_pos else None)
+                      open_pos.side if open_pos else None,
+                      mid_now=cycle.entry.mid, unit=book.costs.unit)
     res = book.step(cycle, decision)
     book.last_at, book.processed = cycle.at, book.processed + 1
     return res
@@ -188,21 +259,17 @@ def replay_book(cycles: list[Cycle], spec: TradingSpec, *, book_id: str, harness
     """A book after every cycle, and what each cycle did to it by instance id.
 
     A cycle's ``pnl_usd`` is what was realised on *its* instrument during it -
-    a close the agent asked for, a close at the horizon, or a forced close at
-    the deadline - and zero while the position carries, so the sum over records
-    is the sum over trades.
+    a side of its quote closing a position, a close the agent asked for, or
+    the deadline settling or forcing one out - and zero while the position
+    carries, so the sum over records is the sum over trades. What is still
+    open when the cycles run out is wound down at its own deadline, credited
+    to the last cycle that chose to carry it.
     """
     cycles = sorted(cycles, key=lambda c: (c.at, c.instrument, c.instance_id))
-    next_at: dict[int, datetime | None] = {}
-    seen: dict[str, int] = {}
-    for i, c in enumerate(cycles):
-        if c.instrument in seen:
-            next_at[seen[c.instrument]] = c.at
-        seen[c.instrument] = i
     book = Book(book_id, spec.topic, harness_fp, spec.costs)
     records: dict[str, dict[str, Any]] = {}
     latest_record: dict[str, dict[str, Any]] = {}
-    for i, c in enumerate(cycles):
+    for c in cycles:
         before = len(book.trades)
         res = apply_cycle(book, c, spec.tick)
         swept = book.trades[before:len(book.trades) - len(res.trades)]
@@ -214,16 +281,12 @@ def replay_book(cycles: list[Cycle], spec: TradingSpec, *, book_id: str, harness
         for t in swept:
             if t.instrument != c.instrument and t.instrument in latest_record:
                 _credit(latest_record[t.instrument], t)
-        pos = book.positions.get(c.instrument)
-        if pos is not None:
-            latest = min(pos.deadline, c.horizon_at + (c.horizon_at - c.at))
-            nxt = next_at.get(i)
-            if nxt is None or nxt > latest:
-                closed.append(book.close(c.instrument, c.exit, c.horizon_at, "horizon"))
-                book.mark(c.horizon_at, event="horizon")
-        records[c.instance_id] = latest_record[c.instrument] = _record(res, closed)
+        records[c.instance_id] = latest_record[c.instrument] = _record(res, closed, c, spec.unit)
+    for t in book.wind_down():
+        if t.instrument in latest_record:
+            _credit(latest_record[t.instrument], t)
     return book, records
 
 
-__all__ = ["Cycle", "TradingSpec", "cycles_of", "replay_book", "apply_cycle", "delta_from_details",
-           "book_line", "with_trade"]
+__all__ = ["Cycle", "TradingSpec", "PathBar", "cycles_of", "replay_book", "apply_cycle",
+           "delta_from_details", "book_line", "with_trade"]

@@ -2,20 +2,22 @@
 
 A live collector writes one row per forecast and grades it a few minutes
 later; this reads the graded rows, turns each into a cycle, and applies the
-ones the book has not seen. Two things differ from replay. There is no next
-cycle to look ahead to, so a position carries until the agent closes it or
-its deadline expires, swept at every cycle; and the harness behind a topic's
-book changes when a promotion lands, so the book records a handover and
-keeps its positions - the new harness inherits the old one's exposure the
-way a desk inherits a departing trader's, because closing everything on a
-promotion would charge the new harness a round trip it never asked for.
+ones the book has not seen. A position carries until the agent closes it or
+its deadline expires, swept at every cycle, exactly as in replay; and the
+harness behind a topic's book changes when a promotion lands, so the book
+records a handover and keeps its positions - the new harness inherits the
+old one's exposure the way a desk inherits a departing trader's, because
+closing everything on a promotion would charge the new harness a round trip
+it never asked for.
 
 The quote comes from whatever the collector kept: Kalshi rows carry
 ``yes_bid``/``yes_ask``, crypto rows carry the touch under ``context.book``
 and sometimes a ladder alongside, and an equity row carries only a mid. A
 row with none of these gets a proxy quote from the venue's own spread
 constant, flagged so a report can say how much of a book's P&L was earned
-against invented spreads.
+against invented spreads. Two more optional keys drive the posted quote and
+the deadline: ``path``, the bars the price walked after the instant, and
+``settlement``, what a resolved market pays.
 """
 
 from __future__ import annotations
@@ -25,11 +27,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .book import Book, Mark, Trade
+from .book import Book, Mark, PathBar, Trade
 from .costs import Quote, default_tick
 from .replay import Cycle, apply_cycle
 
 _DELTA_KEYS = {"cents": ("delta_cents", "half_width_cents"), "bps": ("delta_bps", "half_width_bps")}
+
+#: What a collector may write a binary settlement as.
+_SETTLEMENT = {"yes": 1.0, "no": 0.0, "1": 1.0, "0": 0.0, "true": 1.0, "false": 0.0}
 
 
 def _at(value: Any) -> datetime:
@@ -88,6 +93,29 @@ def _delta(row: dict, mid: float, unit: str) -> tuple[float, float]:
         return 0.0, 0.0
 
 
+def _path(raw: Any) -> tuple[PathBar, ...]:
+    """``row["path"]``: the bars the price walked after the instant, each
+    ``{ts, high, low, close}``. A row without one simply never fills a quote,
+    so a malformed path is dropped rather than raised on."""
+    out = []
+    for bar in raw or ():
+        try:
+            out.append(PathBar.from_dict(bar))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return tuple(sorted(out, key=lambda b: b.ts))
+
+
+def _settlement(raw: Any) -> float | None:
+    """``row["settlement"]``: a number, or the ``yes``/``no`` a Kalshi market
+    resolves to. None when the market has not resolved."""
+    if raw is None or isinstance(raw, bool):
+        return None if raw is None else float(raw)
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    return _SETTLEMENT.get(str(raw).strip().lower())
+
+
 def rows_to_cycles(rows: list[dict], spec_like: Any, books_by_key: dict | None = None) -> list[Cycle]:
     """Graded rows to cycles, skipping the ungraded. ``spec_like`` needs
     ``costs``, ``unit`` and ``horizon``; ``books_by_key`` is the crypto
@@ -117,7 +145,8 @@ def rows_to_cycles(rows: list[dict], spec_like: Any, books_by_key: dict | None =
                          delta=delta, half_width=half,
                          entry=_entry_quote(row, at, mid, spec_like.costs, ladder),
                          exit=_exit_quote(row, horizon_at, realised, spec_like.costs),
-                         horizon_at=horizon_at, deadline=deadline))
+                         horizon_at=horizon_at, deadline=deadline,
+                         path=_path(row.get("path")), settlement=_settlement(row.get("settlement"))))
     return sorted(out, key=lambda c: (c.at, c.instrument, c.instance_id))
 
 

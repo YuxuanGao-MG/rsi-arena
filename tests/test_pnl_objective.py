@@ -95,13 +95,15 @@ def test_a_batch_that_trades_puts_pnl_on_the_frontier_and_the_book_in_the_feedba
     assert all(set(o) == {"skill", "cost", "pnl"} for o in batch.objective_scores)
     pnl = [o["pnl"] for o in batch.objective_scores]
     assert all(0.0 <= p <= 1.0 for p in pnl)
-    # The first cycle only opens (its P&L is realised by the cycle that closes
-    # it); every later one closes a round trip, and the fill is not free.
+    # The first cycle only opens; every later one re-opens over the position
+    # it is carrying, which closes it first, and the last is wound down at its
+    # deadline. Nothing is realised by a horizon any more.
     assert pnl[0] == 0.5 and all(p != 0.5 for p in pnl[1:]), pnl
     # The scalar the gate and GEPA's best-candidate choice read is untouched.
     assert all(0.5 < v <= 1.0 for v in batch.scores)
     for traj in batch.trajectories:
-        assert re.search(r"Book: (open_long|close|hold) \d+% -> [+-]\d+ USD", traj["feedback"]), traj["feedback"]
+        assert re.search(r"Book: quote [\d.]+/[\d.]+ \d+% (bid|ask|both) hit|unhit, "
+                         r"(open_long|close|hold) \d+% -> [+-]\d+ USD", traj["feedback"]), traj["feedback"]
     data = adapter.make_reflective_dataset(adapter.base.to_components(), batch, ["plan", "context"])
     assert all("Book:" in rec["Feedback"] for rec in data["plan"] + data["context"])
 
@@ -115,7 +117,7 @@ def test_the_record_is_attached_to_the_outcome_and_a_holder_scores_exactly_half(
         trade = r.outcome.details["trade"]
         assert trade["source"] == "harness" and trade["action"] == "open_long"
         assert r.outcome.feedback.endswith(f"USD ({trade['reason'] or 'no trade'})")
-    assert traded[-1].outcome.details["trade"]["reason"] == "horizon"
+    assert traded[-1].outcome.details["trade"]["reason"] == "force_close", "nothing closes at a horizon"
     assert sum(r.outcome.details["trade"]["pnl_usd"] for r in traded) != 0.0
 
     held = _adapter(tk, holder)._traded(
@@ -124,7 +126,8 @@ def test_the_record_is_attached_to_the_outcome_and_a_holder_scores_exactly_half(
         assert r.outcome.objectives["pnl"] == 0.5
         assert r.outcome.details["trade"]["action"] == "hold"
         assert r.outcome.details["trade"]["pnl_usd"] == 0.0
-        assert r.outcome.feedback.endswith("Book: hold 0% -> +0 USD (no trade)")
+        assert r.outcome.feedback.endswith("hold 0% -> +0 USD (no trade)")
+        assert "Book: quote " in r.outcome.feedback, "a holder still posts a quote"
 
 
 def test_a_task_without_a_book_is_untouched(t0, history):

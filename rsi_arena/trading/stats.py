@@ -69,7 +69,7 @@ def _daily_closes(marks: list[Mark]) -> list[float]:
 
 def equity_stats(marks: list[Mark], trades: list[Trade], cycles_per_year: float, *,
                  start: float = START_EQUITY, handovers: int = 0, refusals: int = 0,
-                 ) -> dict[str, Any]:
+                 quotes_posted: int = 0, fills: int = 0) -> dict[str, Any]:
     """Everything a scoreboard shows for one book.
 
     ``avg_loss`` is the mean of the losing trades' P&L and so is negative;
@@ -77,6 +77,12 @@ def equity_stats(marks: list[Mark], trades: list[Trade], cycles_per_year: float,
     were no losses to divide by, which JSON can carry and infinity cannot.
     ``turnover`` counts each round trip's size twice, once in and once out,
     as a share of the starting equity.
+
+    ``fill_rate`` is sides filled over quotes posted, so it runs from zero to
+    two: a book that gets both sides of every quote hit is a market maker and
+    a book at zero is quoting somewhere nobody trades. It is the first number
+    to read when a harness makes no money - a wide quote never trades, and a
+    narrow one trades every time it is wrong.
     """
     series = [start] + [m.equity_usd for m in marks]
     wins = [t.pnl_usd for t in trades if t.pnl_usd > 0]
@@ -101,12 +107,17 @@ def equity_stats(marks: list[Mark], trades: list[Trade], cycles_per_year: float,
         "end_equity": end,
         "handovers": handovers,
         "refusals": refusals,
+        "quotes_posted": quotes_posted,
+        "fills": fills,
+        "fill_rate": fills / quotes_posted if quotes_posted else 0.0,
     }
 
 
 def book_stats(book: Any, cycles_per_year: float) -> dict[str, Any]:
     return equity_stats(book.marks, book.trades, cycles_per_year, start=book.start,
-                        handovers=len(book.handovers), refusals=len(book.refusals))
+                        handovers=len(book.handovers), refusals=len(book.refusals),
+                        quotes_posted=getattr(book, "quotes_posted", 0),
+                        fills=len(getattr(book, "fills", ())))
 
 
 __all__ = ["CYCLES_PER_YEAR", "PNL_SCALE_USD", "pnl_objective", "equity_stats", "book_stats"]

@@ -16,6 +16,14 @@ equity a short is a sale: cash comes in, the position is worth ``-qty * mid``.
 equity is ``cash + sum(value)`` on every venue and its round-trip P&L is the
 sum of two cash flows, never a per-venue formula.
 
+A resting order is the other way to trade. The book posts a bid and an ask
+and the venue fills them when a print goes through, so ``rest`` prices a
+fill *at the posted price* - no spread crossed - and charges the maker fee:
+a quarter of the taker curve on Kalshi, two basis points on the perpetual,
+nothing on an equity (commission free either way; the SEC and TAF charges
+on a sale stay). The book walks the price path and asks ``rest`` what each
+touch was worth.
+
 Stdlib only. ``rsi_arena.alpaca.replay`` and ``rsi_arena.crypto.replay`` own
 the equity taxes and the tick sizes, but importing either package imports its
 HTTP client through the package ``__init__``, so the numbers are copied here
@@ -29,7 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from ..kalshi._fees import taker_fee
+from ..kalshi._fees import maker_fee, taker_fee
 
 #: A proxy quote is what the engine invents when a venue printed a mid and no
 #: book. Kalshi soccer quotes are typically two cents wide; a large-cap
@@ -55,6 +63,9 @@ EQUITY_TICK_BPS = 5.0
 #: paper book that charged spot fees for a perpetual would refuse every
 #: one-minute forecast there is.
 TAKER_BPS_PER_SIDE = 5.0
+#: A perpetual's maker fee per side (Binance USD-M VIP0: 0.02%). A resting
+#: quote on the coin pays this, never the spread.
+MAKER_BPS_PER_SIDE = 2.0
 
 Levels = tuple[tuple[float, float], ...]
 
@@ -127,6 +138,8 @@ class VenueCosts(Protocol):
 
     def fill(self, side: str, size_usd: float, quote: Quote, *,
              closing: bool | str = False, qty: float | None = None) -> Fill: ...
+    def rest(self, side: str, px: float, size_usd: float, *,
+             closing: bool = False, qty: float | None = None) -> Fill: ...
     def round_trip_cost(self, quote: Quote, size_usd: float) -> float: ...
     def exposure(self, position: HasPosition, mid: float) -> float: ...
     def value(self, position: HasPosition, mid: float) -> float: ...
@@ -167,6 +180,20 @@ class KalshiCosts:
         # and the NO price charge the same; settlement is free.
         fees = 0.0 if closing == "settled" else taker_fee(px, qty)
         return Fill(px=px, qty=qty, notional_usd=notional, fees_usd=fees)
+
+    def rest(self, side: str, px: float, size_usd: float, *,
+             closing: bool = False, qty: float | None = None) -> Fill:
+        """A resting order filled at ``px``, a YES price. A filled bid is a
+        long (YES at the bid); a filled ask is a short (NO at one minus the
+        ask), and the same two prices take a position of that side off. The
+        maker fee is a quarter of the taker curve at the YES price."""
+        _side(side)
+        px = min(max(px, 0.0), 1.0)
+        price = px if side == "long" else 1.0 - px
+        if qty is None:
+            qty = float(math.floor(size_usd / price)) if price > 0 else 0.0
+        notional = qty * price
+        return Fill(px=price, qty=qty, notional_usd=notional, fees_usd=maker_fee(px, qty))
 
     def round_trip_cost(self, quote: Quote, size_usd: float = 0.0) -> float:
         """Cents per contract to get in and out at the touch."""
@@ -223,6 +250,7 @@ class PerpCosts:
     name = "perp"
     unit = "bps"
     taker_bps = TAKER_BPS_PER_SIDE
+    maker_bps = MAKER_BPS_PER_SIDE
 
     def fill(self, side: str, size_usd: float, quote: Quote, *,
              closing: bool | str = False, qty: float | None = None) -> Fill:
@@ -250,6 +278,15 @@ class PerpCosts:
         fees = notional * self.taker_bps / 1e4
         return Fill(px=avg, qty=qty, notional_usd=notional, fees_usd=fees, levels=max(1, used),
                     partial=partial)
+
+    def rest(self, side: str, px: float, size_usd: float, *,
+             closing: bool = False, qty: float | None = None) -> Fill:
+        """A resting order filled whole at ``px``, the maker fee on the notional."""
+        _side(side)
+        if qty is None:
+            qty = size_usd / px if px > 0 else 0.0
+        notional = qty * px
+        return Fill(px=px, qty=qty, notional_usd=notional, fees_usd=notional * self.maker_bps / 1e4)
 
     def round_trip_cost(self, quote: Quote, size_usd: float = 0.0) -> float:
         spread_bps = quote.spread / quote.mid * 1e4 if quote.mid else 0.0
@@ -281,12 +318,25 @@ class EquityCosts:
     name = "equity"
     unit = "bps"
     half_spread_bps = EQUITY_HALF_SPREAD_BPS
+    maker_bps = 0.0
 
     def fill(self, side: str, size_usd: float, quote: Quote, *,
              closing: bool | str = False, qty: float | None = None) -> Fill:
         _side(side)
         buying = (side == "long") != bool(closing)
         px = quote.mid * (1.0 + (self.half_spread_bps if buying else -self.half_spread_bps) / 1e4)
+        if qty is None:
+            qty = float(math.floor(size_usd / px)) if px > 0 else 0.0
+        notional = qty * px
+        fees = 0.0 if buying else notional * SEC_FEE_PER_DOLLAR + min(qty * TAF_PER_SHARE, TAF_MAX)
+        return Fill(px=px, qty=qty, notional_usd=notional, fees_usd=fees)
+
+    def rest(self, side: str, px: float, size_usd: float, *,
+             closing: bool = False, qty: float | None = None) -> Fill:
+        """Whole shares at the posted price; no commission either way, the
+        federal charges on a sale as on any sale."""
+        _side(side)
+        buying = (side == "long") != bool(closing)
         if qty is None:
             qty = float(math.floor(size_usd / px)) if px > 0 else 0.0
         notional = qty * px
@@ -334,5 +384,6 @@ def costs_named(name: str) -> VenueCosts:
 
 __all__ = ["Quote", "Fill", "VenueCosts", "HasPosition", "KalshiCosts", "PerpCosts", "EquityCosts",
            "walk_book", "costs_named", "default_tick", "VENUES", "TICKS", "KALSHI_PROXY_SPREAD", "CRYPTO_PROXY_SPREAD_BPS",
-           "EQUITY_HALF_SPREAD_BPS", "TAKER_BPS_PER_SIDE", "SEC_FEE_PER_DOLLAR", "TAF_PER_SHARE",
+           "EQUITY_HALF_SPREAD_BPS", "TAKER_BPS_PER_SIDE", "MAKER_BPS_PER_SIDE", "SEC_FEE_PER_DOLLAR",
+           "TAF_PER_SHARE",
            "TAF_MAX", "KALSHI_TICK", "CRYPTO_TICK_BPS", "EQUITY_TICK_BPS"]

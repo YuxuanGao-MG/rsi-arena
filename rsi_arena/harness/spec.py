@@ -172,10 +172,13 @@ A plan may branch on a decision: a noul questions step whose answers map
 {"probability": {"from": "gate", "as": "probability"}} under output_key "gate" writes
 {{gate.probability}}, which a later step may test in skip_if ("gate.probability < 0.35");
 a skipped step leaves its output_key as null and {{name.field}} through it renders empty.
-A decisions plan may also trade: a choice question over open_long, open_short, close, hold
-mapped with {"as": "choice"} under the output field "action", and a score question with
-"values" between 0 and 0.10 mapped with {"as": "mean"} under "size", set the paper book's
-order for the cycle. Omitting both fields is allowed and trades the default rule.
+A decisions plan always quotes - the move and half width it forecasts are posted as a
+two-sided market every cycle - and may also take: a choice question over open_long,
+open_short, close, hold mapped with {"as": "choice"} under the output field "action",
+and a score question with "values" between 0 and 0.10 mapped with {"as": "mean"} under
+"size", set the paper book's take and the size of each side of the quote. Omitting both
+fields is allowed: the quote is still posted, two percent a side, and the take follows the
+default rule.
 The harness's "tools" list is the whole set a plan may name."""
 
     def reads(self) -> set[str]:

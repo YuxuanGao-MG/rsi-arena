@@ -46,7 +46,9 @@ def trading_spec(task: Any | None = None) -> TradingSpec:
                        quote_of=quote_of, deadline_of=deadline_of,
                        instrument_of=lambda w: w.symbol,
                        delta_of=lambda o: delta_from_details(o.details, "bps"),
-                       topic="news-equity-5m", horizon=HORIZON)
+                       topic="news-equity-5m", horizon=HORIZON,
+                       path_of=lambda w: getattr(w, "path", ()) or (),
+                       settlement_of=lambda w: getattr(w, "settlement", None))
 
 
 __all__ = ["trading_spec", "deadline_of", "CYCLES_PER_YEAR", "HORIZON"]

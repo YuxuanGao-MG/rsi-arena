@@ -23,6 +23,7 @@ from typing import Any, Callable
 from ...alpaca._bars import HORIZON_MINUTES, parse_instant
 from ...alpaca._news import NewsItem
 from ...alpaca._session import in_window, ny_date
+from ...trading import PathBar
 
 #: Where discovery leaves the bars a replay reads, next to the benchmark.
 DATA_DIR = "benchmarks/news-data"
@@ -81,6 +82,12 @@ class NewsWindow:
     #: kept, or through a bar source that serves closes only.
     vwap_now: float | None = None
     vwap_h: float | None = None
+    #: The minute bars between the instant and the horizon, for the quote the
+    #: book posts to be filled by; empty through a source that serves closes only.
+    path: tuple[PathBar, ...] = ()
+    #: A share never settles, so this stays None; the field is here because
+    #: every topic's window answers the same two questions for the book.
+    settlement: float | None = None
 
     @property
     def id(self) -> str:
@@ -106,7 +113,8 @@ class NewsWindow:
                 "realised": self.realised, "news_id": self.news_id, "headline": self.headline,
                 "summary": self.summary, "source": self.source, "symbols": list(self.symbols),
                 "edited_after": self.edited_after, "group": self.group,
-                "vwap_now": self.vwap_now, "vwap_h": self.vwap_h}
+                "vwap_now": self.vwap_now, "vwap_h": self.vwap_h,
+                "path": [b.to_dict() for b in self.path], "settlement": self.settlement}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "NewsWindow":
@@ -115,7 +123,9 @@ class NewsWindow:
                    headline=d.get("headline", ""), summary=d.get("summary", "") or "",
                    source=d.get("source", "") or "",
                    symbols=tuple(d.get("symbols") or ()), edited_after=bool(d.get("edited_after", False)),
-                   vwap_now=_opt(d.get("vwap_now")), vwap_h=_opt(d.get("vwap_h")))
+                   vwap_now=_opt(d.get("vwap_now")), vwap_h=_opt(d.get("vwap_h")),
+                   path=tuple(PathBar.from_dict(b) for b in d.get("path") or ()),
+                   settlement=_opt(d.get("settlement")))
 
 
 def _opt(value: Any) -> float | None:
@@ -136,6 +146,22 @@ def _vwap(bars: Any, symbol: str, at: datetime) -> float | None:
     except Exception:  # noqa: BLE001 - the close was already read; the vwap is a bonus
         return None
     return None if bar is None else float(getattr(bar, "vwap", 0.0) or 0.0) or None
+
+
+def _path(bars: Any, symbol: str, at: datetime, horizon: int) -> tuple[PathBar, ...]:
+    """The minute bars closing inside ``(at, at + horizon]``, as the path a
+    resting quote is filled by; empty through a source that serves closes
+    only, which is a quote that never trades rather than a window lost."""
+    read = getattr(bars, "bars", None)
+    if read is None:
+        return ()
+    end = at + timedelta(minutes=horizon)
+    try:
+        got = read(symbol, at, end)
+    except Exception:  # noqa: BLE001 - the closes were already read; the path is a bonus
+        return ()
+    return tuple(PathBar(ts=b.ts_close, high=float(b.h), low=float(b.l), close=float(b.c))
+                 for b in got if at < b.ts_close <= end)
 
 
 def load_benchmark(path: str | Path) -> list[BenchmarkItem]:
@@ -189,7 +215,8 @@ def build_windows(items: list[BenchmarkItem], *, bars: Any, horizon: int = HORIZ
                                     source=it.source, symbols=it.symbols or (it.symbol,),
                                     edited_after=it.edited_after,
                                     vwap_now=_vwap(bars, it.symbol, it.at),
-                                    vwap_h=_vwap(bars, it.symbol, it.at + timedelta(minutes=horizon))))
+                                    vwap_h=_vwap(bars, it.symbol, it.at + timedelta(minutes=horizon)),
+                                    path=_path(bars, it.symbol, it.at, horizon)))
         log(f"{group}: {len(built)} windows")
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from ...kalshi._history import History
 from ...kalshi.replay import HORIZON_MINUTES, MatchTimeline, fresh_quote, match_timeline
+from ...trading import PathBar
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,12 @@ class Window:
     yes_ask: float | None = None
     yes_bid_h: float | None = None
     yes_ask_h: float | None = None
+    #: The minute prints between the instant and the horizon, for the quote
+    #: the book posts to be filled by; empty on a window built before they
+    #: were kept, and on a minute nobody traded in.
+    path: tuple[PathBar, ...] = ()
+    #: 1.0 or 0.0 once the contract resolved, None while it has not.
+    settlement: float | None = None
 
     @property
     def id(self) -> str:
@@ -56,14 +63,16 @@ class Window:
         return {"ticker": self.ticker, "at": self.at.isoformat(), "mid_now": self.mid_now,
                 "realised": self.realised, "game": self.game, "event": self.event,
                 "group": self.group, "yes_bid": self.yes_bid, "yes_ask": self.yes_ask,
-                "yes_bid_h": self.yes_bid_h, "yes_ask_h": self.yes_ask_h}
+                "yes_bid_h": self.yes_bid_h, "yes_ask_h": self.yes_ask_h,
+                "path": [b.to_dict() for b in self.path], "settlement": self.settlement}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Window":
         return cls(ticker=d["ticker"], at=datetime.fromisoformat(d["at"]), mid_now=d["mid_now"],
                    realised=d["realised"], game=d.get("game", {}), event=d.get("event", ""),
                    yes_bid=_opt(d.get("yes_bid")), yes_ask=_opt(d.get("yes_ask")),
-                   yes_bid_h=_opt(d.get("yes_bid_h")), yes_ask_h=_opt(d.get("yes_ask_h")))
+                   yes_bid_h=_opt(d.get("yes_bid_h")), yes_ask_h=_opt(d.get("yes_ask_h")),
+                   path=_path(d.get("path")), settlement=_opt(d.get("settlement")))
 
 
 def _opt(value: Any) -> float | None:
@@ -71,6 +80,14 @@ def _opt(value: Any) -> float | None:
         return None if value is None else float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _path(raw: Any) -> tuple[PathBar, ...]:
+    return tuple(PathBar.from_dict(b) for b in raw or ())
+
+
+#: ``yes``/``no`` as the market's own dollars.
+SETTLES = {"yes": 1.0, "no": 0.0}
 
 
 def load_fixtures(path: str | Path) -> list[Fixture]:
@@ -117,9 +134,48 @@ def build_windows(fixtures: list[Fixture], *, history: History, every_minutes: i
     return out
 
 
+def _settlement(hist: History, ticker: str, cache: dict[str, float | None]) -> float | None:
+    """What the contract paid, once, per ticker. One cheap call on a market
+    the fixture has already finished; a market that has not resolved, or a
+    history that cannot say, is None, and the book force-closes instead."""
+    if ticker not in cache:
+        read = getattr(hist, "settlement", None)
+        try:
+            cache[ticker] = SETTLES.get(str(read(ticker) or "").lower()) if read else None
+        except Exception:  # noqa: BLE001 - a deadline is not worth failing a build over
+            cache[ticker] = None
+    return cache[ticker]
+
+
+def _path_for(hist: History, ticker: str, at: datetime, horizon: int) -> tuple[PathBar, ...]:
+    """The prints between the instant and the horizon, as bars a resting
+    quote can be filled by.
+
+    Trade prices, not quotes: a resting bid is filled when somebody sells into
+    it, and a minute in which nobody traded filled nobody. Most minutes on a
+    thin soccer market are like that, which is exactly why the quote a harness
+    posts has to be somewhere the tape actually goes.
+    """
+    end = at + timedelta(minutes=horizon)
+    try:
+        candles = hist.price_path(ticker, at, end)
+    except Exception:  # noqa: BLE001 - no path is a quote that never fills, not a failed build
+        return ()
+    out = []
+    for c in candles:
+        if not (at < c.ts <= end):
+            continue
+        if c.price_high is None or c.price_low is None or c.price_close is None:
+            continue
+        out.append(PathBar(ts=c.ts, high=float(c.price_high), low=float(c.price_low),
+                           close=float(c.price_close)))
+    return tuple(out)
+
+
 def _windows_for(fixture: Fixture, line: MatchTimeline, hist: History,
                  every_minutes: int, horizon: int) -> list[Window]:
     built: list[Window] = []
+    settled: dict[str, float | None] = {}
     for ticker in fixture.tickers:
         for at in line.windows(every_minutes=every_minutes):
             candle = fresh_quote(hist, ticker, at)
@@ -133,5 +189,7 @@ def _windows_for(fixture: Fixture, line: MatchTimeline, hist: History,
             built.append(Window(ticker=ticker, at=at, mid_now=candle.mid, realised=later.mid,
                                 game=line.state_at(at), event=fixture.event,
                                 yes_bid=candle.yes_bid_close, yes_ask=candle.yes_ask_close,
-                                yes_bid_h=later.yes_bid_close, yes_ask_h=later.yes_ask_close))
+                                yes_bid_h=later.yes_bid_close, yes_ask_h=later.yes_ask_close,
+                                path=_path_for(hist, ticker, at, horizon),
+                                settlement=_settlement(hist, ticker, settled)))
     return built
