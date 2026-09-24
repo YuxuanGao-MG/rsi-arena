@@ -42,12 +42,23 @@ class _Run:
         self.cost_usd = float(d.get("cost_usd") or 0.0)
 
 
+#: What the run's own settings decide about the question set it was scored on:
+#: where it lives, and how much of it the thinner kept. ``per_fixture`` is in
+#: the list because ``Settings`` carries a concrete default for it (Kalshi's
+#: eight), which ``TopicSpec.fill`` will not replace - so a crypto run scored
+#: on twenty-four instants a day was rebuilt here against eight of them, and
+#: two thirds of its rollouts found no copy of themselves in the set to take
+#: a touch or a path from.
+FROM_RUN = ("benchmark", "windows_dir", "cache_dir", "per_fixture", "every")
+
+
 def load_task(topic: str, settings: dict[str, Any] | None = None) -> Any:
     """The topic's task, offline: the benchmark file and the stores on disk,
-    with the run's own benchmark and windows paths when the manifest kept them."""
+    with the run's own benchmark, windows paths and thinning when the manifest
+    kept them."""
     s = Settings(topic=topic)
-    for name in ("benchmark", "windows_dir", "cache_dir"):
-        if settings and settings.get(name):
+    for name in FROM_RUN:
+        if settings and settings.get(name) is not None:
             setattr(s, name, settings[name])
     return load_topic(spec_of(topic).fill(s))
 
