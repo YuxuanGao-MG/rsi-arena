@@ -28,6 +28,7 @@ from typing import Any, Callable
 from ...crypto._binance import MAX_STALE_S, close_at
 from ...crypto._futures import next_funding
 from ...trading import PathBar
+from .._common.store import write_json_atomic
 
 UTC = timezone.utc
 
@@ -185,8 +186,7 @@ def build_windows(benchmark: Benchmark, spot: Any, *, every_minutes: int | None 
             continue
         log(f"D{day:%Y%m%d}: {len(built)} windows")
         if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps([w.to_dict() for w in built]))
+            write_json_atomic(path, [w.to_dict() for w in built])
         out.extend(built)
     return out
 

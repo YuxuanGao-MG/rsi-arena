@@ -17,6 +17,7 @@ from typing import Any, Callable
 from ...kalshi._history import History
 from ...kalshi.replay import HORIZON_MINUTES, MatchTimeline, fresh_quote, match_timeline
 from ...trading import PathBar
+from .._common.store import write_json_atomic
 
 
 @dataclass(frozen=True)
@@ -128,8 +129,7 @@ def build_windows(fixtures: list[Fixture], *, history: History, every_minutes: i
             continue
         log(f"{fixture.event}: {len(built)} windows")
         if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps([w.to_dict() for w in built]))
+            write_json_atomic(path, [w.to_dict() for w in built])
         out.extend(built)
     return out
 

@@ -24,6 +24,7 @@ from ...alpaca._bars import HORIZON_MINUTES, parse_instant
 from ...alpaca._news import NewsItem
 from ...alpaca._session import in_window, ny_date
 from ...trading import PathBar
+from .._common.store import write_json_atomic
 
 #: Where discovery leaves the bars a replay reads, next to the benchmark.
 DATA_DIR = "benchmarks/news-data"
@@ -219,8 +220,7 @@ def build_windows(items: list[BenchmarkItem], *, bars: Any, horizon: int = HORIZ
                                     path=_path(bars, it.symbol, it.at, horizon)))
         log(f"{group}: {len(built)} windows")
         if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps([w.to_dict() for w in built]))
+            write_json_atomic(path, [w.to_dict() for w in built])
         out.extend(built)
     return out
 

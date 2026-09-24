@@ -142,6 +142,40 @@ the measurement rather than the harness:
 The question set is 485 matches now, not five, because the gate's power turned
 on that and not on the optimizer.
 
+## The question sets roll every Sunday (2026-09-23)
+
+`roll.yml` runs `scripts/roll_question_set.py` at 02:00 UTC on Sundays, one
+step per topic, and commits only `benchmarks/` paths. Each topic appends the
+markets its venue settled since the set's newest group — Kalshi fixtures newer
+than the newest event-ticker date, crypto days after the benchmark's `to`, news
+sessions after the latest New York date — and then prunes back to `--keep`
+groups by recency: 485 matches, 92 days, 2,350 symbol-days, the sizes the sets
+had when the roll began. `--keep` is a count of *groups*, not of windows or
+instances, because the split is by group and power comes from groups. The
+procedure, the dedupe rules and the full list of what a roll must never do are
+written out in the script's module docstring and in `docs/design.md`, *How the
+question sets roll*.
+
+A roll reshuffles which groups are held out. `three_way_split` shuffles the
+sorted group ids on a fixed seed, so adding a match or dropping a day moves
+other groups between train, held-out and audit. That is fine and intended: the
+scoreboard keys on instance ids, not on split membership, so every remembered
+answer stays attached to its own question and nothing is re-scored by accident;
+and the audit set is supposed to be a fresh cut rather than a monument, which is
+the whole point of not asking every generation about the same weeks in
+September. What a roll may never do is change an existing window — `id`,
+`mid_now`, `realised`, quotes, path — and it fingerprints every surviving file
+before and after to prove it did not.
+
+Failures are designed to be quiet, because a weekly job that goes red every
+third week is a job nobody reads. One venue down is one table row; all three
+down is the only thing that opens an issue. A topic that fails validation
+(`rsi-arena windows --json`, `scripts/preflight.py`) has its paths restored from
+the checkout and reports `roll reverted: <reason>`, green, with last week's set
+intact. A `loop.yml` run in progress makes the roll wait up to thirty minutes
+and then skip the week. Run it by hand with `--dry-run` to see what a roll would
+add and remove without touching anything.
+
 ## What to do next, in order
 
 1. **Get a key in.** Locally: `export OPENROUTER_API_KEY=sk-or-...`. On GitHub:

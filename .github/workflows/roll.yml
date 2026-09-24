@@ -1,0 +1,249 @@
+# The weekly roll: append what the venues have settled since last Sunday, prune
+# the oldest, commit the question sets. Nothing else. No model key is used and
+# no generation is run here — this workflow only changes what the loop is asked
+# about, under `benchmarks/`.
+#
+# It is built to be boring. A roll that goes red every third week is a roll
+# nobody reads, and the set ages anyway, so every way it can go wrong is
+# answered with something quieter than a failure:
+#
+#   - one step per topic, `continue-on-error: true`: Kalshi's venue being down
+#     does not stop crypto rolling. The job is red only when EVERY topic that
+#     was attempted failed, or when the commit could not be pushed.
+#   - the script validates before this commits: `rsi-arena windows --json` and
+#     `scripts/preflight.py` have to pass for the topic, or it reverts that
+#     topic's paths in git and reports "roll reverted: <reason>" — green,
+#     with the old set intact.
+#   - nothing new is success. A week Kalshi settled nothing is "nothing to add".
+#   - the loop comes first: if a loop.yml run is going, this waits up to thirty
+#     minutes for it and then skips the week with a notice. A question set
+#     changing under a generation would leave a run half-scored on one set and
+#     half on another.
+#   - a per-topic time budget, so a slow venue costs the week's roll a partial
+#     append rather than the whole two-hour job.
+#
+# An issue is opened only when every topic failed. A normal week writes a table
+# to the step summary and says nothing else.
+name: roll
+on:
+  # Sunday 02:00 UTC. Ahead of the day's first loop cron (03:17 Kalshi) with an
+  # hour to spare, and on the quietest day for all three venues: the Kalshi
+  # soccer week is settled, the crypto day closed at midnight, and the news
+  # week's last session was Friday.
+  schedule:
+    - cron: "0 2 * * 0"
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "which question set to roll"
+        type: choice
+        options: [all, kalshi-horizon-5m, crypto-horizon-1m, news-equity-5m]
+        default: all
+      keep:
+        description: "groups kept after the roll; blank uses the script's default per topic"
+        default: ""
+      until:
+        description: "last day to add (YYYY-MM-DD); blank uses yesterday UTC"
+        default: ""
+      budget_minutes:
+        description: "minutes a topic may spend talking to its venue"
+        default: "25"
+      dry_run:
+        description: "discover and print, write nothing, commit nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+# One roll at a time. Two rolls would fight over the same benchmark files and
+# the second would rebase onto the first for no gain.
+concurrency:
+  group: roll
+  cancel-in-progress: false
+
+jobs:
+  roll:
+    runs-on: ubuntu-latest
+    # Three topics at twenty-five minutes of discovery each, plus the window
+    # builds and two validations a topic. The budget stops the fetching; this
+    # stops a hung socket from holding the runner all day.
+    timeout-minutes: 120
+    env:
+      TOPIC: ${{ inputs.topic || 'all' }}
+      KEEP: ${{ inputs.keep }}
+      UNTIL: ${{ inputs.until }}
+      BUDGET: ${{ inputs.budget_minutes || '25' }}
+      DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+      # The news topic's venue. Absent, that one step says so and is skipped;
+      # the other two do not need a key at all.
+      APCA_API_KEY_ID: ${{ secrets.APCA_API_KEY_ID }}
+      APCA_API_SECRET_KEY: ${{ secrets.APCA_API_SECRET_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+
+      # Don't fight the loop. A generation reads the question set at its start
+      # and again at its end; rolling underneath one would mean a run scored
+      # against two different sets. Poll every two minutes for up to thirty,
+      # then skip the week — green, with a notice. The set ages by one week,
+      # which is what next Sunday is for.
+      - name: Wait for the loop to finish
+        id: loop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/roll_question_set.py --wait-only --wait-for-loop 30
+
+      - name: Say so if the loop is still busy
+        if: steps.loop.outputs.busy == 'true'
+        run: |
+          echo "::notice::a loop run was still in progress after 30 minutes; nothing rolled this week"
+          { echo "### Roll skipped";
+            echo "A \`loop.yml\` run was still going after thirty minutes of waiting.";
+            echo "Nothing was changed. The next roll is Sunday 02:00 UTC."; } >> "$GITHUB_STEP_SUMMARY"
+
+      # One step per topic, each allowed to fail on its own. The `if` on each is
+      # the same shape: not busy, and this topic was asked for.
+      - name: Roll kalshi-horizon-5m
+        id: kalshi
+        if: steps.loop.outputs.busy != 'true' && (env.TOPIC == 'all' || env.TOPIC == 'kalshi-horizon-5m')
+        continue-on-error: true
+        run: |
+          python scripts/roll_question_set.py --topic kalshi-horizon-5m --validate \
+            --budget-minutes "$BUDGET" --summary roll-kalshi-horizon-5m.json $DRY \
+            ${KEEP:+--keep "$KEEP"} ${UNTIL:+--until "$UNTIL"}
+
+      - name: Roll crypto-horizon-1m
+        id: crypto
+        if: steps.loop.outputs.busy != 'true' && (env.TOPIC == 'all' || env.TOPIC == 'crypto-horizon-1m')
+        continue-on-error: true
+        run: |
+          python scripts/roll_question_set.py --topic crypto-horizon-1m --validate \
+            --budget-minutes "$BUDGET" --summary roll-crypto-horizon-1m.json $DRY \
+            ${KEEP:+--keep "$KEEP"} ${UNTIL:+--until "$UNTIL"}
+
+      # The only topic with a secret. Without it the Alpaca client raises at the
+      # first request, which would read as a venue failure; this says plainly
+      # that the key is missing and leaves the set alone.
+      - name: Roll news-equity-5m
+        id: news
+        if: steps.loop.outputs.busy != 'true' && (env.TOPIC == 'all' || env.TOPIC == 'news-equity-5m')
+        continue-on-error: true
+        run: |
+          if [ -z "$APCA_API_KEY_ID" ] || [ -z "$APCA_API_SECRET_KEY" ]; then
+            echo "::notice::APCA_API_KEY_ID/APCA_API_SECRET_KEY are not set; news-equity-5m not rolled"
+            python - <<'PY'
+          import json, pathlib
+          pathlib.Path("roll-news-equity-5m.json").write_text(json.dumps(
+              {"topic": "news-equity-5m", "status": "skipped", "added": 0, "removed": 0, "groups": 0,
+               "reason": "no Alpaca secrets on this repository"}))
+          PY
+            exit 0
+          fi
+          python scripts/roll_question_set.py --topic news-equity-5m --validate \
+            --budget-minutes "$BUDGET" --summary roll-news-equity-5m.json $DRY \
+            ${KEEP:+--keep "$KEEP"} ${UNTIL:+--until "$UNTIL"}
+
+      # Only what a roll may touch. `runs/`, the archive and the scoreboard are
+      # named nowhere here on purpose: a roll that committed a run directory
+      # would be writing the loop's record from outside the loop.
+      - name: Commit the question sets
+        id: commit
+        if: steps.loop.outputs.busy != 'true' && !inputs.dry_run
+        shell: bash
+        run: |
+          git config user.name "rsi-arena roll"
+          git config user.email "roll@users.noreply.github.com"
+          shopt -s nullglob
+          for d in benchmarks/soccer-2026.json benchmarks/crypto-2026-09.json benchmarks/news-2026-09.json \
+                   benchmarks/windows benchmarks/windows-* benchmarks/crypto-data benchmarks/news-data; do
+            [ -e "$d" ] && git add -A -- "$d"
+          done
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            echo "pushed=nothing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "roll: question sets for $(date -u +%Y-%m-%d) (run ${{ github.run_id }})"
+          # `-X theirs` on a rebase prefers the commit being replayed, which is
+          # this roll's — the naming is inverted during a rebase, where "ours"
+          # is the upstream being replayed onto. A benchmark JSON is written
+          # whole by the roll and by nothing else on the same Sunday, so the
+          # roll's version is the right one to keep; a loop commit that added
+          # window files keeps them, because those are different paths.
+          for i in 1 2 3; do
+            git pull --rebase -X theirs origin main && git push origin HEAD:main && {
+              echo "pushed=yes" >> "$GITHUB_OUTPUT"; exit 0; }
+            sleep 10
+          done
+          echo "pushed=no" >> "$GITHUB_OUTPUT"
+          echo "::error::could not push the roll after three attempts"
+          exit 1
+
+      # topic | added | removed | groups | status, from the summary each step
+      # wrote. A step that died before writing one shows as "failed (no report)".
+      - name: Step summary
+        if: always() && steps.loop.outputs.busy != 'true'
+        shell: bash
+        run: |
+          { echo "### Roll ${{ github.run_id }}";
+            echo "";
+            echo "| topic | added | removed | groups | status |";
+            echo "|---|---:|---:|---:|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          for topic in ("kalshi-horizon-5m", "crypto-horizon-1m", "news-equity-5m"):
+              p = pathlib.Path(f"roll-{topic}.json")
+              if not p.exists():
+                  continue
+              try:
+                  r = json.loads(p.read_text())
+              except ValueError:
+                  print(f"| {topic} | - | - | - | failed (unreadable report) |")
+                  continue
+              status = r.get("status", "?")
+              if r.get("reason"):
+                  status += f" - {r['reason'][:120]}"
+              print(f"| {topic} | {r.get('added', 0)} | {r.get('removed', 0)} | "
+                    f"{r.get('groups', 0)} | {status} |")
+          PY
+
+      # Green unless every topic that was asked for failed. One venue out is a
+      # row in the table; all three out is something to look at.
+      - name: Verdict
+        if: always() && steps.loop.outputs.busy != 'true'
+        shell: bash
+        run: |
+          outcomes="${{ steps.kalshi.outcome }} ${{ steps.crypto.outcome }} ${{ steps.news.outcome }}"
+          ran=0; failed=0
+          for o in $outcomes; do
+            case "$o" in
+              skipped|"") ;;
+              success) ran=$((ran+1)) ;;
+              *) ran=$((ran+1)); failed=$((failed+1)) ;;
+            esac
+          done
+          echo "$ran topic(s) attempted, $failed failed"
+          if [ "$ran" -gt 0 ] && [ "$ran" -eq "$failed" ]; then
+            echo "::error::every topic failed to roll"
+            exit 1
+          fi
+
+      # The only alerting. A single topic failing is a table row; every topic
+      # failing means the script, the checkout or the runner, and that wants a
+      # human. The push failing already reds the job on its own step.
+      - name: Open an issue if every topic failed
+        if: failure() && steps.commit.outputs.pushed != 'no'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "roll failed: $(date -u +%Y-%m-%d) run ${{ github.run_id }}" \
+            --body "Every topic failed to roll in https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}. The question sets are unchanged and are now a week older; the next scheduled roll is Sunday 02:00 UTC." \
+            || echo "::warning::could not open an issue about the failed roll"

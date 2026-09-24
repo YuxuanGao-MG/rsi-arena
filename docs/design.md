@@ -388,6 +388,90 @@ once through `live_tools` and the Jev harness, graded through
 the topic, symbol, venue and unit that migration 008 added. Without the
 Alpaca secrets it skips, green.
 
+### How the question sets roll (2026-09-23)
+
+A question set built once and committed is an exam that ages. The Kalshi set
+ends on the newest event Kalshi had settled the day it was discovered, the
+crypto set on a Tuesday in September, the news set on the fifteenth. Every
+generation after that is asked about the same weeks, and the weeks it never
+sees are the ones the incumbent will actually be traded on. `roll.yml` runs
+`scripts/roll_question_set.py` every Sunday at 02:00 UTC, one step per topic,
+to append what the venues settled since and prune the oldest back to size.
+
+**Where new markets come from, and what "newest" means.**
+
+- *kalshi-horizon-5m.* Newest is the latest date encoded in an event ticker
+  already in `benchmarks/soccer-2026.json` — `KXEPLGAME-26SEP14LEENEW` is
+  dated the 14th. Kalshi dates an event by the day it listed the contract,
+  which is the kickoff day give or take `discover_fixtures.DATE_SPREAD`
+  (three days), so the search runs from three days before newest through
+  `--until` (yesterday). For each league already in the set, the settled
+  events of its match-winner series are read newest first and stop after
+  twenty-five in a row older than the window; each candidate has to clear the
+  same bar `discover_fixtures.resolve` sets — two finalised markets, an ESPN
+  link with enough confidence, ten windows out of the timeline. New fixtures
+  are built, quoted by `quote_windows`, and given their minute prints by
+  `path_windows.fill_paths` when that script is in the checkout.
+- *crypto-horizon-1m.* Newest is the benchmark's `to`. The new days are `to +
+  1` through `--until`, which is yesterday, so every day added is complete on
+  the exchange. Filling a day is a store-level check — a day already in the
+  kline store is counted, not refetched — which is what makes a roll that
+  died halfway resumable by the next one.
+- *news-equity-5m.* Newest is the latest New York session date in the set.
+  `discover_news.discover` runs over the universe for each new weekday, with
+  the same liquidity screen, session window, headline-repeat and per-name
+  caps that built the set.
+
+**Dedupe.** Kalshi by event ticker *and* by ESPN game id: one match is
+sometimes listed under two tickers, and two rows for one match would put the
+same game on both sides of the train/held-out split. Crypto by day, which is
+the group. News by `(symbol, news_id)`, not by `news_id` alone — one story on
+two names is two rows by design.
+
+**Prune, and in what order.** Kalshi orders fixtures by ticker date and keeps
+the newest `--keep` (485, the size the set had when the roll began); crypto
+moves `from` to `to - keep + 1` (92 days); news drops whole session dates from
+the oldest while the remainder still holds `--keep` symbol-days (2,350).
+In every topic the benchmark is rewritten first, *then* the window files it no
+longer names are deleted, so a roll killed between the two leaves orphan files
+rather than fixtures without questions. Venue stores — klines, perps, on-chain,
+bars — are never pruned: they are cheap and the live collectors read them.
+
+**What a roll must never do.**
+
+- Never change an existing window's `id`, `mid_now`, `realised`, quotes or
+  path. Every file that survives is fingerprinted before the roll and checked
+  after; a difference aborts with `RollError`. Those fields are the
+  scoreboard's key, and a remembered answer has to stay attached to its
+  question.
+- Never touch `runs/`, the archive or the scoreboard. `roll.yml` stages
+  `benchmarks/` paths by name and nothing else: a roll that committed a run
+  directory would be writing the loop's record from outside the loop.
+- Never shrink a set below what its spec needs — audit + held-out + the probe.
+  `--validate` runs `rsi-arena windows --topic <t> --json` and
+  `scripts/preflight.py` after each topic and, when either fails, restores that
+  topic's paths from the checkout and reports `roll reverted: <reason>` instead
+  of failing the job.
+- Never roll under a running generation. The job polls `gh run list --workflow
+  loop.yml` every two minutes for up to thirty and then skips the week green:
+  a set changing mid-run would leave a generation half-scored on one exam and
+  half on another.
+
+A roll does reshuffle held-out membership — `three_way_split` shuffles sorted
+group ids on a fixed seed, so adding or removing a group moves others between
+train, held-out and audit. That is fine, and deliberate: the scoreboard keys on
+instance ids, so every remembered answer survives the reshuffle, and the audit
+set is meant to be a fresh cut rather than a monument.
+
+The whole thing is built to be quiet. Per-topic `continue-on-error`, so one
+venue being down does not stop the other two; a 25-minute discovery budget a
+topic, so a slow venue costs a partial append and not the job; three-attempt
+exponential backoff on every upstream call; atomic writes everywhere, including
+`topics/_common/store.py` under `build_windows`, because a half-written window
+file is a group that will never be rebuilt. Nothing new is success. The job is
+red only when every topic attempted failed, or when the push failed, and an
+issue is opened only in the first case.
+
 ### Still open
 
 - No generation has been accepted. Two have been rejected honestly.
