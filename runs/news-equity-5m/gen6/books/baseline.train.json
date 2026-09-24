@@ -1,0 +1,736 @@
+{
+ "book_id": "gen6@news-equity-5m:baseline:train",
+ "topic": "news-equity-5m",
+ "harness_fp": "63dfb3ebe534",
+ "harness_name": "news-equity-5m-jev",
+ "kind": "replay",
+ "run_id": "gen6@news-equity-5m",
+ "side": "baseline",
+ "split": "train",
+ "started_at": "2026-06-02T17:35:54+00:00",
+ "stats": {
+  "total_return": 2.50485607635742e-05,
+  "sharpe": 8.950096855275614,
+  "daily_sharpe": 2.4197214834607155,
+  "max_drawdown": 3.295704756353721e-05,
+  "hit_rate": 0.5714285714285714,
+  "avg_win": 15.139133896802406,
+  "avg_loss": -11.83599160786313,
+  "profit_factor": 1.7054347900173528,
+  "turnover": 0.0619504522787,
+  "fees_usd": 0.883619388630582,
+  "trades": 7,
+  "cycles": 36,
+  "open_positions": 0,
+  "start_equity": 1000000.0,
+  "end_equity": 1000025.0485607635,
+  "handovers": 0,
+  "refusals": 29,
+  "quotes_posted": 35,
+  "fills": 8,
+  "fill_rate": 0.22857142857142856
+ },
+ "trades": [
+  {
+   "instrument": "C",
+   "side": "long",
+   "opened_at": "2026-07-15T16:34:00+00:00",
+   "closed_at": "2026-07-23T14:01:26+00:00",
+   "entry_px": 133.95281703999999,
+   "exit_px": 134.379674,
+   "qty": 47.0,
+   "size_usd": 6295.782400879999,
+   "fees_usd": 0.1833824820484,
+   "pnl_usd": 19.878894637951817,
+   "reason": "force_close",
+   "run_id": "",
+   "instance_id": "C@2026-07-15T16:32:21+00:00#60477343",
+   "source": "quote"
+  },
+  {
+   "instrument": "GOOG",
+   "side": "short",
+   "opened_at": "2026-07-27T14:03:00+00:00",
+   "closed_at": "2026-07-27T15:10:00+00:00",
+   "entry_px": 328.53766074075,
+   "exit_px": 329.04617184000006,
+   "qty": 22.0,
+   "size_usd": 7227.828536296501,
+   "fees_usd": 0.20458563330904272,
+   "pnl_usd": -11.39182981680915,
+   "reason": "quote",
+   "run_id": "",
+   "instance_id": "GOOG@2026-07-27T14:02:28+00:00#60696103",
+   "source": "quote"
+  },
+  {
+   "instrument": "GOOG",
+   "side": "short",
+   "opened_at": "2026-07-27T14:03:00+00:00",
+   "closed_at": "2026-07-27T15:22:00+00:00",
+   "entry_px": 328.53766074075,
+   "exit_px": 328.34993777925,
+   "qty": 3.0,
+   "size_usd": 985.6129822222499,
+   "fees_usd": 0.02789804090577855,
+   "pnl_usd": 0.5352708435940485,
+   "reason": "quote",
+   "run_id": "",
+   "instance_id": "GOOG@2026-07-27T14:02:28+00:00#60696103",
+   "source": "quote"
+  },
+  {
+   "instrument": "GOOG",
+   "side": "short",
+   "opened_at": "2026-07-27T14:03:00+00:00",
+   "closed_at": "2026-08-13T15:28:27+00:00",
+   "entry_px": 328.53766074075,
+   "exit_px": 325.937752,
+   "qty": 15.0,
+   "size_usd": 4928.06491111125,
+   "fees_usd": 0.13949020452889274,
+   "pnl_usd": 38.85914090672122,
+   "reason": "force_close",
+   "run_id": "",
+   "instance_id": "GOOG@2026-07-27T14:02:28+00:00#60696103",
+   "source": "quote"
+  },
+  {
+   "instrument": "AMD",
+   "side": "long",
+   "opened_at": "2026-08-13T15:30:00+00:00",
+   "closed_at": "2026-08-13T17:18:00+00:00",
+   "entry_px": 496.10888143999995,
+   "exit_px": 494.38811934,
+   "qty": 9.0,
+   "size_usd": 4464.979932959999,
+   "fees_usd": 0.12518990745886802,
+   "pnl_usd": -15.61204880745754,
+   "reason": "quote",
+   "run_id": "",
+   "instance_id": "AMD@2026-08-13T15:28:27+00:00#61181663",
+   "source": "quote"
+  },
+  {
+   "instrument": "AMD",
+   "side": "long",
+   "opened_at": "2026-08-13T15:30:00+00:00",
+   "closed_at": "2026-08-24T15:24:41+00:00",
+   "entry_px": 496.10888143999995,
+   "exit_px": 493.9967565,
+   "qty": 4.0,
+   "size_usd": 1984.43552576,
+   "fees_usd": 0.0555964393228,
+   "pnl_usd": -8.504096199322703,
+   "reason": "force_close",
+   "run_id": "",
+   "instance_id": "AMD@2026-08-13T15:28:27+00:00#61181663",
+   "source": "quote"
+  },
+  {
+   "instrument": "COP",
+   "side": "long",
+   "opened_at": "2026-09-15T18:11:00+00:00",
+   "closed_at": "2026-09-15T16:00:00-04:00",
+   "entry_px": 141.34782917,
+   "exit_px": 141.387571,
+   "qty": 36.0,
+   "size_usd": 5088.521850120001,
+   "fees_usd": 0.14747668105680004,
+   "pnl_usd": 1.2832291989425357,
+   "reason": "force_close",
+   "run_id": "",
+   "instance_id": "COP@2026-09-15T18:07:04+00:00#61800450",
+   "source": "quote"
+  }
+ ],
+ "marks": [
+  {
+   "at": "2026-06-02T17:35:54+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-06-05T19:34:31+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-06-22T17:35:29+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-06-25T17:52:10+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-08T17:35:08+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-14T17:35:09+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-15T15:47:54+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-15T16:32:21+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-15T18:13:54+00:00",
+   "equity_usd": 1000021.95759912,
+   "cash_usd": 993704.21759912,
+   "gross_exposure_usd": 6317.74,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-15T19:31:05+00:00",
+   "equity_usd": 1000021.95759912,
+   "cash_usd": 993704.21759912,
+   "gross_exposure_usd": 6317.74,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-23T14:01:26+00:00",
+   "equity_usd": 1000019.8788946379,
+   "cash_usd": 1000019.8788946379,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0786588397033478e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-23T14:25:48+00:00",
+   "equity_usd": 1000019.8788946379,
+   "cash_usd": 1000019.8788946379,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0786588397033478e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-23T15:42:01+00:00",
+   "equity_usd": 1000019.8788946379,
+   "cash_usd": 1000019.8788946379,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0786588397033478e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-23T16:12:01+00:00",
+   "equity_usd": 1000019.8788946379,
+   "cash_usd": 1000019.8788946379,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0786588397033478e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-27T14:02:28+00:00",
+   "equity_usd": 1000019.8788946379,
+   "cash_usd": 1000019.8788946379,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0786588397033478e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-27T15:07:16+00:00",
+   "equity_usd": 999988.9998278988,
+   "cash_usd": 1005914.9598278988,
+   "gross_exposure_usd": 5925.960000000001,
+   "open_positions": 1,
+   "drawdown": 3.295704756353721e-05,
+   "event": null
+  },
+  {
+   "at": "2026-07-27T15:19:23+00:00",
+   "equity_usd": 1000007.827569909,
+   "cash_usd": 1005921.9975699091,
+   "gross_exposure_usd": 5914.17,
+   "open_positions": 1,
+   "drawdown": 1.4129718956232691e-05,
+   "event": null
+  },
+  {
+   "at": "2026-07-27T18:01:16+00:00",
+   "equity_usd": 1000049.3477565714,
+   "cash_usd": 1004936.9477565713,
+   "gross_exposure_usd": 4887.599999999999,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-08-13T15:28:27+00:00",
+   "equity_usd": 1000047.8814765713,
+   "cash_usd": 1000047.8814765713,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.466207645993486e-06,
+   "event": null
+  },
+  {
+   "at": "2026-08-13T17:14:33+00:00",
+   "equity_usd": 1000022.3510178514,
+   "cash_usd": 993598.4660178514,
+   "gross_exposure_usd": 6423.885,
+   "open_positions": 1,
+   "drawdown": 2.699540655723542e-05,
+   "event": null
+  },
+  {
+   "at": "2026-08-24T15:24:41+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-08-24T17:35:24+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-08-31T16:34:24+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-08-31T17:35:48+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-01T17:45:12+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-01T17:55:18+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-02T17:21:20+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-02T17:35:25+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-03T14:18:25+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-03T15:00:26+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-03T16:26:44+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-03T19:18:09+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-09T15:27:27+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-10T14:06:52+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-15T18:07:04+00:00",
+   "equity_usd": 1000023.7653315646,
+   "cash_usd": 1000023.7653315646,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.558116263379524e-05,
+   "event": null
+  },
+  {
+   "at": "2026-09-15T16:00:00-04:00",
+   "equity_usd": 1000025.0485607635,
+   "cash_usd": 1000025.0485607635,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.429799675626373e-05,
+   "event": "force_close"
+  }
+ ],
+ "refusals": [
+  {
+   "at": "2026-06-05T19:37:00+00:00",
+   "instrument": "COST",
+   "side": "long",
+   "wanted_usd": 1100.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-06-22T17:36:00+00:00",
+   "instrument": "BKNG",
+   "side": "long",
+   "wanted_usd": 1100.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-06-22T17:40:00+00:00",
+   "instrument": "BKNG",
+   "side": "short",
+   "wanted_usd": 1100.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-06-25T17:56:00+00:00",
+   "instrument": "CVX",
+   "side": "short",
+   "wanted_usd": 1900.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-08T17:39:00+00:00",
+   "instrument": "DHR",
+   "side": "long",
+   "wanted_usd": 900.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-15T15:48:00+00:00",
+   "instrument": "C",
+   "side": "short",
+   "wanted_usd": 2000.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-15T15:50:00+00:00",
+   "instrument": "C",
+   "side": "long",
+   "wanted_usd": 2000.0,
+   "room_usd": 100000.0,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-15T18:14:00+00:00",
+   "instrument": "C",
+   "side": "long",
+   "wanted_usd": 3900.09,
+   "room_usd": 93684.46,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-15T19:34:00+00:00",
+   "instrument": "ABT",
+   "side": "long",
+   "wanted_usd": 900.02,
+   "room_usd": 100002.2,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-23T14:03:00+00:00",
+   "instrument": "AMZN",
+   "side": "long",
+   "wanted_usd": 1300.03,
+   "room_usd": 100001.99,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-23T14:26:00+00:00",
+   "instrument": "AMZN",
+   "side": "long",
+   "wanted_usd": 1500.03,
+   "room_usd": 100001.99,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-23T14:29:00+00:00",
+   "instrument": "AMZN",
+   "side": "short",
+   "wanted_usd": 1500.03,
+   "room_usd": 100001.99,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-23T15:43:00+00:00",
+   "instrument": "AMZN",
+   "side": "long",
+   "wanted_usd": 1100.02,
+   "room_usd": 100001.99,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-23T16:13:00+00:00",
+   "instrument": "AMZN",
+   "side": "long",
+   "wanted_usd": 1300.03,
+   "room_usd": 100001.99,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-27T15:20:00+00:00",
+   "instrument": "GOOG",
+   "side": "short",
+   "wanted_usd": 1300.01,
+   "room_usd": 94086.61,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-27T18:02:00+00:00",
+   "instrument": "GOOG",
+   "side": "short",
+   "wanted_usd": 1500.07,
+   "room_usd": 95117.33,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-08-13T17:16:00+00:00",
+   "instrument": "AMD",
+   "side": "long",
+   "wanted_usd": 4500.1,
+   "room_usd": 93578.35,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-08-24T15:27:00+00:00",
+   "instrument": "CRM",
+   "side": "long",
+   "wanted_usd": 2400.06,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-08-24T17:36:00+00:00",
+   "instrument": "CRM",
+   "side": "long",
+   "wanted_usd": 900.02,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-01T17:57:00+00:00",
+   "instrument": "CSCO",
+   "side": "short",
+   "wanted_usd": 1900.05,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-02T17:22:00+00:00",
+   "instrument": "AVGO",
+   "side": "short",
+   "wanted_usd": 1300.03,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-02T17:36:00+00:00",
+   "instrument": "AVGO",
+   "side": "long",
+   "wanted_usd": 900.02,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-03T14:19:00+00:00",
+   "instrument": "AAPL",
+   "side": "long",
+   "wanted_usd": 3000.07,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-03T14:20:00+00:00",
+   "instrument": "AAPL",
+   "side": "short",
+   "wanted_usd": 3000.07,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-03T15:01:00+00:00",
+   "instrument": "AAPL",
+   "side": "short",
+   "wanted_usd": 1100.03,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-03T16:27:00+00:00",
+   "instrument": "AAPL",
+   "side": "long",
+   "wanted_usd": 900.02,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-09T15:28:00+00:00",
+   "instrument": "CMCSA",
+   "side": "short",
+   "wanted_usd": 4500.11,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-09T15:28:00+00:00",
+   "instrument": "CMCSA",
+   "side": "long",
+   "wanted_usd": 4500.11,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-10T14:07:00+00:00",
+   "instrument": "GOOGL",
+   "side": "short",
+   "wanted_usd": 1100.03,
+   "room_usd": 100002.38,
+   "reason": "dust",
+   "kind": "quote"
+  }
+ ]
+}

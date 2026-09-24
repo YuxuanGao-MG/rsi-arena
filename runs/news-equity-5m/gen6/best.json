@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen6",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the same frozen tools and one typed question, a distribution over basis-point moves, in place of a written answer.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting zero with tight width when the market moves costs you heavily**. Not only do you miss, but tight width amplifies the penalty because you claimed high confidence in the wrong answer. The formula punishes confident wrong calls much more than cautious ones.\n\n**Decision framework from examining failures:**\n\n**1. CHECK THE TAPE FIRST, ALWAYS.**\nLook at the last 10-15 minutes of candlesticks:\n- Is the stock already moving directionally? A drift down 20-40 bps in the last 15 minutes often continues another 10-20 bps in the next 5.\n- Has volume spiked? Low volume means any move is fragile.\n- Did it already react? A 50 bps jump then flatline suggests the news is priced.\n\n**2. CLASSIFY THE STORY'S RELEVANCE:**\n\n**Direct catalyst** (analyst initiation/upgrade/downgrade on this specific name, guidance, deal terms, recall):\n- Stock-specific material news\n- If tape hasn't moved yet: predict direction based on catalyst (upgrade = up, downgrade = down)\n- Use 8-15 bps width because magnitude is uncertain\n- If tape already moved in the expected direction: predict small continuation or zero with 5-8 bps width\n\n**Thematic multi-stock story** (names 3-10 stocks discussing a sector trend, competitive threat, macro theme):\n- **These are NOT noise.** Examples from feedback show 20-100 bps moves.\n- Check tape direction in last 10-15 minutes:\n  - If drifting down: predict continuation of -10 to -30 bps with 10-15 bps width\n  - If drifting up: predict continuation of +10 to +30 bps with 10-15 bps width\n  - If flat: predict zero but use 6-10 bps width (there is sector/theme risk)\n- **Never use 2 bps width on a multi-stock thematic story.**\n\n**Passing mention** (10+ symbols, your name appears in a list with no thesis about it):\n- Usually noise\n- Predict zero with 2-3 bps width\n- Only use 2 bps if extremely confident it's pure listicle noise\n\n**Market-wide commentary** (broad market review, many mega-caps listed):\n- Check if story has stock-specific angle or just name-drops\n- If pure name-drop: predict zero with 2-3 bps width\n- If there's a theme (e.g., \"AI spending,\" \"chip selloff,\" \"rate-sensitive\"): treat as thematic\n\n**3. MATCH WIDTH TO UNCERTAINTY:**\n\n**2 bps width:** Only for pure noise where you're nearly certain nothing happens. This is rare. If the story names fewer than 8 stocks or discusses any thesis, don't use 2 bps.\n\n**3-5 bps width:** Passing mention in a long list, no thesis about your name, tape is flat.\n\n**6-10 bps width:** \n- Thematic story but tape is flat\n- Direct catalyst but tape already moved and appears done\n- Any multi-stock story where you're unsure\n\n**10-15 bps width:**\n- Clear catalyst but uncertain magnitude\n- Thematic story and tape is drifting (predict continuation of the drift)\n- Multi-stock competitive or sector story\n\n**15-25 bps width:**\n- Major catalyst with wide outcome range\n- Story about market crash/rally with many names moving violently\n\n**When in doubt between tight and wide, go wide.** A correct direction with 12 bps width beats a near-zero guess with 2 bps that misses by 30 bps.\n\n**4. RECOGNIZE WHEN TAPE DRIFT CONTINUES:**\n\nFeedback shows stocks drifting -20 to -40 bps over 10-15 minutes often continue drifting another -10 to -20 bps over the next 5 minutes, even on thematic news that seems tangential. \n\nIf the tape shows:\n- GOOG down 50 bps over 15 minutes on bond sale news: predict -8 to -12 bps continuation, width 8-12 bps\n- META down 25 bps over 15 minutes on unrelated celebrity news: predict -5 to -10 bps continuation, width 6-10 bps\n- AAPL down 30 bps over 15 minutes on market commentary: predict -8 to -15 bps continuation, width 10-15 bps\n\nDon't assume flat just because the news seems irrelevant. Check the tape.\n\n**5. SPECIFIC RED FLAGS FROM FEEDBACK:**\n\n- **Multi-stock stories move stocks 20-100 bps regularly.** Don't default to zero with 2 bps width.\n- **Thematic stories (AI spending, chip selloff, competitive threats) trigger sector moves.** Even if your stock isn't the headline, if it's named in a story about \"hyperscaler capex\" or \"chip rally crumbles,\" check the tape and predict accordingly.\n- **Drifting tape continues more often than it reverses.** A stock down 30 bps over 15 minutes rarely bounces back in 5 minutes.\n- **2 bps width is a trap.** Use it only on pure listicle noise. The feedback shows 2 bps width led to massive misses on stories that seemed like noise but weren't.\n\n**6. THE TAPE OVERRIDES THE STORY:**\n\nIf the story seems bullish but the tape is down 30 bps in the last 10 minutes, predict continuation of the downward drift. The tape is reality; the story is interpretation.\n\nIf the story seems bearish but the tape is flat or up, predict zero or small upward continuation\u2014the market may have already absorbed it or disagrees with the narrative.\n\n**SUMMARY RULE:**\n- Passing mention + flat tape = 0 delta, 2-3 bps width\n- Thematic multi-stock story + flat tape = 0 delta, 6-10 bps width\n- Thematic multi-stock story + drifting tape = continuation (10-30 bps in drift direction), 10-15 bps width\n- Direct catalyst + no tape reaction yet = directional call (5-20 bps), 8-15 bps width\n- Direct catalyst + tape already moved = 0 or small continuation, 5-10 bps width\n\nWhen unsure, widen. The cost of being confidently wrong (2 bps width, 30 bps miss) vastly exceeds the cost of being cautiously right (12 bps width, 8 bps miss).",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
