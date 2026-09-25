@@ -231,7 +231,9 @@ def test_an_exhausted_client_stops_the_evaluation_immediately():
             # rather than tripping over an unrelated one.
             from rsi_arena.harness.tools import FunctionTool, Toolbox
             return Toolbox([FunctionTool(name=n, description=n, fn=lambda **k: {})
-                            for n in ("market_quote", "candlesticks", "previous_trades")])
+                            for n in ("market_quote", "candlesticks", "previous_trades",
+                                      "state_summary", "move_base_rate", "tape_imbalance",
+                                      "settlement_countdown")])
 
         def run_inputs(self, i):
             return {}

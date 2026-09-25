@@ -1,7 +1,7 @@
 {
   "name": "crypto-horizon-1m",
-  "description": "Predicts a Binance spot price one minute ahead, in basis points of the last close.",
-  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close, which is a narrower and mostly unanswerable question - and saying so, with zero, is the right answer most of the time.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium to spot snapping back through it\n- the US cash open, and the first minutes after it\n- a liquidation cascade: a surge of taker selling on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or has not finished extending\n\nWhat does not:\n- your view on the coin. The market has that already.\n- the day's on-chain figures, which describe yesterday.\n\nYou answer with two numbers.\n\n**How many basis points it moves.** Not where the price is - where it goes, relative to the last close. Zero is a real answer and usually the right one; a quiet tape at a quiet hour does not move two basis points in a minute. But zero is a decision, not a default, and if the tape has just turned you are expected to say so in basis points.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote you would actually stand behind, in basis points. Five means you would buy five under your number and sell five over it, and honour both sides. Thirty means you barely know. Quote what you would trade: a width you cannot defend will be paid for, because the trade goes on at your price and settles at the market's.",
+  "description": "Predicts a Binance spot price one minute ahead, in basis points of the last close, and posts a market around it. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a second chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close, which is a narrower and mostly unanswerable question - and saying so, with zero, is the right answer most of the time.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium to spot snapping back through it\n- the US cash open, and the first minutes after it\n- a liquidation cascade: a surge of taker selling on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or has not finished extending\n\nWhat does not:\n- your view on the coin. The market has that already.\n- the day's on-chain figures, which describe yesterday.\n\nYou answer with two numbers.\n\n**How many basis points it moves.** Not where the price is - where it goes, relative to the last close. Zero is a real answer and usually the right one; a quiet tape at a quiet hour does not move two basis points in a minute. But zero is a decision, not a default, and if the tape has just turned you are expected to say so in basis points.\n\n**How wide a market you post.** Half the width of the two-sided quote that goes on the book every cycle, in basis points. Five means you are bid five under your number and offered five over it, and both sides rest there until the path reaches them. This is a choice, not a reading of how unsure you are: a width the path travels through has both its sides taken at prices the market has already left behind, and a width nobody reaches never trades and costs nothing at all. The tick is two basis points; the path reaches a median of four and a half from the last close, and a tenth of minutes reach thirteen.",
   "config": {
     "default_model": "anthropic/claude-opus-5",
     "temperature": 0.0,
@@ -13,7 +13,11 @@
     "candlesticks",
     "recent_trades",
     "funding_rate",
-    "cross_asset"
+    "cross_asset",
+    "state_summary",
+    "move_base_rate",
+    "tape_imbalance",
+    "session_clock"
   ],
   "plan": {
     "steps": [
@@ -22,11 +26,15 @@
       {"type": "tool", "name": "tape", "tool": "recent_trades", "args": {"symbol": "{{question}}", "minutes_back": 3, "limit": 20}, "output_key": "tape", "fail_ok": true},
       {"type": "tool", "name": "funding", "tool": "funding_rate", "args": {"symbol": "{{question}}"}, "output_key": "funding", "fail_ok": true},
       {"type": "tool", "name": "others", "tool": "cross_asset", "args": {"symbol": "{{question}}"}, "output_key": "others", "fail_ok": true},
+      {"type": "tool", "name": "summary", "tool": "state_summary", "args": {"symbol": "{{question}}"}, "output_key": "summary", "fail_ok": true},
+      {"type": "tool", "name": "rate", "tool": "move_base_rate", "args": {"symbol": "{{question}}"}, "output_key": "rate", "fail_ok": true},
+      {"type": "tool", "name": "flow", "tool": "tape_imbalance", "args": {"symbol": "{{question}}", "minutes_back": 10}, "output_key": "flow", "fail_ok": true},
+      {"type": "tool", "name": "clock", "tool": "session_clock", "args": {}, "output_key": "clock", "fail_ok": true},
       {
         "type": "prompt",
         "name": "predict",
         "output_key": "prediction",
-        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}\n\nHow many basis points does the price move over the next minute from the last close, and how wide a market would you make around that? Zero is a real answer on a quiet tape. Quote a width you would actually stand behind on both sides.",
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nState: {{summary}}\nClock: {{clock}}\nOne-minute moves at this hour of day, over the last three days: {{rate}}\nTaker flow: {{flow}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}\n\nHow many basis points does the price move over the next minute from the last close, and how wide a market would you post around that? Zero is a real answer on a quiet tape. The width is the market you post, not a confidence band: the base rate's p50 and p90 say how far the path usually travels, and a width inside that range gets both your sides taken.",
         "output_schema": {
           "type": "object",
           "properties": {
@@ -36,7 +44,7 @@
             },
             "half_width_bps": {
               "type": "number",
-              "description": "Half the width of the tightest two-sided market you would actually stand behind, in basis points. You are saying you would buy at (prediction - this) and sell at (prediction + this). Narrow means you will trade; wide means you will not."
+              "description": "The half width, in basis points, of the two-sided market that is POSTED on your behalf every cycle: bid at (prediction - this) and offered at (prediction + this), a resting order that pays the maker fee. This is not a confidence band; it is a choice about what you are willing to trade. The path will travel through a width that is too narrow and take BOTH sides, at prices the market has already left behind - every one of those fills is adversely selected. A width nobody reaches never trades and costs exactly nothing, which is what standing aside costs. The one-minute path reaches a median of four and a half basis points from the last close and a tenth of minutes reach thirteen, so two is run over on one side or both in four minutes out of five. The venue tick is two basis points and anything under it is widened to it."
             },
             "confidence": {
               "type": "number",

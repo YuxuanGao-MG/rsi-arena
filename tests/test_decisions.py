@@ -32,10 +32,13 @@ def harness(step, model="typesafe/jev-1.13"):
                               "plan": {"steps": [step]}})
 
 
-def trade_answers(action: str = "hold", level: int = 0) -> dict:
-    """The seeds ask the paper book's two questions beside the move; a fake
-    that answers only ``move`` has to answer these too."""
-    return {"action": {"type": "choice", "choice": action, "probabilities": {action: 1.0}},
+def trade_answers(action: str = "hold", level: int = 0, width: int = 1) -> dict:
+    """The seeds ask the width to post and the paper book's two questions beside
+    the move; a fake that answers only ``move`` has to answer these too. ``width``
+    is a level of the five-level width question, so 1 is two cents."""
+    return {"width": {"type": "score", "score": float(width), "confidence": 0.7,
+                      "probabilities": {str(i): (1.0 if i == width else 0.0) for i in range(5)}},
+            "action": {"type": "choice", "choice": action, "probabilities": {action: 1.0}},
             "size": {"type": "score", "score": float(level), "confidence": 0.7,
                      "probabilities": {str(i): (1.0 if i == level else 0.0) for i in range(4)}}}
 
@@ -46,6 +49,9 @@ def test_the_jev_harness_loads_and_round_trips_its_components():
     assert h.from_components(h.to_components()).to_components() == h.to_components()
     step = h.plan.steps[-1]
     assert step.questions and step.answers and step.answers["delta_cents"]["as"] == "mean"
+    # The width is a question of its own, not the move distribution's dispersion.
+    assert step.answers["half_width_cents"] == {"from": "width", "as": "mean", "min": 1}
+    assert step.questions["width"]["values"] == [1, 2, 4, 8, 16]
 
 
 def test_a_decisions_model_refuses_a_step_that_asks_for_text():
@@ -128,9 +134,10 @@ async def test_the_jev_harness_runs_end_to_end_on_the_fake(t0, history):
     tk = KalshiHorizon(history=history, windows=windows)
     rollouts = await evaluate(tk, Harness.load(JEV), tk.instances(), FakeLLM())
     assert all(r.run.ok for r in rollouts), [r.run.error for r in rollouts]
-    # The default fake puts all mass on the middle level - "unchanged" - so the
-    # forecast is silence with the floor width, and every window scores as such.
-    assert all(r.output["delta_cents"] == 0.0 and r.output["half_width_cents"] == 0.5 for r in rollouts)
+    # The default fake puts all mass on the middle level of every score question:
+    # "unchanged" on the move, so the forecast is silence, and the middle width,
+    # which is four cents - a market the path has to travel to touch.
+    assert all(r.output["delta_cents"] == 0.0 and r.output["half_width_cents"] == 4.0 for r in rollouts)
     assert all(r.outcome.details["scored"] for r in rollouts)
 
 
@@ -192,8 +199,9 @@ def _task(history, t0, ticker, minutes, mid, realised):
 def test_the_gated_jev_harness_loads_and_branches_on_its_gate():
     h = Harness.load(GATED)
     assert "ask_opus" in h.tools and "state_summary" in h.tools
-    opinion = h.plan.steps[5]
-    assert opinion.tool == "ask_opus" and opinion.skip_if == "gate.probability < 0.35"
+    assert "move_base_rate" in h.tools and "tape_imbalance" in h.tools
+    (opinion,) = [s for s in h.plan.steps if s.type == "tool" and s.tool == "ask_opus"]
+    assert opinion.skip_if == "gate.probability < 0.35"
     assert h.from_components(h.to_components()).to_components() == h.to_components()
 
 

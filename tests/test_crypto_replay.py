@@ -337,15 +337,19 @@ def test_the_harness_files_fit_the_task(path):
     if last.questions:
         assert h.config.model == "typesafe/jev-1.13"
         assert last.questions["move"]["values"] == [-15, -6, -2, 0, 2, 6, 15]
+        assert last.questions["width"]["values"] == [2, 5, 10, 20, 40]
         assert last.answers["delta_bps"] == {"from": "move", "as": "mean"}
+        assert last.answers["half_width_bps"] == {"from": "width", "as": "mean", "min": 2}
         answer = {"move": {"type": "score", "score": 6.0,
                            "probabilities": {str(i): (1.0 if i == 6 else 0.0) for i in range(7)},
                            "confidence": 0.9},
+                  "width": {"type": "score", "score": 2.0,
+                            "probabilities": {str(i): (1.0 if i == 2 else 0.0) for i in range(5)}},
                   "action": {"type": "choice", "choice": "open_long", "probabilities": {"open_long": 1.0}},
                   "size": {"type": "score", "score": 1.0,
                            "probabilities": {"0": 0.0, "1": 1.0, "2": 0.0, "3": 0.0}}}
         out = answers_to_output(last.questions, answer, last.answers)
-        assert out["delta_bps"] == pytest.approx(15.0) and out["half_width_bps"] >= 1.0
+        assert out["delta_bps"] == pytest.approx(15.0) and out["half_width_bps"] == 10.0
         assert score_output(out, 100000.0, 100150.0).skill == pytest.approx(1.0)
         assert out["action"] == "open_long" and out["size"] == 0.02, "the book's order rides the output"
     else:

@@ -1,6 +1,6 @@
 {
   "name": "news-equity-5m-jev",
-  "description": "The five-minute forecast on a news item asked of a decisions model: the same frozen tools and one typed question, a distribution over basis-point moves, in place of a written answer.",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
   "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.",
   "config": {
     "model": "typesafe/jev-1.13",
@@ -15,7 +15,10 @@
     "daily_context",
     "the_story",
     "market_tape",
-    "state_summary"
+    "state_summary",
+    "move_base_rate",
+    "tape_imbalance",
+    "session_clock"
   ],
   "plan": {
     "steps": [
@@ -26,11 +29,14 @@
       {"type": "tool", "name": "story", "tool": "the_story", "args": {}, "output_key": "story", "fail_ok": true},
       {"type": "tool", "name": "market", "tool": "market_tape", "args": {"symbol": "SPY"}, "output_key": "market", "fail_ok": true},
       {"type": "tool", "name": "summary", "tool": "state_summary", "args": {"symbol": "{{question}}"}, "output_key": "summary", "fail_ok": true},
+      {"type": "tool", "name": "rate", "tool": "move_base_rate", "args": {"symbol": "{{question}}"}, "output_key": "rate", "fail_ok": true},
+      {"type": "tool", "name": "flow", "tool": "tape_imbalance", "args": {"symbol": "{{question}}", "minutes_back": 10}, "output_key": "flow", "fail_ok": true},
+      {"type": "tool", "name": "clock", "tool": "session_clock", "args": {}, "output_key": "clock", "fail_ok": true},
       {
         "type": "prompt",
         "name": "predict",
         "output_key": "forecast",
-        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "prompt": "Symbol: {{question}}\nSituation: {{summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nClock: {{clock}}\nFive-minute moves at this time of day, over the prior ten sessions: {{rate}}\nTape flow: {{flow}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
         "questions": {
           "move": {
             "type": "score",
@@ -45,6 +51,12 @@
               "up 100 basis points or more"
             ],
             "values": [-60, -25, -8, 0, 8, 25, 60]
+          },
+          "width": {
+            "type": "score",
+            "instructions": "The half width, in basis points, of the two-sided market you post in these shares: bid at (the move you just named - this) and offered at (that move + this). This is a choice, not a by-product of how unsure you are. The path will travel through a width that is too narrow and take BOTH your sides, at prices the market has already left behind - every one of those fills is adversely selected and pays the SEC and TAF charges on every sale. A width nobody reaches never trades and costs exactly nothing, which is what standing aside scores. Over this question set the five-minute path reaches a median of fifteen basis points from the last close and a tenth of items reach forty-three, so a five-basis-point market is run over on one side or both in nine windows out of ten. Read the base rate's p50 and p90 and quote outside the range you expect the path to cover.",
+            "criteria": ["a tick: 5 bps", "12 bps", "25 bps", "50 bps", "100 bps"],
+            "values": [5, 12, 25, 50, 100]
           },
           "action": {
             "type": "choice",
@@ -65,7 +77,7 @@
         },
         "answers": {
           "delta_bps": {"from": "move", "as": "mean"},
-          "half_width_bps": {"from": "move", "as": "half_range", "coverage": 0.6, "min": 2},
+          "half_width_bps": {"from": "width", "as": "mean", "min": 5},
           "confidence": {"from": "move", "as": "confidence"},
           "driver": {"as": "const", "value": "the expectation of the move distribution"},
           "falsifier": {"as": "const", "value": "a print outside the quoted band before five minutes are up"},

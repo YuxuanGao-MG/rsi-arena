@@ -17,8 +17,9 @@ def test_base_harness_loads_from_the_earlier_runtime_format():
     # contract.
     written = json.loads(Path(BASE).read_text())["config"]["default_model"]
     assert h.config.model == written and "default_model" not in h.to_dict()["config"]
-    assert h.tools == ["market_quote", "candlesticks", "previous_trades"]
-    assert [s.type for s in h.plan.steps] == ["tool", "tool", "tool", "prompt"]
+    assert h.tools == ["market_quote", "candlesticks", "previous_trades", "state_summary",
+                       "move_base_rate", "tape_imbalance", "settlement_countdown"]
+    assert [s.type for s in h.plan.steps] == ["tool"] * 7 + ["prompt"]
     assert h.plan.required_inputs() == {"game"}
 
 
@@ -41,8 +42,9 @@ def test_bad_plan_json_fails_at_load_with_a_readable_message():
 
 def test_check_refuses_unknown_tools_and_unmet_inputs():
     h = Harness.load(BASE)
-    box = Toolbox([tool("market_quote", "")(lambda **a: {}), tool("candlesticks", "")(lambda **a: {}),
-                   tool("previous_trades", "")(lambda **a: {})])
+    box = Toolbox([tool(name, "")(lambda **a: {}) for name in
+                   ("market_quote", "candlesticks", "previous_trades", "state_summary",
+                    "move_base_rate", "tape_imbalance", "settlement_countdown")])
     h.check(box, inputs={"question", "game"})
     with pytest.raises(HarnessError, match="plan reads game"):
         h.check(box, inputs={"question"})

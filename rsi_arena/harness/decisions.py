@@ -22,12 +22,22 @@ Two things here are ours and not the API's. A ``score`` question may carry
 request. And ``answers`` maps the step's output fields onto the questions:
 
     "answers": {"delta_cents":      {"from": "move", "as": "mean"},
-                "half_width_cents": {"from": "move", "as": "half_range", "coverage": 0.6, "min": 0.5},
+                "half_width_cents": {"from": "width", "as": "mean", "min": 1},
                 "confidence":       {"from": "move", "as": "confidence"},
                 "driver":           {"as": "const", "value": "expectation of the move distribution"}}
 
 Both live in the plan, so the optimizer may rewrite the levels, the values
 and the mapping like any other part of the plan.
+
+The width is worth a question of its own, and the seeds ask one. ``half_range``
+reads the move distribution's dispersion, which is a statement about how unsure
+the model is and not about what market it would stand behind - and a
+distribution piled on one level reads as zero, which the engine then widens to
+the venue tick. Every seed did that, and the paper book's first finding was that
+they were quoting a one-cent market on a four-cent path and being run over on
+both sides. A ``score`` question over venue-appropriate widths, mapped with
+``{"as": "mean", "min": <tick>}``, makes the width a decision the search can be
+shown the cost of. ``half_range`` stays available; nothing asks for it.
 """
 
 from __future__ import annotations

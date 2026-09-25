@@ -1,6 +1,6 @@
 {
   "name": "kalshi-horizon-5m-jev-gated",
-  "description": "The five-minute forecast asked of a decisions model, with one branch: Jev is first asked whether the mid will move at all, and only a window it thinks likely to move is sent to Opus for the one driver of the move before the distribution is asked. Most windows are quiet, so most windows cost two thousandths of a cent; the ones that matter cost three.",
+  "description": "The five-minute forecast asked of a decisions model, with one branch: Jev is first asked whether the mid will move at all, and only a window it thinks likely to move is sent to Opus for the one driver of the move before the distribution and the width to post are asked. Most windows are quiet, so most windows cost two thousandths of a cent; the ones that matter cost three. ask_sonnet and ask_gpt5_mini stand beside ask_opus in the box, cheaper per window and worse at the one driver.",
   "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nMost five-minute windows do not move. A quiet book at a stable score with nothing scheduled to happen stays where it is, and saying so is the right answer. A contract near 1c or 99c has almost nowhere to go. A contract in the middle with the score level and the clock past 75' can jump several cents on one event and otherwise sits still.",
   "config": {
     "model": "typesafe/jev-1.13",
@@ -8,22 +8,26 @@
     "max_usd": 0.1,
     "max_calls": 10
   },
-  "tools": ["market_quote", "candlesticks", "previous_trades", "state_summary", "ask_opus"],
+  "tools": ["market_quote", "candlesticks", "previous_trades", "state_summary", "move_base_rate",
+            "tape_imbalance", "settlement_countdown", "ask_opus"],
   "plan": {
     "steps": [
       {"type": "tool", "name": "quote", "tool": "market_quote", "args": {"ticker": "{{question}}"}, "output_key": "quote", "fail_ok": true},
       {"type": "tool", "name": "path", "tool": "candlesticks", "args": {"ticker": "{{question}}", "hours_back": 0.75, "hourly": false}, "output_key": "path", "fail_ok": true},
       {"type": "tool", "name": "tape", "tool": "previous_trades", "args": {"ticker": "{{question}}", "limit": 20}, "output_key": "tape", "fail_ok": true},
       {"type": "tool", "name": "summary", "tool": "state_summary", "args": {"ticker": "{{question}}"}, "output_key": "summary", "fail_ok": true},
+      {"type": "tool", "name": "rate", "tool": "move_base_rate", "args": {"ticker": "{{question}}"}, "output_key": "rate", "fail_ok": true},
+      {"type": "tool", "name": "flow", "tool": "tape_imbalance", "args": {"ticker": "{{question}}", "minutes_back": 10}, "output_key": "flow", "fail_ok": true},
+      {"type": "tool", "name": "clock", "tool": "settlement_countdown", "args": {"ticker": "{{question}}"}, "output_key": "clock", "fail_ok": true},
       {
         "type": "prompt",
         "name": "gate",
         "output_key": "gate",
-        "prompt": "Contract: {{question}}\nGame: {{game}}\nState: {{summary.summary}}",
+        "prompt": "Contract: {{question}}\nGame: {{game}}\nState: {{summary.summary}}\nMinutes to settlement: {{clock}}\nFive-minute moves at this price, from this contract's own last three hours: {{rate}}",
         "questions": {
           "moves": {
             "type": "noul",
-            "instructions": "Will this contract's mid price move by a cent or more, in either direction, over the next five minutes? Most quiet books at a settled score do not."
+            "instructions": "Will this contract's mid price move by a cent or more, in either direction, over the next five minutes? Most quiet books at a settled score do not. The base rate above says what share of the last three hours' five-minute windows at this price moved a cent or more."
           }
         },
         "answers": {
@@ -46,7 +50,7 @@
         "type": "prompt",
         "name": "predict",
         "output_key": "forecast",
-        "prompt": "Contract: {{question}}\nGame: {{game}}\nState: {{summary.summary}}\nBook now: {{quote}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\nP(moves a cent or more): {{gate.probability}}\nDriver, if one was asked for: {{opinion.text}}",
+        "prompt": "Contract: {{question}}\nGame: {{game}}\nState: {{summary.summary}}\nMinutes to settlement: {{clock}}\nFive-minute moves at this price, from this contract's own last three hours: {{rate}}\nWho has been hitting the book: {{flow}}\nBook now: {{quote}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\nP(moves a cent or more): {{gate.probability}}\nDriver, if one was asked for: {{opinion.text}}",
         "questions": {
           "move": {
             "type": "score",
@@ -61,6 +65,12 @@
               "up 4 cents or more"
             ],
             "values": [-5, -2.5, -1, 0, 1, 2.5, 5]
+          },
+          "width": {
+            "type": "score",
+            "instructions": "The half width, in cents, of the two-sided market you post on this contract: bid at (the move you just named - this) and offered at (that move + this). This is a choice, not a by-product of how unsure you are. The path will travel through a width that is too narrow and take BOTH your sides, at prices the market has already left behind - every one of those fills is adversely selected and pays a maker fee on top. A width nobody reaches never trades and costs exactly nothing, which is what standing aside scores. Over this question set the five-minute path reaches a median of two and a half cents from the mid and a tenth of windows reach seventeen, so a one-cent market is run over on both sides in almost half of them. Read the base rate's p50 and p90, and the gate's probability that it moves at all, and quote outside the range you expect the path to cover.",
+            "criteria": ["a tick: 1c", "2 cents", "4 cents", "8 cents", "16 cents"],
+            "values": [1, 2, 4, 8, 16]
           },
           "action": {
             "type": "choice",
@@ -81,7 +91,7 @@
         },
         "answers": {
           "delta_cents": {"from": "move", "as": "mean"},
-          "half_width_cents": {"from": "move", "as": "half_range", "coverage": 0.6, "min": 0.5},
+          "half_width_cents": {"from": "width", "as": "mean", "min": 1},
           "confidence": {"from": "move", "as": "confidence"},
           "driver": {"as": "const", "value": "the expectation of the move distribution, after a gate on whether it moves at all"},
           "falsifier": {"as": "const", "value": "a print outside the quoted band before five minutes are up"},

@@ -1,7 +1,7 @@
 {
   "name": "kalshi-horizon-5m",
-  "description": "Predicts this contract's mid price 5 minutes ahead.",
-  "context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote\nyou would actually stand behind. Two cents means you would buy two under your number\nand sell two over it, and you would honour both sides. Ten cents means you barely\nknow. Quote what you would trade, not what is safe \u2014 but a width you cannot defend\nwill be paid for, because the trade goes on at your price and settles at the\nmarket's.",
+  "description": "Predicts this contract's mid price 5 minutes ahead, and posts a market around it. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a second chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match\nis being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in a\nfew minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing \u2014 a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no\n- the book being thin, so a single order moves the mid and it drifts back\n- the market still absorbing something that already happened\n\nWhat does not:\n- your view on which team is better. The market has that already.\n\nYou answer with two numbers.\n\n**How many cents it moves.** Not where the price is \u2014 where it goes. Zero is a real\nanswer and often the right one; a quiet book with nothing happening does not move.\nBut zero is a decision, not a default, and if the game has just changed you are\nexpected to say so in cents.\n\n**How wide a market you post.** Half the width of the two-sided quote that goes on the\nbook every cycle. Two cents means you are bid two under your number and offered two\nover it, and both sides rest there until the path reaches them. This is a choice, not a\nreading of how unsure you are: a width the path travels through has both its sides taken\nat prices the market has already left behind, and a width nobody reaches never trades and\ncosts nothing at all. The tick is one cent; the five-minute path reaches a median of two\nand a half cents from the mid, and a tenth of windows reach seventeen.",
   "config": {
     "default_model": "anthropic/claude-opus-5",
     "fallback_models": [],
@@ -27,7 +27,11 @@
   "tools": [
     "market_quote",
     "candlesticks",
-    "previous_trades"
+    "previous_trades",
+    "state_summary",
+    "move_base_rate",
+    "tape_imbalance",
+    "settlement_countdown"
   ],
   "plan": {
     "steps": [
@@ -71,12 +75,61 @@
         "fail_ok": true
       },
       {
+        "type": "tool",
+        "name": "summary",
+        "description": "",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "rate",
+        "description": "",
+        "output_key": "rate",
+        "skip_if": null,
+        "tool": "move_base_rate",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "flow",
+        "description": "",
+        "output_key": "flow",
+        "skip_if": null,
+        "tool": "tape_imbalance",
+        "args": {
+          "ticker": "{{question}}",
+          "minutes_back": 10
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "clock",
+        "description": "",
+        "output_key": "clock",
+        "skip_if": null,
+        "tool": "settlement_countdown",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
         "type": "prompt",
         "name": "predict",
         "description": "",
         "output_key": "prediction",
         "skip_if": null,
-        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\n\nHow many cents does this mid move over the next 5 minutes, and how wide a market would you make around that? Zero cents is a real answer on a quiet book. Quote a width you would actually stand behind on both sides.",
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nState: {{summary}}\nMinutes to settlement: {{clock}}\nFive-minute moves at this price, from this contract's own last 3h: {{rate}}\nWho has been hitting the book: {{flow}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\n\nHow many cents does this mid move over the next 5 minutes, and how wide a market would you post around that? Zero cents is a real answer on a quiet book. The width is the market you post, not a confidence band: the base rate's p50 and p90 say how far the path usually travels, and a width inside that range gets both your sides taken.",
         "system": null,
         "model": null,
         "temperature": null,
@@ -93,7 +146,7 @@
             },
             "half_width_cents": {
               "type": "number",
-              "description": "Half the width of the tightest two-sided market you would actually stand behind, in cents. This is your quote: you are saying you would buy at (prediction - this) and sell at (prediction + this). Narrow means you will trade; wide means you will not."
+              "description": "The half width, in cents, of the two-sided market that is POSTED on your behalf every cycle: bid at (prediction - this) and offered at (prediction + this), a resting order that pays the maker fee. This is not a confidence band; it is a choice about what you are willing to trade. The path will travel through a width that is too narrow and take BOTH sides, at prices the market has already left behind - every one of those fills is adversely selected. A width nobody reaches never trades and costs exactly nothing, which is what standing aside costs. The five-minute path reaches a median of two and a half cents from the mid and a tenth of windows reach seventeen, so a one-cent market is run over on both sides in almost half of them. The venue tick is one cent and anything under it is widened to it."
             },
             "confidence": {
               "type": "number",
