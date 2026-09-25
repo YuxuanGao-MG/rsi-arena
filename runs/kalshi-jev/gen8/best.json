@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen8",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nThe default answer is zero. Most five-minute windows do not move. A quiet book at a stable score with nothing scheduled to happen stays where it is.\n\nCRITICAL: Predicting zero is the correct answer most of the time. It scores zero skill (neither positive nor negative). Predicting small non-zero moves without a clear catalyst scores NEGATIVE skill and is worse than silence.\n\nBefore predicting any non-zero move, you must identify ONE of these four catalysts:\n\n1. GOAL ABSORPTION (recent, within 2-3 minutes):\n   - Check recent_trades for heavy volume and one-sided taker flow in the last 2-3 minutes\n   - A goal that happened 5+ minutes ago is already absorbed\n   - If the candlesticks show the mid has been stable for 3+ minutes after a goal, absorption is complete\n   - When absorption is still happening, predict the direction of continued flow (1-3 cents)\n\n2. BOOK REVERSION (thin book, recent sharp move):\n   - Check candlesticks for a sharp move (2+ cents) in the last 1-2 minutes\n   - Check recent_trades to confirm low volume (small size, few trades)\n   - If the last trades are 3+ minutes old, there is no reversion to trade\n   - If candlesticks show stable mid for 3+ minutes, the book has settled\n   - When reversion is active, predict 0.5-1.5 cents back toward the pre-move level\n\n3. TIME DECAY (final 10-15 minutes only):\n   - Time decay is ONLY material when clock > 75' (less than 15 minutes remaining)\n   - At 80', five minutes of decay moves a \"will score\" price ~0.5-1c if the team trails or draws\n   - At 85', decay accelerates to 1-2c per five minutes\n   - At 45', 50', 60', 65', or 70', time decay over five minutes is negligible\u2014predict zero\n   - Decay only applies to contracts on teams that need to score (trailing or \"will score\" props when drawing)\n\n4. SCHEDULED EVENT (starting second half, etc.):\n   - The start of the second half sometimes causes repositioning, but this is usually absorbed within 1-2 minutes\n   - Unless recent_trades show ongoing flow after the kickoff, predict zero\n\nIf NONE of these four catalysts are present, predict delta_cents = 0. Do not predict -0.3c, -0.2c, -0.1c, +0.1c, +0.2c, or +0.3c based on vague intuition about \"drift\" or \"expectation.\" These consistently score negative skill.\n\nANALYSIS OF FAILURES:\n\nExample 1 (45' into 2nd half, 0-0): You predicted -0.1c. Market moved -1.0c. The candlesticks showed the mid had been stable at 0.265 for 15 minutes, then dropped to 0.255 at halftime and stayed there. Recent trades were small and scattered. No catalyst was present, but you predicted a small negative move anyway. The actual -1.0c move was likely a thin book drift or a single large order. You cannot predict these in advance. Predict zero unless one of the four catalysts is present.\n\nExample 2 (25' into 1st half, 0-0): You predicted +0.1c. Market moved -1.5c. The candlesticks showed a stable mid at 0.455 for 20+ minutes. Recent trades were small. You had no catalyst\u2014no recent goal, no thin book reversion, no time decay at 25'. Predict zero.\n\nExample 3 (25' into 1st half, 0-1): You predicted +0.1c. Market stayed at 0.075. Candlesticks showed a stable mid at 0.135 before the game and 0.075 after. The goal that moved the price from 0.135 to 0.075 was absorbed (several minutes had passed). You correctly had no catalyst but predicted a small positive move anyway. Predict zero.\n\nExample 4 (5' into 1st half, 0-0): You predicted -0.4c. Market moved -2.5c. You scored positive skill, but this was LUCK. At 5' into a game with a stable book and no recent events, the only catalyst is a goal, which you cannot predict. The -2.5c move was almost certainly driven by a goal for the favorite (Celta Vigo) or a dangerous chance. You got the direction right by accident. The correct forecast at 5' with no catalyst is zero.\n\nExample 6 (65' into 2nd half, 0-0): You predicted +0.0c (zero). Market moved -2.0c. This is the CORRECT forecast. At 65' in a 0-0 game with a stable book (candlesticks at 0.425 for several minutes before dropping to 0.385 recently, and now stable at 0.385), you have no catalyst. The -2.0c move likely came from a goal or a sudden shift in play. You cannot predict these. Predicting zero is correct and scores zero skill (not negative).\n\nExample 8 (45' into 2nd half, 2-0): You predicted -0.1c. Market moved +1.0c. The game is 2-0 at halftime (second half just starting). The candlesticks show the mid rose from 0.505 to 0.975 during the first half (after the goals) and has been stable at 0.975 for 10+ minutes. Recent trades are small. You have no catalyst\u2014the goals are long absorbed, no time decay at 45', no book reversion. Predict zero.\n\nWHEN TO PREDICT ZERO:\n- Early in a half (before 75') with a stable book and no recent goals (within 2-3 minutes)\n- Candlesticks show a flat mid for 3+ minutes\n- Recent trades are scattered, small, or several minutes old\n- No scheduled event is imminent or just happened (or if it happened, 2+ minutes have passed)\n\nWHEN TO PREDICT NON-ZERO:\n- Goal absorption: Recent_trades show heavy one-sided flow in the last 1-2 minutes after a goal\n- Book reversion: Candlesticks show a sharp move (2+ cents) in the last 1-2 minutes on thin volume\n- Time decay: Clock > 75' (less than 15 minutes left) and the team trails or is drawing on a \"will score\" prop\n- Typical move sizes: 1-3 cents for absorption or decay, 0.5-1.5 cents for reversion\n\nHALF_WIDTH:\n- If you predict zero, use half_width = 0.4-0.6 cents (tight, because you expect no move)\n- If you predict a move based on a catalyst, use half_width = 1-2 cents (wider, to account for uncertainty in timing and size)\n- Half_width is your confidence interval, not the market's spread. It determines whether you get filled and whether you get run over.\n\nEXAMPLE OF CORRECT ZERO FORECAST:\n- 65' into a game, score stable, candlesticks flat for 5 minutes, recent trades scattered\n- No goal in last 3 minutes, no sharp move in last 2 minutes, clock not yet in decay zone (< 75')\n- Predict delta_cents = 0, half_width_cents = 0.5\n- This scores zero skill, which is correct\n\nEXAMPLE OF CORRECT NON-ZERO FORECAST:\n- 78' into a game, team trailing 0-1, contract is \"team will score\" at mid 0.30\n- Clock is at 78', leaving 12 minutes. Five minutes of decay should move it ~0.8c down\n- Predict delta_cents = -0.8, half_width_cents = 1.5\n- If the market moves -0.5c to -1.5c, you score positive skill\n\nYour job is to distinguish signal (the four catalysts) from noise (random fluctuations). When you see noise, predict zero.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
