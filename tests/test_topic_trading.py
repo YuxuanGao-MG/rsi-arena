@@ -273,8 +273,84 @@ def test_backfill_replays_a_bare_rollout_with_the_touch_the_set_has_since_kept()
 
 # -- the seeds ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("name", ["horizon-5m-jev.json", "horizon-5m-jev-gated.json",
-                                  "crypto-horizon-1m-jev.json", "news-equity-5m-jev.json"])
+JEV_SEEDS = ["horizon-5m-jev.json", "horizon-5m-jev-gated.json",
+             "crypto-horizon-1m-jev.json", "news-equity-5m-jev.json"]
+CHAT_SEEDS = ["horizon-5m.json", "crypto-horizon-1m.json", "news-equity-5m.json"]
+
+
+def task_of(name: str):
+    """The topic a seed file belongs to, built empty - only its box is wanted."""
+    if name.startswith("crypto"):
+        return CryptoHorizon(windows=[])
+    if name.startswith("news"):
+        return NewsEquity(windows=[])
+    return KalshiHorizon(windows=[])
+
+
+def width_answer(level: int, levels: int = 5) -> dict:
+    return {"type": "score", "score": float(level), "confidence": 0.7,
+            "probabilities": {str(i): (1.0 if i == level else 0.0) for i in range(levels)}}
+
+
+@pytest.mark.parametrize("name", JEV_SEEDS + CHAT_SEEDS)
+def test_every_seed_names_only_tools_its_topic_offers(name):
+    """The seeds used to list three of the twenty a box holds, and a rewrite of
+    ``tools`` almost never survived its minibatch, so the derived tools were
+    never reached. They are listed now - and every name has to be one the topic
+    would actually bind, or the harness fails every window at ``check``."""
+    h = Harness.load(ROOT / "harnesses" / name)
+    task = task_of(name)
+    box = set(task.tools())
+    assert set(h.tools) <= box, sorted(set(h.tools) - box)
+    assert h.plan.tools_used() - {"*"} <= set(h.tools), "the plan calls what it lists"
+    assert h.plan.required_inputs() <= task.inputs, sorted(h.plan.required_inputs() - task.inputs)
+    derived = {"state_summary", "move_base_rate", "tape_imbalance"}
+    assert derived <= set(h.tools), sorted(derived - set(h.tools))
+    assert "ask_opus" in h.description or "ask_opus" in h.tools, \
+        "the seed says the model tools exist even when it does not use them"
+
+
+@pytest.mark.parametrize("name", JEV_SEEDS)
+def test_the_jev_seeds_choose_the_width_they_post(name):
+    """Width is a question with venue-appropriate levels, not the move
+    distribution's dispersion. The levels start at the venue tick and increase,
+    and the widest is well past the median path, so the answer is a choice
+    between a market that trades and one that does not."""
+    h = Harness.load(ROOT / "harnesses" / name)
+    step = h.plan.steps[-1]
+    validate_questions(step.questions, step.answers)
+    tick = task_of(name).trading.tick
+    key = "half_width_cents" if name.startswith("horizon") else "half_width_bps"
+    values = step.questions["width"]["values"]
+    assert step.questions["width"]["type"] == "score"
+    assert len(values) == len(step.questions["width"]["criteria"]) == 5
+    assert values[0] == tick, f"the narrowest offered width is the venue tick, {tick}"
+    assert all(values[i] < values[i + 1] for i in range(len(values) - 1)), values
+    assert values[-1] >= 8 * tick, "the widest offered width is well past the median path"
+    assert step.answers[key] == {"from": "width", "as": "mean", "min": tick}
+    assert "half_range" not in json.dumps(step.answers), "dispersion no longer sets the width"
+    # Every level, and a spread over two of them, maps to a width at or above the tick.
+    for level in range(len(values)):
+        out = answers_to_output(step.questions, {**answers_of(step), "width": width_answer(level)},
+                               step.answers)
+        assert out[key] == pytest.approx(values[level]) and out[key] >= tick
+    blurred = {"type": "score", "score": 0.5, "probabilities": {"0": 0.5, "1": 0.5}}
+    out = answers_to_output(step.questions, {**answers_of(step), "width": blurred}, step.answers)
+    assert out[key] == pytest.approx((values[0] + values[1]) / 2) and out[key] >= tick
+
+
+def answers_of(step) -> dict:
+    """A full answer set for a seed's questions but the width, which each test sets."""
+    n = len(step.questions["move"]["criteria"])
+    return {"move": {"type": "score", "score": 3.0, "confidence": 0.5,
+                     "probabilities": {str(i): (1.0 if i == 3 else 0.0) for i in range(n)}},
+            "action": {"type": "choice", "choice": "open_short",
+                       "probabilities": {"open_short": 0.9, "hold": 0.1}},
+            "size": {"type": "score", "score": 3.0, "confidence": 0.8,
+                     "probabilities": {"0": 0.0, "1": 0.0, "2": 0.0, "3": 1.0}}}
+
+
+@pytest.mark.parametrize("name", JEV_SEEDS)
 def test_the_jev_seeds_ask_for_an_order_and_the_answers_become_one(name):
     h = Harness.load(ROOT / "harnesses" / name)
     step = h.plan.steps[-1]
@@ -285,12 +361,7 @@ def test_the_jev_seeds_ask_for_an_order_and_the_answers_become_one(name):
     assert step.questions["size"]["values"] == [0, 0.02, 0.05, 0.10]
     assert step.answers["action"] == {"from": "action", "as": "choice"}
     assert step.answers["size"] == {"from": "size", "as": "mean", "min": 0, "max": 0.1}
-    n = len(step.questions["move"]["criteria"])
-    answers = {"move": {"type": "score", "score": 3.0, "confidence": 0.5,
-                        "probabilities": {str(i): (1.0 if i == 3 else 0.0) for i in range(n)}},
-               "action": {"type": "choice", "choice": "open_short", "probabilities": {"open_short": 0.9, "hold": 0.1}},
-               "size": {"type": "score", "score": 3.0, "confidence": 0.8,
-                        "probabilities": {"0": 0.0, "1": 0.0, "2": 0.0, "3": 1.0}}}
+    answers = {**answers_of(step), "width": width_answer(1)}
     out = answers_to_output(step.questions, answers, step.answers)
     assert out["action"] == "open_short" and isinstance(out["size"], float) and out["size"] == 0.1
     assert read_decision(out).size == 0.1 and read_decision(out).action == "open_short"
@@ -299,7 +370,7 @@ def test_the_jev_seeds_ask_for_an_order_and_the_answers_become_one(name):
     assert 0.0 <= answers_to_output(step.questions, spread, step.answers)["size"] <= 0.1
 
 
-@pytest.mark.parametrize("name", ["horizon-5m.json", "crypto-horizon-1m.json", "news-equity-5m.json"])
+@pytest.mark.parametrize("name", CHAT_SEEDS)
 def test_the_chat_seeds_require_both_decision_fields_in_strict_mode(name):
     schema = Harness.load(ROOT / "harnesses" / name).plan.steps[-1].output_schema
     assert {"action", "size"} <= set(schema["required"])
@@ -307,6 +378,32 @@ def test_the_chat_seeds_require_both_decision_fields_in_strict_mode(name):
     assert schema["properties"]["action"]["enum"] == ["open_long", "open_short", "close", "hold"]
     assert (schema["properties"]["size"]["minimum"], schema["properties"]["size"]["maximum"]) == (0, 0.1)
     assert schema["additionalProperties"] is False
+    # The width is described as the market that gets posted, not a confidence band.
+    key = "half_width_cents" if name.startswith("horizon") else "half_width_bps"
+    said = schema["properties"][key]["description"]
+    assert "POSTED" in said and "not a confidence band" in said, said
+
+
+def test_the_width_table_counts_a_fill_the_way_the_book_does(tmp_path):
+    """``scripts/width_fills.py`` is what says whether the offered widths bracket
+    the range the answer changes over, so it has to fill a side exactly as
+    ``Book.post`` does: the bid at a bar whose low reaches it, the ask at a bar
+    whose high does. One window, three outcomes as the width widens."""
+    fills = load_script("width_fills")
+    (tmp_path / "w.json").write_text(json.dumps([
+        {"ticker": "K", "at": T0.isoformat(), "mid_now": 0.50, "realised": 0.52,
+         "path": [{"ts": (T0 + M).isoformat(), "high": 0.54, "low": 0.47, "close": 0.52}]},
+        {"ticker": "K", "at": T0.isoformat(), "mid_now": 0.50, "realised": 0.50, "path": None},
+    ]))
+    topic = fills.Topic("t", str(tmp_path), "cents", False, (1, 4, 8))
+    out = fills.measure(topic)
+    assert out["windows"] == 1 and out["pathless"] == 1, "a window with no path posts nothing"
+    assert out["reach"]["p50"] == 4.0, "the wider side: four cents up against three down"
+    both, one, none = out["widths"]
+    assert (both["width"], both["both"]) == (1, 1.0), "a one-cent market is taken on both sides"
+    assert (one["width"], one["one_side_only"], one["both"]) == (4, 1.0, 0.0), "the ask only"
+    assert (none["width"], none["no_fill"]) == (8, 1.0), "nobody reaches eight cents"
+    assert fills.main(["--topic", "news-equity-5m", "--json"]) == 0
 
 
 # -- the collectors keep the touch ---------------------------------------------------------

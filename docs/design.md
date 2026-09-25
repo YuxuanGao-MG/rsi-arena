@@ -1,5 +1,74 @@
 # Design: the alternative
 
+## Status, 2026-09-24: the seeds quote a width on purpose, and reach for the whole box
+
+The book's finding was about the harnesses, so the harnesses are what changed.
+Two things were wrong with every seed and neither was a bug.
+
+**The width was not a decision.** Each Jev seed derived `half_width` from the
+move distribution with `{"as": "half_range", "coverage": 0.6}`, which is a
+statement about how unsure the model is rather than about what market it would
+stand behind — and a distribution piled on one level reads as zero, which the
+engine widens to the venue tick. Measured over the committed sets, the Kalshi
+half-width landed at 1.00c on essentially every window against a five-minute
+path that reaches 2.5c from the mid at the median and 17.5c at the ninetieth.
+Each Jev seed now asks a `score` question of its own, `width`, over five
+venue-appropriate levels from the tick to well past the median path — Kalshi
+1/2/4/8/16 cents, crypto 2/5/10/20/40 bps, news 5/12/25/50/100 bps — mapped
+`{"from": "width", "as": "mean", "min": <tick>}`. The instructions say the thing
+plainly: this is the half-width of the market you post, the path will travel
+through one that is too narrow and take both your sides at prices the market has
+already left, and a width nobody reaches costs exactly nothing. The three chat
+seeds keep their schema keys and say the same thing in the property description.
+
+`scripts/width_fills.py` is what says whether those five levels bracket the
+range the answer changes over. It reads the realised path the sets now carry and
+fills a quote centred on the mid the way `Book.post` does:
+
+| half width | Kalshi both / one | crypto both / one | news both / one |
+| --- | --- | --- | --- |
+| tick | 34% / 45% | 18% / 61% | 30% / 61% |
+| 2× | 16% / 44% | 4% / 42% | 9% / 51% |
+| 4× | 6% / 33% | 1% / 16% | 2% / 24% |
+| 8× | 1% / 21% | 0% / 4% | 0% / 8% |
+| 16× | 0% / 11% | 0% / 1% | 0% / 1% |
+
+"one" is the adversely selected half — the path went through one side and kept
+going — and it is what the Kalshi book lost ninety-six per cent to. The levels
+span a range from "run over four windows in five" to "never trades", which is
+the range a choice has to cover.
+
+The metric does not fight this. `half_width` reaches exactly two places: the
+`covered` flag, and the feedback sentence that reports it. `skill`, `value`,
+`mae` and the gate read the error against the benchmark and never the width, so
+a wider quote changes `coverage` and the PnL objective and changes the promotion
+number not at all. The one cost is that "realised price inside the quote" gets
+less informative as the width grows; PnL is the channel that charges for the
+width now, and it is the honest one.
+
+**The box was three tools wide.** Every seed listed `market_quote`,
+`candlesticks`, `previous_trades` out of the twenty each box offers, and a
+`tools` rewrite almost never survives its minibatch, so the derived tools built
+for exactly this job were never reached. Every seed now runs `state_summary`,
+`move_base_rate` and `tape_imbalance` as fixed steps before the prompt — they
+are cached, so they cost tool time and not model tokens — plus the topic's clock
+(`settlement_countdown` on Kalshi, `session_clock` on crypto and news), and the
+prompt text reads their output. `move_base_rate` is the one that matters most:
+its p50 and p90 are the numbers the width question asks to be read. `ask_opus`
+stays out of the seeds because it costs real money per window, and each seed's
+description now says it is there.
+
+Not `game_clock` or `goal_absorption`, though `KalshiHorizon.tools()` advertises
+them: `replay_tools` omits them when a window has no timeline, and
+`Harness.check` fails **every** instance of a generation when the first
+instance's box lacks a listed tool. A seed that names them is one ESPN outage
+away from scoring a whole generation as silence. `state_summary` folds the clock
+and the goal in when a timeline exists and degrades quietly when it does not, so
+the substance is kept without the failure mode. Making them safe to name is a
+four-line change in `replay_tools` — both functions already return
+`failed("no timeline for this window")` — but it contradicts a tested design
+decision (`tests/test_replay.py`) and is its own edit.
+
 ## Status, 2026-09-23: the books trade, and the first thing they say is "quote wider"
 
 The book became a market maker: the forecast is the quote. Every cycle the

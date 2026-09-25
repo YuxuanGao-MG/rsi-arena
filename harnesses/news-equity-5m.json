@@ -1,7 +1,7 @@
 {
   "name": "news-equity-5m",
-  "description": "Predicts this symbol's price five minutes after a news item broke, in basis points of the last IEX minute close.",
-  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- material, stock-specific news the tape has not absorbed: guidance, a deal, a downgrade, a recall, a regulator\n- the market as a whole moving, which moves this name with it and is not the story's doing\n- a name that has already run on the same story this morning, which has less left to do\n- a thin minute, so a few prints move the close and it drifts back\n\nWhat does not:\n- your view on whether the company is good. The market has that already.\n- a headline that repeats something already priced: an analyst note on a move that happened, a recap, a list.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day; most name a stock in passing and move nothing. A large cap quotes one to five basis points wide, so anything inside that is no move.\n\nYou answer with two numbers.\n\n**How many basis points it moves.** Not where the price is: where it goes, from the last complete minute close. Zero is a real answer and usually the right one. But zero is a decision, not a default, and when the story is material and fresh you are expected to say so in basis points.\n\n**How wide a market you would make.** Half the width of the tightest two-sided quote you would actually stand behind, in basis points. Five means you would buy five under your number and sell five over it, and honour both sides. Fifty means you barely know. Quote what you would trade, not what is safe.",
+  "description": "Predicts this symbol's price five minutes after a news item broke, in basis points of the last IEX minute close, and posts a market around it. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a second chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- material, stock-specific news the tape has not absorbed: guidance, a deal, a downgrade, a recall, a regulator\n- the market as a whole moving, which moves this name with it and is not the story's doing\n- a name that has already run on the same story this morning, which has less left to do\n- a thin minute, so a few prints move the close and it drifts back\n\nWhat does not:\n- your view on whether the company is good. The market has that already.\n- a headline that repeats something already priced: an analyst note on a move that happened, a recap, a list.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day; most name a stock in passing and move nothing. A large cap quotes one to five basis points wide, so anything inside that is no move.\n\nYou answer with two numbers.\n\n**How many basis points it moves.** Not where the price is: where it goes, from the last complete minute close. Zero is a real answer and usually the right one. But zero is a decision, not a default, and when the story is material and fresh you are expected to say so in basis points.\n\n**How wide a market you post.** Half the width of the two-sided quote that goes on the book every cycle, in basis points. Twelve means you are bid twelve under your number and offered twelve over it, and both sides rest there until the path reaches them. This is a choice, not a reading of how unsure you are: a width the path travels through has both its sides taken at prices the market has already left behind, and a width nobody reaches never trades and costs nothing at all. The tick is five basis points; the path reaches a median of fifteen from the last close, and a tenth of items reach forty-three.",
   "config": {
     "model": "anthropic/claude-opus-5",
     "temperature": 0.0,
@@ -14,7 +14,11 @@
     "recent_trades",
     "daily_context",
     "the_story",
-    "market_tape"
+    "market_tape",
+    "state_summary",
+    "move_base_rate",
+    "tape_imbalance",
+    "session_clock"
   ],
   "plan": {
     "steps": [
@@ -24,11 +28,15 @@
       {"type": "tool", "name": "day", "tool": "daily_context", "args": {"symbol": "{{question}}"}, "output_key": "day", "fail_ok": true},
       {"type": "tool", "name": "story", "tool": "the_story", "args": {}, "output_key": "story", "fail_ok": true},
       {"type": "tool", "name": "market", "tool": "market_tape", "args": {"symbol": "SPY"}, "output_key": "market", "fail_ok": true},
+      {"type": "tool", "name": "summary", "tool": "state_summary", "args": {"symbol": "{{question}}"}, "output_key": "summary", "fail_ok": true},
+      {"type": "tool", "name": "rate", "tool": "move_base_rate", "args": {"symbol": "{{question}}"}, "output_key": "rate", "fail_ok": true},
+      {"type": "tool", "name": "flow", "tool": "tape_imbalance", "args": {"symbol": "{{question}}", "minutes_back": 10}, "output_key": "flow", "fail_ok": true},
+      {"type": "tool", "name": "clock", "tool": "session_clock", "args": {}, "output_key": "clock", "fail_ok": true},
       {
         "type": "prompt",
         "name": "predict",
         "output_key": "prediction",
-        "prompt": "Symbol: {{question}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\n\nHow many basis points does the last close move over the next 5 minutes, and how wide a market would you make around that? Zero is a real answer on a headline the market has already read. Quote a width you would actually stand behind on both sides.",
+        "prompt": "Symbol: {{question}}\nSituation: {{summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nClock: {{clock}}\nFive-minute moves at this time of day, over the prior ten sessions: {{rate}}\nTape flow: {{flow}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}\n\nHow many basis points does the last close move over the next 5 minutes, and how wide a market would you post around that? Zero is a real answer on a headline the market has already read. The width is the market you post, not a confidence band: the base rate's p50 and p90 say how far the path usually travels, and a width inside that range gets both your sides taken.",
         "output_schema": {
           "type": "object",
           "properties": {
@@ -38,7 +46,7 @@
             },
             "half_width_bps": {
               "type": "number",
-              "description": "Half the width of the tightest two-sided market you would actually stand behind, in basis points. You are saying you would buy at (prediction - this) and sell at (prediction + this). Narrow means you will trade; wide means you will not."
+              "description": "The half width, in basis points, of the two-sided market that is POSTED on your behalf every cycle: bid at (prediction - this) and offered at (prediction + this), a resting order that pays only the SEC and TAF charges on a sale. This is not a confidence band; it is a choice about what you are willing to trade. The path will travel through a width that is too narrow and take BOTH sides, at prices the market has already left behind - every one of those fills is adversely selected. A width nobody reaches never trades and costs exactly nothing, which is what standing aside costs. The five-minute path reaches a median of fifteen basis points from the last close and a tenth of items reach forty-three, so five is run over on one side or both in nine windows out of ten. The venue tick is five basis points and anything under it is widened to it."
             },
             "confidence": {
               "type": "number",
