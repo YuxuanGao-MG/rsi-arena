@@ -33,7 +33,7 @@ prints what each runs on; the workflows read the same spec with `--shell`.
 | topic | instance | unit / tick | seed harness | question set | keys |
 |---|---|---|---|---|---|
 | `kalshi-horizon-5m` | a Kalshi soccer contract at an instant, 5 min out | cents / 1c | `harnesses/horizon-5m-jev.json` (Jev; the Opus lineage's 11 generations stay under `runs/`, the Jev lineage is `runs/kalshi-jev/`) | 485 matches, `benchmarks/windows/`; held-out 300 | OpenRouter |
-| `crypto-horizon-1m` | BTC/ETH/SOL spot at an instant, 1 min out, every 5 min | bps / 2 | `harnesses/crypto-horizon-1m-jev.json` (Jev) | 92 UTC days, 2,208 windows, `benchmarks/windows-crypto/` + `benchmarks/crypto-data/` | none for data |
+| `crypto-horizon-1m` | BTC/ETH/SOL spot at an instant, 1 min out, every 5 min | bps / 2 | `harnesses/crypto-horizon-1m-jev.json` (Jev) | 365 UTC days, 8,760 windows, `benchmarks/windows-crypto/` + `benchmarks/crypto-data/`; held-out 120, audit 60 | none for data |
 | `news-equity-5m` | a Benzinga item on a US stock/ETF, 5 min out, RTH | bps / 5 | `harnesses/news-equity-5m-jev.json` (Jev) | **empty until Alpaca keys exist**; then `scripts/discover_news.py` | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` |
 
 The two new topics run on TypeSafe's Jev (`typesafe/jev-1.13`, a decisions model:
@@ -54,10 +54,20 @@ Paper trading: every harness keeps a simulated $1M book (`rsi_arena/trading/`,
 migration 009, the reader's Trading page); PnL is reported beside skill, the
 gate still promotes on skill. See `docs/design.md` Status 2026-09-23.
 
+The crypto question set is a year deep as of 2026-09-24 (2025-09-24..2026-09-23,
+365 UTC days). It was 92 days holding out 30, which `scripts/power.py` measures
+against the real paired rollouts as resolving a gap of 0.041-0.070 pooled skill -
+wider than anything the search produces, and wider than the +0.025 gen5 was
+promoted on. Holding out 120 of the 365 resolves 0.020-0.035, twice as fine.
+Binance's mirror serves a year of minute bars for nothing, so days were the only
+thing ever stopping this. OKX funding history is not: it is a rolling three
+months, so 268 of the 365 days answer `funding not recorded before 2026-06-19`,
+which is the honest answer and not a gap to paper over. Open interest (daily) and
+the perp's own 5-minute candles do go back a year and were backfilled.
+
 What is not yet done: a 30-second crypto horizon (needs 1 s klines from a live
-collector) and more crypto days (the gate resolves 0.050 on 30 held-out days;
-news resolves 0.009 on 300 symbol-days). Every topic has run at least one
-generation on Actions; see `docs/design.md` Status 2026-09-22.
+collector). Every topic has run at least one generation on Actions; see
+`docs/design.md` Status 2026-09-22.
 
 The section below is the state as of 2026-09-16 and is kept for its lessons.
 
@@ -149,9 +159,11 @@ step per topic, and commits only `benchmarks/` paths. Each topic appends the
 markets its venue settled since the set's newest group — Kalshi fixtures newer
 than the newest event-ticker date, crypto days after the benchmark's `to`, news
 sessions after the latest New York date — and then prunes back to `--keep`
-groups by recency: 485 matches, 92 days, 2,350 symbol-days, the sizes the sets
-had when the roll began. `--keep` is a count of *groups*, not of windows or
-instances, because the split is by group and power comes from groups. The
+groups by recency: 485 matches, 365 days, 2,350 symbol-days - the sizes the sets
+had when the roll began, except crypto, whose quarter was deepened to a year on
+2026-09-24 because thirty held-out days could not resolve any gap the search
+produces. `--keep` is a count of *groups*, not of windows or instances, because
+the split is by group and power comes from groups. The
 procedure, the dedupe rules and the full list of what a roll must never do are
 written out in the script's module docstring and in `docs/design.md`, *How the
 question sets roll*.

@@ -9,7 +9,7 @@ ones the incumbent will be traded on. This script is run weekly by
 then prunes the oldest so the set keeps its size.
 
     python scripts/roll_question_set.py --topic kalshi-horizon-5m --dry-run
-    python scripts/roll_question_set.py --topic crypto-horizon-1m --keep 92
+    python scripts/roll_question_set.py --topic crypto-horizon-1m --keep 365
     python scripts/roll_question_set.py --topic news-equity-5m --until 2026-09-19
     python scripts/roll_question_set.py --topic all --validate --summary roll.json
 
@@ -66,7 +66,7 @@ How each topic rolls, as a procedure
 3. ``to`` moves to the last day filled and the benchmark is rewritten; then
    ``crypto_horizon.windows.build_windows`` builds the new days' files (a day
    without bars is not written, so it can be built later).
-4. Prune: ``from`` moves to ``to - keep + 1`` (``--keep`` 92 days) and the
+4. Prune: ``from`` moves to ``to - keep + 1`` (``--keep`` 365 days) and the
    ``D<date>`` window files of the days before it are deleted. The kline,
    perp and on-chain stores are never pruned: they are cheap and the live
    collector reads them.
@@ -144,7 +144,14 @@ ALL = "all"
 
 #: Groups a set keeps after a roll: the size each set had when the roll began,
 #: so the split the specs were sized for keeps its power.
-KEEP = {KALSHI: 485, CRYPTO: 92, NEWS: 2350}
+#:
+#: Crypto was 92 UTC days, which is a quarter, which held out thirty and could
+#: resolve a gap of about 0.04 pooled skill - wider than any rewrite has ever
+#: produced, and wider than the +0.025 that gen5 was promoted on. Its bars are
+#: free and unlimited from the Binance mirror, so the set is a year: 365 days
+#: hold out 120 and resolve about 0.02. This is the number the weekly roll
+#: maintains; shrinking it silently shrinks the gate's eyesight.
+KEEP = {KALSHI: 485, CRYPTO: 365, NEWS: 2350}
 #: Where each topic's discovery leaves venue data, beside the question set.
 DATA_DIRS = {CRYPTO: "benchmarks/crypto-data", NEWS: "benchmarks/news-data"}
 #: Minutes a topic may spend discovering before it keeps what it has.
