@@ -364,9 +364,15 @@ def test_the_topic_is_registered_and_the_command_prints_it(capsys):
     assert spec.harness == spec.jev_harness == "harnesses/crypto-horizon-1m-jev.json"
     assert spec.benchmark == "benchmarks/crypto-2026-09.json" and spec.windows_dir == "benchmarks/windows-crypto"
     assert spec.runs_dir == "runs/crypto-horizon-1m" and spec.per_fixture == 24
-    assert spec.window_usd == 0.00005 and spec.model_choices == ("typesafe/jev-1.13", "openai/gpt-5-mini")
-    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset) == (30, 15, 4800, 600)
-    assert spec.max_day_usd == 100 and spec.unit == "bps"
+    assert spec.window_usd == 0.0002 and spec.model_choices == ("typesafe/jev-1.13", "openai/gpt-5-mini")
+    # The 365-day set: a third held out, a sixth held back to confirm, about half
+    # to search on. Thirty held-out days resolved 0.041-0.070 pooled skill on the
+    # real paired rollouts and gen5 was promoted on +0.025, inside that margin;
+    # 120 days resolve 0.020-0.035. The valset is fifty of the 185 train days
+    # rather than twenty-five, and the call budget is what lets GEPA pass over it
+    # more than three times.
+    assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset) == (120, 60, 12000, 1200)
+    assert spec.max_day_usd == 70 and spec.unit == "bps"
     assert main(["topic", "--topic", "crypto-horizon-1m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["name"] == "crypto-horizon-1m" and out["unit"] == "bps" and "factory" not in out

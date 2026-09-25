@@ -539,7 +539,7 @@ two names is two rows by design.
 
 **Prune, and in what order.** Kalshi orders fixtures by ticker date and keeps
 the newest `--keep` (485, the size the set had when the roll began); crypto
-moves `from` to `to - keep + 1` (92 days); news drops whole session dates from
+moves `from` to `to - keep + 1` (365 days); news drops whole session dates from
 the oldest while the remainder still holds `--keep` symbol-days (2,350).
 In every topic the benchmark is rewritten first, *then* the window files it no
 longer names are deleted, so a roll killed between the two leaves orphan files

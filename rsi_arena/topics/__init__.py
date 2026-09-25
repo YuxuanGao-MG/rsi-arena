@@ -160,28 +160,63 @@ TOPICS: dict[str, TopicSpec] = {
         benchmark="benchmarks/crypto-2026-09.json",
         windows_dir="benchmarks/windows-crypto",
         runs_dir="runs/crypto-horizon-1m",
-        # Twenty-four instants a day across three coins: power comes from days.
+        # Twenty-four instants a day across three coins: power comes from days,
+        # but not only from days. Measured on the held-out rollouts of gen4,
+        # gen5 and gen7 by thinning them after the fact: at 24 windows a day the
+        # paired standard error per day is 0.066-0.098 pooled skill, at 12 it is
+        # 0.081-0.127 and at 8 it is 0.115-0.151. A football match's windows
+        # really are one observation seen thirty-four times; a UTC day's minute
+        # horizons are not, so the cheapest way to halve the interval is not to
+        # thin them. Twenty-four a day costs half a cent a day to score.
         per_fixture=24,
-        # A Jev window: two thousandths of a cent, before anything is measured.
-        window_usd=0.00005,
+        # A Jev window, measured rather than assumed: gen1-gen7 paid between
+        # $0.00013 and $0.00037 an instance over fourteen half-generations,
+        # averaging about $0.00024. The spec said 0.00005 for seven generations,
+        # which under-priced the search share of the prediction by four times.
+        window_usd=0.0002,
         model_choices=("typesafe/jev-1.13", "openai/gpt-5-mini"),
-        holdout=30,
-        audit=15,
+        # A third of the 365-day set held out, a sixth held back to confirm, and
+        # about half left to search on (120 + 60 + 185). `scripts/power.py` on
+        # the paired held-out rollouts of gen1-gen7 puts what thirty days can
+        # resolve at 0.041-0.070 pooled skill (the gate recorded 0.031 for gen5
+        # itself), and gen5 was promoted on +0.025 - inside the margin, by a test
+        # that could not see it. 120 days resolve 0.020-0.035, exactly twice as
+        # fine, which makes a gain the size of gen5's the smallest thing the gate
+        # can now honestly accept. Crypto bars are free and unlimited, so the
+        # only thing that ever bounded this was how many days had been fetched.
+        holdout=120,
+        audit=60,
         # Calls are not the bound on a topic whose windows cost a fraction of a
-        # cent: one accepted candidate's full valset pass is 600, and 1200 let
-        # the search propose exactly once. The dollar stopper bounds the
-        # rewriter's bill; the calls just have to be out of its way.
-        max_metric_calls=4800,
-        valset=600,
+        # cent, but they do bound how often the search may iterate: GEPA scores
+        # the seed over the whole valset before proposing anything, and every
+        # candidate it keeps costs another full pass. At valset 1200 and 12,000
+        # calls that is one seed pass, eight kept candidates and 150 proposals;
+        # at the old 4,800 it would have been the seed and three candidates with
+        # nothing left to propose with. The dollar stopper bounds the bill.
+        max_metric_calls=12000,
+        # Fifty days of the 185 in train, up from twenty-five. The valset is how
+        # the search ranks its own candidates, and at 600 windows that ranking
+        # carried a standard error of about 0.016 pooled skill - larger than the
+        # effects it was choosing between, so it was picking winners by luck.
+        # 1200 windows is 27% of train and takes that to about 0.011.
+        valset=1200,
         # The cap is checked against the key's spend for the whole UTC day, and
         # the key is shared by every topic and by anyone benching locally: at
         # fifteen the first news generation found the day already two-thirds
-        # spent by the crypto generation before it. Sixty leaves the three
-        # topics' expected spend (about seventy, eleven and eleven) under the
-        # key's own hundred.
-        # One cap for every topic, because it is checked against the shared
-        # key's spend for the whole UTC day.
-        max_day_usd=100.0,
+        # spent by the crypto generation before it.
+        #
+        # Seventy, not the key's own hundred, because the deeper held-out set
+        # roughly doubled a generation. Priced at $0.0002 a window: the baseline
+        # is the incumbent over probe (20 days x 24) plus held-out (120 x 24) =
+        # 3,360 windows, $0.67; the search is 12,000 calls plus a 1,200 valset
+        # pass, $2.64; the judgment reserves the same 3,360 windows at the most
+        # the gate lets a candidate cost (2.0 x the $0.002 floor), $13.44; and
+        # the rewriter is 75 Sonnet reflections at $0.08, $6.00. About $23 cold,
+        # against $11 at thirty held-out days, and the workflow's 1.1 margin
+        # makes it $25. Three slots is $75 - the whole shared day - so the guard
+        # refuses a start once the day is at seventy, which leaves thirty for
+        # Kalshi ($17) and news ($10).
+        max_day_usd=70.0,
         unit=CryptoHorizon.metric.unit,
         cost_floor_usd=0.002,
         runs_per_day=3,

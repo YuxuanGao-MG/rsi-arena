@@ -16,6 +16,14 @@ variance reduction; this measures ours rather than borrowing theirs.
 
     python scripts/power.py
     python scripts/power.py --effect 0.02 --runs runs/gen1-floored
+    python scripts/power.py --topic crypto-horizon-1m --was 30 \
+        --runs runs/crypto-horizon-1m/gen7
+
+``--topic`` reads the held-out size out of that topic's ``TopicSpec`` and the
+group count out of its question set, so every line printed is about the split
+the topic actually runs rather than the Kalshi numbers this was written for.
+``--was`` prints a second row for the size the topic used to hold out, which is
+how a deeper question set is shown to have bought something.
 """
 
 from __future__ import annotations
@@ -77,7 +85,26 @@ def main() -> int:
     ap.add_argument("--runs", default="runs", help="a run directory, or the root to scan")
     ap.add_argument("--effect", type=float, default=0.02,
                     help="the pooled-skill gap worth detecting")
+    ap.add_argument("--topic", default=None,
+                    help="take the held-out size and the set's group count from this topic's "
+                         "spec and question set, instead of the Kalshi numbers")
+    ap.add_argument("--was", type=int, default=None,
+                    help="a held-out size to report beside the current one, so the gain from a "
+                         "deeper question set is a number rather than a claim")
     args = ap.parse_args()
+
+    # The two numbers every verdict below is about: how many groups the set
+    # holds, and how many of them the gate is handed. They were Kalshi's
+    # literals for the run of this script's life, which meant that pointing it
+    # at another topic produced a correct measurement under a false caption.
+    total, gate_at, noun = 485, 35, "matches"
+    if args.topic:
+        from rsi_arena.cli import _settings, build_parser                   # noqa: PLC0415
+        from rsi_arena.topics import load_topic, spec_of                   # noqa: PLC0415
+        gate_at = spec_of(args.topic).holdout
+        s = _settings(build_parser().parse_args(["optimize", "--topic", args.topic]))
+        total = len({i.group for i in load_topic(s).instances()})
+        noun = "UTC days" if args.topic == "crypto-horizon-1m" else "groups"
 
     root = Path(args.runs)
     run_dirs = [root] if (root / "manifest.json").exists() else sorted(
@@ -118,23 +145,29 @@ def main() -> int:
               f"floor of 8. Treat the table as an order of magnitude, not a number. "
               f"The first honest measurement arrives with the next generation.")
     print(f"minimum detectable pooled-skill gap, one-sided 2.5% at 80% power:\n")
-    print(f"  {'matches':>8}  {'SE':>8}  {'detectable':>11}")
-    for matches in (8, 20, 35, 60, 100, 200, 350, 485):
+    print(f"  {noun:>8}  {'SE':>8}  {'detectable':>11}")
+    sizes = {8, 20, 60, 100, 200, 350, gate_at, total} | ({args.was} if args.was else set())
+    for matches in sorted(n for n in sizes if 0 < n <= total):
         s = per_match / math.sqrt(matches)
-        print(f"  {matches:>8}  {s:>8.4f}  {Z * s:>11.4f}")
+        mark = "  <- the gate" if matches == gate_at else ("  <- was" if matches == args.was else "")
+        print(f"  {matches:>8}  {s:>8.4f}  {Z * s:>11.4f}{mark}")
 
     need = math.ceil((Z * per_match / args.effect) ** 2)
-    at35 = Z * per_match / math.sqrt(35)
-    print(f"\nTo see a gap of {args.effect:+.3f} you need about {need} held-out matches.")
-    print(f"The benchmark holds 485 matches. The gate runs on 35, which can see "
-          f"{at35:+.3f} and nothing smaller.")
+    at_now = Z * per_match / math.sqrt(gate_at)
+    print(f"\nTo see a gap of {args.effect:+.3f} you need about {need} held-out {noun}.")
+    print(f"The benchmark holds {total} {noun}. The gate runs on {gate_at}, which can see "
+          f"{at_now:+.3f} and nothing smaller.")
+    if args.was:
+        at_was = Z * per_match / math.sqrt(args.was)
+        print(f"At {args.was} it could see {at_was:+.3f}, so the deeper set resolves a gap "
+              f"{at_was / at_now:.1f}x smaller.")
     print("\nThe best rewrite anyone has found moved held-out skill by under 0.01, and")
     print("swapping the task model moved it by 0.12. If the first of those is the size")
-    print("of effect the search produces, then a 35-match gate cannot see the search's")
-    print("output at all, and every rejection so far has been uninformative rather than")
+    print(f"of effect the search produces, then a gate on {gate_at} {noun} cannot see the")
+    print("search's output at all, and every rejection is uninformative rather than")
     print("evidence that the rewrites are no good.")
-    if at35 > 0.01:
-        print(f"\nThat is the case here: {at35:+.3f} is larger than the effect. Widen the")
+    if at_now > 0.01:
+        print(f"\nThat is the case here: {at_now:+.3f} is larger than the effect. Widen the")
         print("held-out set rather than loosening the gate — a gate that cannot see is not")
         print("fixed by lowering the bar it cannot measure.")
     return 0
