@@ -310,6 +310,69 @@ def _dominates(a: Entry, b: Entry) -> bool:
     return better
 
 
+def gepa_state(run_dir: str | Path) -> dict[str, Any] | None:
+    """A finished search's own state, or None if there is none to read.
+
+    The one place the pickle is opened. It is somebody else's schema and it is
+    a pickle, so every caller wants the same two guards — no file, and a file
+    that will not load — and none of them should be writing them again.
+    """
+    state_path = Path(run_dir) / "gepa" / "gepa_state.bin"
+    if not state_path.exists():
+        return None
+    try:
+        state = pickle.loads(state_path.read_bytes())
+    except Exception:
+        return None
+    return state if isinstance(state, dict) else None
+
+
+def gepa_candidates(run_dir: str | Path) -> list[dict[str, str]]:
+    """The candidates a finished search proposed, from ``gepa/candidates.json``.
+
+    The same list as the state's ``program_candidates``, written by GEPA as
+    plain JSON beside it. Read from there rather than from the pickle because a
+    reader that only wants the component texts should not have to unpickle
+    anything to get them, and because a run whose state will not load may still
+    have this file.
+    """
+    path = Path(run_dir) / "gepa" / "candidates.json"
+    if not path.exists():
+        return []
+    try:
+        found = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return []
+    return [dict(c) for c in found if isinstance(c, dict)] if isinstance(found, list) else []
+
+
+def gepa_parents(state: dict[str, Any]) -> list[int | None]:
+    """One parent index per candidate, or None where there is none.
+
+    ``parent_program_for_candidate`` holds a list per candidate, because a merge
+    has more than one parent and the seed has none at all. The first is the
+    lineage; the shape is somebody else's, so it is unwrapped here once.
+    """
+    out: list[int | None] = []
+    for raw in state.get("parent_program_for_candidate") or []:
+        if isinstance(raw, list):
+            raw = raw[0] if raw else None
+        out.append(raw if isinstance(raw, int) else None)
+    return out
+
+
+def seed_diff(components: dict[str, str], seed: dict[str, str]) -> list[str]:
+    """Which components differ from the seed the search started from.
+
+    The diff, not the ancestry: GEPA's parent link says which candidate this one
+    was mutated from, and answers "what did the search change *this step*". What
+    a reader of six flat generations needs is the other question — what has the
+    search changed *at all* — and that is against candidate 0.
+    """
+    keys = set(components) | set(seed)
+    return sorted(k for k in keys if components.get(k) != seed.get(k))
+
+
 def from_gepa_state(run_dir: str | Path, generation: str, instance_ids: list[str],
                     fingerprint_of, *, promoted_id: str | None = None) -> list[Entry]:
     """Every candidate a finished GEPA search proposed, with its per-instance scores.
@@ -323,17 +386,13 @@ def from_gepa_state(run_dir: str | Path, generation: str, instance_ids: list[str
     ``instance_ids`` must be the valset in the order it was handed to GEPA;
     the subscore lists are positional against it.
     """
-    state_path = Path(run_dir) / "gepa" / "gepa_state.bin"
-    if not state_path.exists():
-        return []
-    try:
-        state = pickle.loads(state_path.read_bytes())
-    except Exception:
+    state = gepa_state(run_dir)
+    if state is None:
         return []
 
     candidates = state.get("program_candidates") or []
     subscores = state.get("prog_candidate_val_subscores") or []
-    parents = state.get("parent_program_for_candidate") or []
+    parents = gepa_parents(state)
     found_at = state.get("num_metric_calls_by_discovery") or []
 
     out: list[Entry] = []
@@ -351,8 +410,6 @@ def from_gepa_state(run_dir: str | Path, generation: str, instance_ids: list[str
         scores = {instance_ids[i]: float(v) for i, v in pairs
                   if isinstance(i, int) and 0 <= i < len(instance_ids) and v is not None}
         parent_idx = parents[k] if k < len(parents) else None
-        if isinstance(parent_idx, list):           # merges carry more than one
-            parent_idx = parent_idx[0] if parent_idx else None
         out.append(Entry(
             id=entry_id, components=dict(components), generation=generation,
             parent=ids[parent_idx] if isinstance(parent_idx, int) and parent_idx < len(ids) else None,

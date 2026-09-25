@@ -10,6 +10,11 @@ reason — a trace is tens of kilobytes of minute bars repeated in the tool answ
 and again in the prompt, and what a reader wants from one is which tools were
 called, what came back in summary, and the prompt and answer that ended it.
 
+Since migration 010 a row also carries what the live paper book did with it -
+the quote it posted, the fills that crossed it, what the path did - when the
+paper trader has attached that record to the row. The columns are probed for,
+like 008's, so the same script publishes on either side of the migration.
+
 The file is append-only, so a sidecar remembers how far it was read and a re-run
 costs one stat call. The sidecar is an optimisation and nothing depends on it:
 every row is upserted on ``(ticker, at)``, so publishing the same line twice is
@@ -102,15 +107,27 @@ BASE_COLUMNS = ("at", "league", "game_id", "ticker", "mid_now", "realised", "har
 DEFAULT_TOPIC = "kalshi-horizon-5m"
 TOPIC_COLUMNS = ("topic", "symbol", "venue", "context", "unit")
 
+#: The columns migration 010 adds: what the live paper book did with this
+#: forecast. ``paper_trade.py`` replays the sweep through the book and the
+#: engine's per-cycle record - the quote posted, the fills that crossed it, what
+#: the path did - rides on the row under ``trade``. A row the trader has not
+#: touched leaves all three null, which is every row published before 010 and
+#: every row of a sweep the trader did not run on.
+RECORD_COLUMNS = ("quote", "fills", "path")
+
+#: Everything past the table as 002 created it, in the order it was added.
+EXTRA_COLUMNS = TOPIC_COLUMNS + RECORD_COLUMNS
+
 
 def live_row(row: dict, extras: tuple[str, ...] = ()) -> tuple:
     """One forecast, in the column order ``rsi.live_forecasts`` declares.
 
     The first fourteen values are the table as 002 created it; ``extras`` names
-    which of 008's columns to append, in order, so a caller that probed the
+    which of the later columns to append, in order, so a caller that probed the
     table gets exactly the tuple its insert names.
     """
     scored = row.get("scored")
+    trade = row.get("trade") if isinstance(row.get("trade"), dict) else {}
     spans = (row.get("run") or {}).get("trace") or []
     base = (row["at"], row.get("league"), row.get("game_id"), row["ticker"],
             row.get("mid_now"), row.get("realised"), row.get("harness"),
@@ -125,24 +142,38 @@ def live_row(row: dict, extras: tuple[str, ...] = ()) -> tuple:
         "venue": row.get("venue"),
         "context": Json(row.get("context")) if row.get("context") is not None else None,
         "unit": row.get("unit") or "cents",
+        # An empty fills array is a quote nobody wanted; null is a forecast the
+        # book never quoted on. The two read the same in a dashboard and mean
+        # opposite things, so they are kept apart here.
+        "quote": Json(trade["quote"]) if trade.get("quote") is not None else None,
+        "fills": Json(trade["fills"]) if trade.get("fills") is not None else None,
+        "path": Json(trade["path_summary"]) if trade.get("path_summary") is not None else None,
     }
     return base + tuple(more[name] for name in extras)
 
 
-def topic_columns(cur) -> tuple[str, ...]:
-    """Which of 008's columns this database has.
+def extra_columns(cur, wanted: tuple[str, ...] = EXTRA_COLUMNS) -> tuple[str, ...]:
+    """Which of the columns past 002's this database has, in order.
 
     Probed rather than assumed: the publisher runs on a cron beside a migration
     someone applies by hand, and the two are not applied in the same minute.
     Naming a column the table lacks fails the whole insert; omitting one it has
-    lets its default stand, which for `topic` and `unit` is Kalshi's.
+    lets its default stand, which for `topic` and `unit` is Kalshi's and for
+    008's and 010's jsonb columns is null. One query answers for both
+    migrations - the record columns arrive the same way the topic columns did.
     """
     cur.execute("""
         select column_name from information_schema.columns
          where table_schema = 'rsi' and table_name = 'live_forecasts'
     """)
     present = {name for (name,) in cur.fetchall()}
-    return tuple(name for name in TOPIC_COLUMNS if name in present)
+    return tuple(name for name in wanted if name in present)
+
+
+def topic_columns(cur) -> tuple[str, ...]:
+    """Which of 008's columns this database has. Kept for a caller that wants
+    only those; ``publish`` wants everything past 002's."""
+    return extra_columns(cur, TOPIC_COLUMNS)
 
 
 def read_rows(path: Path, start: int) -> tuple[list[dict], int]:
@@ -182,7 +213,7 @@ def offset_of(sidecar: Path, path: Path) -> int:
 
 
 def publish(cur, rows: list[dict]) -> int:
-    extras = topic_columns(cur)
+    extras = extra_columns(cur)
     columns = BASE_COLUMNS + extras
     updates = ", ".join(f"{c} = excluded.{c}" for c in columns if c not in ("at", "ticker"))
     execute_values(cur, f"""
@@ -218,13 +249,15 @@ def main() -> int:
         for row in rows:
             (at, league, game_id, ticker, mid, realised, harness,
              output, _game, spans, skill, scored, ok, error, topic, symbol, venue,
-             _context, unit) = live_row(row, TOPIC_COLUMNS)
+             _context, unit, quote, _fills, _path) = live_row(row, EXTRA_COLUMNS)
             print(f"  {at}  {topic:18} {league or symbol or '':11} {game_id or venue or '':10} "
                   f"{ticker:34} mid {mid}  realised {realised}  skill {skill} {unit}  "
                   f"scored {scored}  ok {ok}")
             print(f"      {harness}: {json.dumps(output.adapted, default=str)[:160]}")
             print(f"      {len(spans.adapted)} spans"
-                  + (f", error {error}" if error else ""))
+                  + (f", error {error}" if error else "")
+                  + ("" if quote is None else
+                     f", quoted {quote.adapted.get('bid')}/{quote.adapted.get('ask')}"))
         print(f"\n{len(rows)} rows would be written to rsi.live_forecasts")
         return 0
 

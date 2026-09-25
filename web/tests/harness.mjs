@@ -64,18 +64,21 @@ const SCHEMA = {
          "candidate_fp", "accepted", "reasons", "baseline", "candidate",
          "decision", "search", "llm", "split", "audit"],
   // 008 added topic and unit to rollouts, topic/symbol/venue/context/unit to
-  // live_forecasts, and topic to progress and guesses.
+  // live_forecasts, and topic to progress and guesses. 010 added quote, fills
+  // and path to rollouts and live_forecasts: what the paper book offered on
+  // that window, what crossed it, and what the path did.
   rollouts: ["id", "run_id", "side", "split", "fixture", "ticker", "at",
              "mid_now", "realised", "predicted", "half_width", "err",
              "naive_error", "skill", "echoed", "unmeasurable", "scored",
              "cost_usd", "ok", "error_text", "output", "game", "feedback",
-             "topic", "unit"],
+             "topic", "unit", "quote", "fills", "path"],
   traces: ["rollout_id", "spans"],
   votes: ["id", "created", "run_id", "fixture", "chose", "left_side",
           "baseline_skill", "candidate_skill", "voter", "server_computed"],
   live_forecasts: ["at", "league", "game_id", "ticker", "mid_now", "realised",
                    "harness", "output", "game", "spans", "skill", "scored",
-                   "ok", "error_text", "topic", "symbol", "venue", "context", "unit"],
+                   "ok", "error_text", "topic", "symbol", "venue", "context", "unit",
+                   "quote", "fills", "path"],
   progress: ["run_id", "phase", "detail", "started_at", "updated_at", "topic"],
   trace_feedback: ["id", "created", "rollout_id", "verdict", "voter"],
   guesses: ["id", "created", "guess", "voter", "topic"],
@@ -89,6 +92,12 @@ const SCHEMA = {
            "qty", "size_usd", "fees_usd", "pnl_usd", "reason", "source"],
   book_marks: ["topic", "book_id", "at", "equity_usd", "cash_usd",
                "gross_exposure_usd", "open_positions", "drawdown", "event"],
+  // 010: the search itself. One row per candidate a generation proposed, with
+  // the diff against its seed, and one per (candidate, instance) score.
+  candidates: ["topic", "run_id", "candidate_idx", "fingerprint", "parent_idx",
+               "changed_components", "accepted", "valset_mean", "objectives",
+               "components", "context_chars", "discovered_after_calls", "created"],
+  candidate_scores: ["topic", "run_id", "candidate_idx", "instance_id", "score"],
 };
 
 // The three RPCs' argument names, from their SQL signatures. PostgREST

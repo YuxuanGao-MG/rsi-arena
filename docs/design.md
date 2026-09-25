@@ -518,6 +518,62 @@ issue is opened only in the first case.
 - Transfer is unmeasured: every number is soccer at a five-minute horizon.
 - Nothing re-scores an old winner, so persistence is unchecked.
 
+## What is recorded, and where
+
+The arena writes two kinds of record and they want different homes. Postgres
+holds what is small, keyed and asked about repeatedly; the run directory holds
+what is large, read once and mostly never. Splitting them that way is what keeps
+the reader fast: a generation page joins nine small tables and never touches a
+megabyte of candles.
+
+**In Postgres** (schema `rsi`, read through the `public.rsi_*` views, `select`
+only from the anon key):
+
+| table | one row per | what it answers |
+| --- | --- | --- |
+| `runs` | generation | lineage, the gate's decision, the search's summary |
+| `rollouts` | (window, side, split) | the graded forecast, and since 010 the `quote` it posted, the `fills` that crossed it and the `path` the market took |
+| `traces` | traced rollout | the trimmed spans: which tools, what came back, the prompt and answer that ended it |
+| `books` | paper book | the running stats of one harness's book |
+| `trades` | position | entry, exit, size, fees, P&L, why it closed |
+| `book_marks` | mark | the equity curve |
+| `candidates` | candidate a search proposed | what the search mutated, how long the context got, the valset mean, whether it was promoted |
+| `candidate_scores` | (candidate, instance) | what each candidate was uniquely good at |
+| `progress` | loop | the heartbeat the header's dot reads |
+| `live_forecasts` | live forecast | the same as a rollout, for a window nobody chose |
+| `book_snapshots` | (topic, symbol, instant) | the book a live forecast was made against |
+| `votes`, `guesses`, `trace_feedback` | reader | what people said |
+
+Two tools read across those rows so a person does not have to write the joins:
+`scripts/show_window.py <run_id> <instance_id>` prints one decision end to end -
+instance, forecast, quote, path, fills, trade, skill, spans, for both sides of a
+generation - and `scripts/show_search.py <run_id>` prints the candidate table
+with the one line that says what the search actually mutated. Both are
+read-only and both take `--json`.
+
+**In the run directory**, committed but not queryable:
+
+- the **full traces**. A single window's trace is about 28 KB, most of it
+  forty-five minute bars repeated in the tool answer and again in the prompt.
+  Five thousand windows is well over a hundred megabytes of candles nobody
+  reads twice, so `publish_runs.py` trims each span to 1,200 characters on the
+  way in and the untrimmed version stays on disk.
+- **GEPA's state** (`gepa/gepa_state.bin`, `gepa/candidates.json`,
+  `gepa/run_log.json`). The candidates and the per-instance matrix are now
+  published; the reflection transcripts, the merge bookkeeping and the library's
+  own log are not, and a pickle is not a thing to put in a column.
+- the **rollout dumps** (`rollouts/*.json`), which are what every backfill has
+  been rebuilt from - the books, the archive, the quotes - because they carry
+  each instance whole rather than the columns a reader wanted at the time.
+
+That split is deliberate but it is not finished: a run directory only exists
+where the workflow left it. `loop.yml` already has the step that copies one to
+S3 (`aws s3 cp --recursive`, write-only by design, so the IAM policy can drop
+`ListBucket`) and the `TRACE_BUCKET` secret is set - but the key is dead, so the
+step has been printing its notice and moving on. Refreshing the key is the whole
+of the remaining work; nothing in the repository has to change for the
+trajectories to start landing.
+
 ## Goal
 
 A recursive self-improvement loop that runs end to end in days, scored by a

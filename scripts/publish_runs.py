@@ -2,7 +2,10 @@
 
 A run directory is the record, and it is JSON on someone's laptop. This copies
 it somewhere a browser can reach: one row per generation, one per scored window,
-and — when the rollouts were written with ``--trace`` — one per trajectory.
+and — when the rollouts were written with ``--trace`` — one per trajectory. Since
+migration 010 it also copies the search: one row per candidate GEPA proposed and
+one per (candidate, instance) score, which is the only place the losers are
+queryable.
 
 Traces are stored separately and trimmed. A single window's trace is about
 28 KB, most of it forty-five minute bars repeated in the tool answer and again
@@ -33,7 +36,9 @@ try:
 except ImportError:                                   # pragma: no cover
     sys.exit("pip install psycopg2-binary")
 
-from rsi_arena.loop.generation import qualified     # noqa: E402,F401
+from rsi_arena.loop.archive import (from_gepa_state, gepa_candidates,     # noqa: E402
+                                    gepa_parents, gepa_state, seed_diff)
+from rsi_arena.loop.generation import fingerprint_components, qualified     # noqa: E402,F401
 from rsi_arena.topics import TOPICS                   # noqa: E402
 
 # The paper books a generation's rollouts traded, published with them. The
@@ -41,16 +46,22 @@ from rsi_arena.topics import TOPICS                   # noqa: E402
 # database has them yet.
 from publish_trading import NOT_APPLIED, has_trading_tables, publish_book_file   # noqa: E402
 
+# How the valset order is recovered: ``valset.json`` for a run that wrote one,
+# and the train rollouts in their own order for the three that predate it. The
+# subscore matrix is positional against it and joins to nothing without it.
+from backfill_archive import valset_ids                                         # noqa: E402
+
 #: Tool answers are the bulk of a trace and the least re-read part of it.
 TRIM = 1200
 
-#: Every column a rollout row can carry, in insert order. The last two arrive
-#: with migration 008; ``columns_of`` says which of these the database has, so
-#: the same publisher works on either side of it.
+#: Every column a rollout row can carry, in insert order. ``topic`` and ``unit``
+#: arrive with migration 008 and the last three with 010; ``columns_of`` says
+#: which of these the database has, so the same publisher works on either side
+#: of both.
 COLUMNS = ("run_id", "side", "split", "fixture", "ticker", "at", "mid_now", "realised",
            "predicted", "half_width", "err", "naive_error", "skill", "echoed", "unmeasurable",
            "scored", "cost_usd", "ok", "error_text", "output", "game", "feedback",
-           "topic", "unit")
+           "topic", "unit", "quote", "fills", "path")
 #: What the table had before any topic but the first existed.
 BASE_COLUMNS = COLUMNS[:22]
 
@@ -133,6 +144,11 @@ def forecast(run: dict, details: dict) -> dict:
             "reconstructed": True}
 
 
+def _json_or_none(value: Any) -> Any:
+    """``Json(value)`` for anything the record actually carried, else None."""
+    return None if value is None else Json(value)
+
+
 def rollout_row(run_id: str, side: str, split: str, r: dict, *,
                 topic: str = "", unit: str = "") -> dict[str, Any]:
     """One rollout as a column-keyed row. ``COLUMNS`` orders it for the insert."""
@@ -141,6 +157,13 @@ def rollout_row(run_id: str, side: str, split: str, r: dict, *,
     # The instance's own context: a match's game state for Kalshi, whatever
     # the instant looked like for a topic that calls it something else.
     context = inst.get("game") or inst.get("context")
+    # What the paper book recorded of this window, when a book replayed it.
+    # Three columns rather than one blob: "which quotes did the tape never
+    # reach" and "how wide was this harness quoting" are the two questions the
+    # book's first finding raised, and neither should need a jsonb path through
+    # a record to ask. A topic that does not trade, and a run published before
+    # its books existed, have no record and leave all three null.
+    trade = d.get("trade") if isinstance(d.get("trade"), dict) else {}
     return {
         "run_id": run_id, "side": side, "split": split,
         # The fixture is the unit the split respects, so it is a column rather
@@ -159,6 +182,11 @@ def rollout_row(run_id: str, side: str, split: str, r: dict, *,
         "cost_usd": r.get("cost_usd"), "ok": run.get("ok"), "error_text": run.get("error"),
         "output": Json(forecast(run, d)), "game": Json(context), "feedback": out.get("feedback"),
         "topic": topic, "unit": unit or d.get("unit") or "",
+        "quote": _json_or_none(trade.get("quote")),
+        # An empty array is a quote nobody wanted, which is a finding; null is a
+        # window that never posted one, which is a different finding.
+        "fills": _json_or_none(trade.get("fills")),
+        "path": _json_or_none(trade.get("path_summary")),
     }
 
 
@@ -202,10 +230,159 @@ def publish_books(cur, run_dir: Path, topic: str, *, trading: bool | None = None
     return len(files)
 
 
-def publish(cur, run_dir: Path, *, trading: bool | None = None) -> tuple[int, int, int]:
-    """One run: its row, its rollouts and traces, then its paper books.
+# ---------------------------------------------------------------------------
+# The search: every candidate, and what each scored on what.
 
-    Returns (rollouts, traced, books).
+#: What migration 010 creates for the search. Both or neither: a database with
+#: one of them is mid-migration and gets the same notice as one with none.
+CANDIDATE_TABLES = ("candidates", "candidate_scores")
+NO_CANDIDATES = ("rsi.candidates / rsi.candidate_scores are not in this database; "
+                 "apply supabase/migrations/010_record.sql. The search was not published.")
+
+CANDIDATE_COLUMNS = ("topic", "run_id", "candidate_idx", "fingerprint", "parent_idx",
+                     "changed_components", "accepted", "valset_mean", "objectives",
+                     "components", "context_chars", "discovered_after_calls")
+SCORE_COLUMNS = ("topic", "run_id", "candidate_idx", "instance_id", "score")
+
+
+def has_candidate_tables(cur) -> bool:
+    """Whether migration 010's two search tables are in this database."""
+    try:
+        cur.execute("select table_name from information_schema.tables "
+                    "where table_schema = 'rsi' "
+                    "and table_name in ('candidates', 'candidate_scores')")
+        found = {r[0] for r in cur.fetchall()}
+    except Exception:  # noqa: BLE001 - a probe that fails is a database without them
+        return False
+    return found >= set(CANDIDATE_TABLES)
+
+
+def search_model(run_dir: Path, manifest: dict) -> str | None:
+    """The model a candidate that does not name one runs on.
+
+    The model is a component, so a candidate that rewrote it carries its own and
+    the fingerprint must use that; one that did not inherits the generation's.
+    Read out of ``best.json`` as JSON rather than through ``Harness.load``: a
+    harness written by an older schema may no longer validate, and a publisher
+    must not lose a generation's search over a field it is not reading.
+    """
+    named = (manifest.get("settings") or {}).get("model")
+    if named:
+        return str(named)
+    best = run_dir / "best.json"
+    if not best.exists():
+        return None
+    try:
+        return (json.loads(best.read_text()).get("config") or {}).get("model")
+    except (ValueError, OSError):
+        return None
+
+
+def search_rows(run_dir: Path, run_id: str, topic: str,
+                manifest: dict) -> tuple[list[dict[str, Any]], list[tuple]]:
+    """``(candidate rows, score rows)`` for one generation's finished search.
+
+    Read the way ``loop/archive.py`` reads it, through the same helpers: the
+    component texts from ``gepa/candidates.json``, the per-instance matrix and
+    the ancestry from the state, the valset order from ``valset.json``. Empty
+    when there is nothing readable there, which is not an error.
+    """
+    components = gepa_candidates(run_dir)
+    model = search_model(run_dir, manifest)
+    entries = from_gepa_state(run_dir, run_dir.name, valset_ids(run_dir),
+                              lambda c, m=model: fingerprint_components(c, c.get("model") or m))
+    if not components:
+        # A run whose candidates.json is missing but whose state loads, which is
+        # every generation GEPA wrote before it kept the JSON beside the pickle.
+        components = [dict(e.components) for e in entries]
+    if not components:
+        return [], []
+
+    state = gepa_state(run_dir) or {}
+    objectives = state.get("prog_candidate_objective_scores") or []
+    parents = gepa_parents(state)
+    # Candidate 0 is the seed GEPA started from, which is the archive candidate
+    # this generation chose to mine and not necessarily the incumbent.
+    seed = components[0]
+    search = manifest.get("search") or {}
+    best_idx = search.get("best_idx")
+    promoted = bool((manifest.get("decision") or {}).get("accepted"))
+
+    rows: list[dict[str, Any]] = []
+    scores: list[tuple] = []
+    for k, comp in enumerate(components):
+        entry = entries[k] if k < len(entries) else None
+        subscores = entry.scores if entry else {}
+        objective = objectives[k] if k < len(objectives) else None
+        rows.append({
+            "topic": topic, "run_id": run_id, "candidate_idx": k,
+            "fingerprint": fingerprint_components(comp, comp.get("model") or model),
+            "parent_idx": parents[k] if k < len(parents) else None,
+            "changed_components": seed_diff(comp, seed),
+            # Not "won its minibatch" - every filed candidate did that, which is
+            # why the column would say nothing. This is the one the generation
+            # promoted: GEPA's best and the gate's yes, by index, because the
+            # promoted harness's fingerprint is taken over re-serialised
+            # components and does not always equal the candidate's.
+            "accepted": promoted and k == best_idx,
+            "valset_mean": (round(sum(subscores.values()) / len(subscores), 6)
+                            if subscores else None),
+            "objectives": Json(objective) if isinstance(objective, dict) else None,
+            "components": Json(comp),
+            "context_chars": len(comp.get("context") or ""),
+            "discovered_after_calls": entry.discovered_after_calls if entry else None,
+        })
+        scores += [(topic, run_id, k, instance, score)
+                   for instance, score in sorted(subscores.items())]
+    return rows, scores
+
+
+def publish_search(cur, run_dir: Path, run_id: str, topic: str, manifest: dict, *,
+                   searchable: bool | None = None) -> tuple[int, int]:
+    """The candidates a generation's search proposed, and their scores. Upserted.
+
+    ``searchable`` is whether the database has 010's tables; ``None`` probes.
+    Nothing here may fail a publish. A run with no ``gepa/`` searched nothing or
+    did not keep it, a state that will not unpickle is somebody else's schema
+    changing under us, and a database without the tables is a migration someone
+    has not applied yet - each is a notice, and the rollouts still land.
+    """
+    if not (run_dir / "gepa").is_dir():
+        print(f"  note  {run_dir.name}: no gepa/ directory; no search to publish")
+        return 0, 0
+    if searchable is None:
+        searchable = has_candidate_tables(cur)
+    if not searchable:
+        print(f"  note  {run_dir.name}: {NO_CANDIDATES}")
+        return 0, 0
+    rows, scores = search_rows(run_dir, run_id, topic, manifest)
+    if not rows:
+        print(f"  note  {run_dir.name}: gepa/ holds no readable candidates; "
+              f"the search was not published")
+        return 0, 0
+
+    updates = ", ".join(f"{c} = excluded.{c}" for c in CANDIDATE_COLUMNS
+                        if c not in ("topic", "run_id", "candidate_idx"))
+    execute_values(cur, f"""
+        insert into rsi.candidates ({", ".join(CANDIDATE_COLUMNS)})
+        values %s
+        on conflict (topic, run_id, candidate_idx) do update set {updates}
+    """, [tuple(row[c] for c in CANDIDATE_COLUMNS) for row in rows])
+    if scores:
+        execute_values(cur, f"""
+            insert into rsi.candidate_scores ({", ".join(SCORE_COLUMNS)})
+            values %s
+            on conflict (topic, run_id, candidate_idx, instance_id)
+              do update set score = excluded.score
+        """, scores)
+    return len(rows), len(scores)
+
+
+def publish(cur, run_dir: Path, *, trading: bool | None = None,
+            searchable: bool | None = None) -> tuple[int, int, int, int]:
+    """One run: its row, its rollouts and traces, its paper books, its search.
+
+    Returns (rollouts, traced, books, candidates).
     """
     manifest = json.loads((run_dir / "manifest.json").read_text())
     run_id = qualified(run_dir, manifest["topic"])
@@ -233,7 +410,9 @@ def publish(cur, run_dir: Path, *, trading: bool | None = None) -> tuple[int, in
     topic = manifest.get("topic") or ""
     rollouts, traced = publish_rollouts(cur, run_id, run_dir, topic)
     books = publish_books(cur, run_dir, topic, trading=trading)
-    return rollouts, traced, books
+    candidates, _scores = publish_search(cur, run_dir, run_id, topic, manifest,
+                                         searchable=searchable)
+    return rollouts, traced, books, candidates
 
 
 def publish_rollouts(cur, run_id: str, run_dir: Path, topic: str) -> tuple[int, int]:
@@ -278,24 +457,30 @@ def main() -> int:
 
     conn = psycopg2.connect(db_url(args.db_url), connect_timeout=30)
     conn.autocommit = False
-    total = books_total = 0
+    total = books_total = cands_total = 0
     with conn, conn.cursor() as cur:
         # Probed once, not per run: the answer does not change mid-invocation.
         trading = has_trading_tables(cur)
         if not trading:
             print(f"  note  {NOT_APPLIED}")
+        searchable = has_candidate_tables(cur)
+        if not searchable:
+            print(f"  note  {NO_CANDIDATES}")
         for raw in args.run_dirs:
             path = Path(raw)
             if not (path / "manifest.json").exists():
                 print(f"  skip  {path}: no manifest.json")
                 continue
-            rollouts, traced, books = publish(cur, path, trading=trading)
+            rollouts, traced, books, cands = publish(cur, path, trading=trading,
+                                                     searchable=searchable)
             total += rollouts
             books_total += books
+            cands_total += cands
             print(f"  ok    {path.name:18} {rollouts:>5} rollouts, {traced:>5} traced, "
-                  f"{books:>2} books")
+                  f"{books:>2} books, {cands:>3} candidates")
     conn.close()
-    print(f"\n{total} rollouts, {books_total} paper books published")
+    print(f"\n{total} rollouts, {books_total} paper books, "
+          f"{cands_total} candidates published")
     return 0
 
 
