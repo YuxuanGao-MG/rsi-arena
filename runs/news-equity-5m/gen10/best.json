@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen10",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n**The core pattern from all feedback:**\n\nThe harness consistently predicts small moves (0-3 bps) with tight width (2-5 bps) and gets run over when stocks move 10-25 bps. Recent examples:\n\n- **AMZN bullish analyst story** (2 symbols, META also named): predicted +3.4 bps (4.6 width), actual -12.9 bps \u2014 wrong direction, got run over, skill -0.26\n- **COF price target raise**: predicted +1.5 bps (2.0 width), actual -16.8 bps \u2014 wrong direction, too tight, skill -0.09\n- **AAPL in macro Trump story** (64 symbols): predicted +1.3 bps (2.0 width), actual -25.5 bps \u2014 wrong direction, got run over, skill -0.05\n- **GOOGL in Broadcom story** (4 symbols, AVGO news): predicted +0.5 bps (2.0 width), actual -0.3 bps \u2014 correct magnitude but skill -0.10 due to 5 bps floor\n- **META in oil/macro story** (44 symbols): predicted -1.3 bps (2.0 width), actual -2.8 bps \u2014 direction right, magnitude close, skill +0.27\n- **ORCL price target raise**: predicted -4.9 bps (4.9 width), actual -3.6 bps \u2014 direction right, magnitude right, skill +0.47\n- **AMZN in market sentiment story** (61 symbols): predicted -4.4 bps (4.4 width), actual -7.3 bps \u2014 direction right, underestimated, skill +0.61\n- **AMZN bullish analyst story** (1 symbol): predicted +1.8 bps (2.0 width), actual +1.3 bps \u2014 nearly correct, skill +0.19\n\n**What these show:**\n\n1. **Stock-specific analyst calls move stocks 10-20 bps, not 1-3 bps.** Examples 7 (AMZN: -12.9 actual), 8 (COF: -16.8 actual), 6 (ORCL: -3.6 actual) were all price target changes or ratings. The harness predicts 1-5 bps moves with tight width and gets run over. Even when direction is right (Example 6), the width needs to be 8-12 bps to avoid getting run over.\n\n2. **The tape tells you what's already priced.** Example 7 (AMZN bullish KeyBanc story): tape showed strong upward drift from 255.5 to 256.5 over 30 minutes before the headline. The harness predicted +3.4 bps continuation. Actual: -12.9 bps reversal. **When the tape has already moved 15-30 bps in the direction the headline describes, the news is priced and you should predict stabilization or reversal, not continuation.**\n\n3. **Multi-stock stories (3-10 symbols) still move stocks 5-15 bps.** Example 5 (GOOGL in Broadcom story, 4 symbols): actual -0.3 bps, but skill -0.10 because predicting +0.5 with 2.0 width risks getting run over if it moves 5-10 bps. Example 7 (AMZN + META, 2 symbols): actual -12.9 bps. These are not noise.\n\n4. **Macro stories (40+ symbols) move stocks 3-10 bps when the named symbol is in the relevant sector.** Example 4 (AAPL in Trump fiscal story, 64 symbols): actual -25.5 bps. Example 3 (META in oil/Iran story, 44 symbols): actual -2.8 bps. Example 2 (AMZN in market sentiment story, 61 symbols): actual -7.3 bps. The harness treats these as noise with 2-4 bps width. They're not.\n\n5. **The 5 bps no-change floor makes near-zero predictions with tight width dangerous.** Example 5 (GOOGL): predicted +0.5, actual -0.3, miss of 0.8 bps, but skill -0.10 because no-change floor is 5 bps. When you predict 0-2 bps with tight width, you risk negative skill even if you're nearly correct.\n\n**The decision framework:**\n\n**1. Always read the tape first (last 30-45 minutes of 1-minute bars):**\n\n   - **Has the stock already moved 10+ bps in one direction over the last 20-30 minutes?**\n     - If yes, and the headline describes that move (\"stock rises on analyst upgrade\", \"shares fall after earnings miss\"), **the news is priced**. Predict stabilization (0-3 bps) or small reversal (-3 to -8 bps opposite the drift), but use **6-10 bps width** because you don't know if it will stabilize, reverse, or continue.\n     - Example 7 (AMZN): tape drifted +40 bps from 255.5 to 256.5 in 30 min before \"bullish KeyBanc\" headline. Harness predicted +3.4 continuation. Actual: -12.9 reversal. **Should have predicted -5 to 0 bps with 8-10 bps width.**\n\n   - **Is the tape flat or choppy (range < 10 bps over last 20 minutes)?**\n     - If yes, the news is not yet priced. Predict the likely reaction based on catalyst type, but use wide width because you don't know magnitude.\n\n   - **Is the tape drifting in the opposite direction of what the headline implies?**\n     - Example 8 (COF): tape drifted from 215.5 to 217.7 (+100 bps) over 30 min before \"Wolfe raises price target\" headline. Then it reversed to 217.35 (-16.8 bps from last close). The drift was the real move; the headline was late. Predict small reversal or stabilization.\n\n**2. Classify story relevance:**\n\n   **Stock-specific analyst call** (price target, rating change, initiate coverage):\n   - These are material, but **check if the tape has already moved**.\n   - If tape is flat: expect 10-20 bps move in the direction of the call (upgrade \u2192 up, downgrade \u2192 down). **Width: 8-12 bps.**\n   - If tape has already moved 15+ bps in that direction: the call describes what happened, or the market front-ran it. Predict stabilization or small reversal. **Width: 6-10 bps.**\n   - Example 6 (ORCL): tape choppy, price target raise, actual -3.6 bps (probably a fade). Predicted -4.9 with 4.9 width: skill +0.47. **This worked because width matched uncertainty.**\n   - Example 8 (COF): tape already up 100 bps over 30 min, price target raise, actual -16.8 bps (reversal). Predicted +1.5 with 2.0 width: skill -0.09. **Should have predicted -5 to 0 with 8-10 width.**\n\n   **Stock-specific corporate news** (earnings, guidance, deal, recall):\n   - If headline describes a move in progress (\"stock falls after earnings miss\"), check tape. If tape confirms 20+ bps move, predict 2-5 bps continuation with 6-10 bps width.\n   - If headline is forward-looking (\"announces deal\", \"raises guidance\") and tape is flat, predict 15-30 bps move. **Width: 10-15 bps** because you don't know if market will price it at 10 or 30.\n\n   **Multi-stock story (2-10 symbols, thematic or grouped):**\n   - Example 7 (AMZN + META, AI capex story): actual -12.9 bps on AMZN.\n   - Example 5 (GOOGL in Broadcom story, 4 symbols): actual -0.3 bps, but this is an outlier.\n   - **These move stocks 5-15 bps regularly, especially when your symbol has a direct relationship to the story's subject (competitor, peer, supply chain).**\n   - If your symbol is the story's subject: predict 10-20 bps, width 8-12 bps.\n   - If your symbol is named as a peer or related name: predict 3-10 bps, width 6-10 bps.\n   - **Do not use 2 bps width. Minimum 6 bps.**\n\n   **Macro / market-wide story (20+ symbols):**\n   - Example 4 (AAPL in Trump fiscal story, 64 symbols): actual -25.5 bps.\n   - Example 3 (META in oil/Iran story, 44 symbols): actual -2.8 bps.\n   - Example 2 (AMZN in market sentiment story, 61 symbols): actual -7.3 bps.\n   - **If your symbol is in the named sector or is a mega-cap that moves with the market, expect 3-10 bps move.**\n   - Check the tape: if it's drifting in a direction consistent with the macro theme, predict continuation (3-8 bps same direction).\n   - If tape is flat or opposite, predict 0-5 bps.\n   - **Width: 5-10 bps minimum.** These stories create broad volatility and you cannot predict magnitude precisely.\n\n**3. Width rules by story type:**\n\n   - **Stock-specific analyst call, tape flat:** 8-12 bps\n   - **Stock-specific analyst call, move already in progress:** 6-10 bps\n   - **Stock-specific corporate catalyst, tape flat:** 10-15 bps\n   - **Stock-specific corporate catalyst, move in progress:** 6-10 bps\n   - **Multi-stock story (2-10 symbols), your symbol is subject:** 8-12 bps\n   - **Multi-stock story, your symbol is peer/related:** 6-10 bps\n   - **Macro story (20+ symbols), your symbol in relevant sector:** 5-10 bps\n   - **Macro story, your symbol tangential:** 4-8 bps\n\n   **Never use 2 bps width unless the story is pure noise** (your symbol mentioned only as context, no business relationship, no thematic link). Even then, the 5 bps floor makes tight quotes risky.\n\n**4. Direction: tape over headline:**\n\n   - **If tape has drifted 15+ bps in the last 20-30 minutes and the headline describes that move, the move is done.** Predict small reversal or stabilization, not continuation.\n   - **If tape is flat and headline is a catalyst, predict the direction of the catalyst** (upgrade \u2192 up, downgrade \u2192 down, guidance raise \u2192 up, etc.), but **use wide width** because you don't know if the market will price it at 5 bps or 25 bps.\n   - **If tape is drifting and headline is macro, predict modest continuation** (3-8 bps same direction) with 6-10 bps width.\n\n**5. The no-change floor and the 2 bps width trap:**\n\n   - When actual move is 0-2 bps, no-change error is floored at 5 bps. If you predict 0.5 bps and miss by 1 bps, your error is 1 bps but no-change error is 5 bps, so skill = 1 - 1/5 = +0.80. **But if you predict 0.5 bps with 2 bps width and the stock moves 8 bps, you get run over and skill goes negative.**\n   - Example 5 (GOOGL): predicted +0.5 (2.0 width), actual -0.3, miss 0.8 bps, skill -0.10. The floor made a near-correct forecast score negative.\n   - **Solution: when predicting near-zero, use at least 5-8 bps width** to cover the floor and likely noise. This limits downside if the stock moves more than you expect.\n\n**6. Examples of correct decisions from feedback:**\n\n   \u2713 Example 6 (ORCL, analyst call): predicted -4.9 with 4.9 width, actual -3.6, skill +0.47. **Width matched uncertainty.**\n   \u2713 Example 2 (AMZN, macro story 61 symbols): predicted -4.4 with 4.4 width, actual -7.3, skill +0.61. **Direction right, width reasonable for macro story.**\n   \u2713 Example 3 (META, macro story 44 symbols): predicted -1.3 with 2.0 width, actual -2.8, skill +0.27. **Direction right, but would have scored higher with 5 bps width.**\n   \u2713 Example 8 (AMZN, single-name analyst story): predicted +1.8 with 2.0 width, actual +1.3, skill +0.19. **Nearly correct, but lucky\u2014should have used 5-8 bps width.**\n\n   \u2717 Example 7 (AMZN, analyst call after 40 bps tape drift): predicted +3.4 with 4.6 width, actual -12.9, skill -0.26. **Should have recognized the move was priced and predicted reversal.**\n   \u2717 Example 4 (AAPL, macro story 64 symbols): predicted +1.3 with 2.0 width, actual -25.5, skill -0.05. **Should have used 8-10 bps width for macro story.**\n   \u2717 Example 1 (COF, analyst call after 100 bps tape drift): predicted +1.5 with 2.0 width, actual -16.8, skill -0.09. **Move was already priced; should have predicted stabilization or reversal with 8 bps width.**\n\n**7. Final checklist before submitting:**\n\n   - **Did I check the tape for the last 30 minutes?** If the stock has already moved 15+ bps in one direction and the headline describes it, predict stabilization or small reversal, not continuation.\n   - **Is this a stock-specific catalyst?** If yes, width should be 8-12 bps (flat tape) or 6-10 bps (move in progress).\n   - **Is this a multi-stock story (2-10 symbols)?** If yes, width should be 6-10 bps minimum.\n   - **Is this a macro story (20+ symbols)?** If yes, width should be 5-10 bps minimum.\n   - **Is my width less than 5 bps?** If yes, am I certain this is pure noise? If not, widen to 5 bps minimum.\n   - **Am I predicting near-zero (< 3 bps)?** If yes, is my width at least 5 bps to cover the floor and noise? If not, widen.\n   - **Does my direction match the tape's recent drift?** If tape is flat, lean toward the catalyst's direction. If tape has already moved, lean toward stabilization or reversal.\n\n**The pattern is clear: the harness underestimates move size and uses width far too narrow. Stock-specific analyst calls move 10-20 bps. Multi-stock stories move 5-15 bps. Macro stories move 3-10 bps on relevant names. The tape shows what's already priced: if it has moved 15+ bps before the headline, predict stabilization or reversal, not continuation. Width is insurance against uncertainty: 6-12 bps for most stories, 2 bps only for pure noise. The feedback shows that tight quotes (2-5 bps width) get run over even when direction is right, and score negative when the stock doesn't move due to the 5 bps floor. Widen the quotes.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
