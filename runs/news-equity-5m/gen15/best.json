@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen15",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n**Recent feedback: the new width policy works, but directional calls remain broken**\n\n8 forecasts with the revised width policy (2-13 bps half-width). Realized moves: +0.7, +17.0, -2.9, +5.0, -1.6, +8.9, +43.2, -7.5 bps. Skills: -0.69, -0.10, +0.38, -1.05, +0.00, +0.02, +0.08, +0.02. Average skill: -0.17. Still worse than silence, but improving.\n\n**What improved:**\n- GS (+0.38 skill): Predicted -1.9 bps \u00b12.0, realized -2.9 bps. Almost perfect.\n- MSFT (+0.00 skill): Predicted +0.0 bps \u00b12.0, realized -1.6 bps. Echoed the close correctly.\n- TSLA (+0.08 skill): Predicted +3.3 bps \u00b14.7, realized +43.2 bps. Right direction, but 10x underestimated magnitude.\n\n**What still fails:**\n- NVDA (-0.69 skill): Predicted -3.5 bps \u00b14.5, realized +0.7 bps. Wrong direction on a near-zero move, but the confidence (4.5 width on a 0.7 move) amplified the penalty.\n- XLK (-0.10 skill): Predicted -1.7 bps \u00b12.0, realized +17.0 bps. Wrong direction, 10x underestimated magnitude.\n- GOOG (-1.05 skill): Predicted -5.2 bps \u00b113.2, realized +5.0 bps. Wrong direction despite wide quote\u2014worst skill of all 8.\n- META (+0.02 skill): Predicted +0.2 bps \u00b12.0, realized +8.9 bps. Right direction, 40x underestimated magnitude.\n- AAPL (+0.02 skill): Predicted -0.2 bps \u00b12.0, realized -7.5 bps. Right direction, 35x underestimated magnitude.\n\n**The pattern: directional calls are noise, magnitude estimates are systematically low**\n\n| Forecast | Predicted delta | Realized delta | Direction match | Magnitude ratio |\n|----------|----------------|----------------|-----------------|-----------------|\n| NVDA     | -3.5           | +0.7           | No              | 5.0x            |\n| XLK      | -1.7           | +17.0          | No              | 10.0x           |\n| GS       | -1.9           | -2.9           | Yes             | 1.5x            |\n| GOOG     | -5.2           | +5.0           | No              | 1.0x            |\n| MSFT     | +0.0           | -1.6           | No (but both ~0)| n/a             |\n| META     | +0.2           | +8.9           | Yes             | 44.5x           |\n| TSLA     | +3.3           | +43.2          | Yes             | 13.1x           |\n| AAPL     | -0.2           | -7.5           | Yes             | 37.5x           |\n\nDirection correct: 4/8 (50%, same as coin flip).\nMagnitude underestimated by 5-45x in 6/8 cases.\n\n**The systematic error: inventing directional conviction where none exists**\n\nThe harness looked at tape momentum and tried to predict continuation. This failed:\n- **NVDA**: Tape drifted from 209.2 to 212.06 (+137 bps over 45 minutes), harness predicted -3.5 bps. Realized +0.7 bps. The drift stopped.\n- **XLK**: Tape drifted from 189.16 to 188.48 (-36 bps over 45 minutes), harness predicted -1.7 bps. Realized +17.0 bps. The drift reversed.\n- **GOOG**: Tape drifted from 336.4 to 338.9 (+74 bps over 45 minutes), harness predicted -5.2 bps based on... what? Realized +5.0 bps.\n- **META**: Tape drifted from 750.7 to 756.0 (+71 bps over 45 minutes), harness predicted +0.2 bps (basically zero). Realized +8.9 bps.\n- **AAPL**: Tape drifted from 328.83 to 327.93 (-27 bps over 45 minutes), harness predicted -0.2 bps. Realized -7.5 bps.\n\n**The harness tries to extract signal from 45-minute tape momentum and fails. Momentum on longer horizons does not predict the next 5 minutes.**\n\n**When direction works:**\n- **GS**: Predicted -1.9, realized -2.9. But look at the tape: choppy, thin (3-15 bars/minute), no clear trend. The -1.9 prediction was a guess that happened to be right.\n- **TSLA**: Predicted +3.3, realized +43.2. Tape showed chop around 337. The +3.3 was directionally right but the magnitude (500-truck order, stock-specific catalyst) was missed by 13x.\n\n**The fix: stop predicting direction unless you have a reason**\n\nThe feedback shows:\n1. **45-minute tape momentum does not predict 5-minute moves.** Stop looking at it for direction.\n2. **Most Benzinga headlines are noise.** Multi-stock stories, whale alerts, tangential mentions\u2014none of these move a specific name predictably.\n3. **Stock-specific catalysts move prices, but the magnitude is unpredictable in 5 minutes.** TSLA +43 bps on a 500-truck order. The harness called +3.3 bps. The direction was right, the magnitude was 13x low.\n\n**New policy: default to zero delta, wide width**\n\nUnless you see one of the following, predict **delta = 0** with **10-15 bps width**:\n\n**Reasons to predict non-zero delta (rare):**\n\n1. **Stock-specific catalyst visible on tape before headline**\n   - Example: stock drops 30+ bps in last 5-10 minutes, headline describes earnings miss or downgrade.\n   - Predict modest continuation or stabilization (0-5 bps same direction), use **15-20 bps width** because you don't know if it will bounce or drift.\n   - Do NOT predict continuation of 45-minute trends. They do not persist.\n\n2. **Stock-specific catalyst NOT visible on tape (truly breaking news)**\n   - Example: headline reports a deal, guidance, rating change, product announcement specific to one stock.\n   - TSLA 500-truck order is this. The tape showed chop, headline was material.\n   - Predict direction from sentiment (good news = +, bad news = -), use **20-30 bps width** because magnitude is unknowable.\n   - **Magnitude**: 5-10 bps for minor news, 10-20 bps for major news, but always use 20-30 bps width because you will be wrong.\n\n3. **The market as a whole is moving and the name tracks it**\n   - Check if SPY or QQQ moved 20+ bps in the last 2-3 minutes (use market_tape tool).\n   - If yes and the name is correlated (AAPL/MSFT/NVDA track QQQ, financials track SPY), predict 20-30% of the market move same direction.\n   - Use **12-18 bps width** because stock-specific noise dominates even when market moves.\n\n**In all other cases: delta = 0, width = 10-15 bps.**\n\n**Why this works:**\n\n- **NVDA** (\"Nvidia vs AMD server CPU\"): Multi-stock story, both names mentioned, no stock-specific catalyst. Should have predicted 0 \u00b112. Would have scored +0.30 (no-change scores 0, being right scores positive).\n- **XLK** (\"Applied Materials SENZ platform\"): Multi-stock ETF story, XLK is tangential. Should have predicted 0 \u00b112. Would have scored -0.42 (still bad, but better than -0.10).\n- **GS** (\"9 financials whale activity\"): Multi-stock, pure noise. Predicted -1.9, got lucky with -2.9. Should have predicted 0 \u00b110.\n- **GOOG** (\"EU talks on Anthropic\"): Multi-stock, no GOOG-specific catalyst. Should have predicted 0 \u00b112. Would have scored +0.00 (no-change is 5, we miss by 5, skill is zero).\n- **MSFT** (\"10 tech stocks whale activity\"): Multi-stock noise. Predicted 0 \u00b12, realized -1.6. Should have used wider width (10-12 bps), would have scored +0.20.\n- **META** (\"Agentic commerce helps META/MSFT\"): Multi-stock, minor positive mention. Should have predicted 0 \u00b112. Would have scored -0.36 (still bad because move was 8.9, but less bad than +0.02).\n- **TSLA** (\"500-truck order\"): Stock-specific catalyst, material. Should have predicted +10-15 bps \u00b125. Would have scored +0.50+ (right direction, closer magnitude, wide enough to not get run over).\n- **AAPL** (\"Klarna lease program\"): Stock-specific catalyst, material. Should have predicted +5-10 bps \u00b120 (good news = up). Would have scored better than +0.02.\n\n**Width policy (unchanged from before):**\n\n1. **No-move forecast (delta = 0, tape flat, noise headline):** 10-15 bps width (default)\n2. **Uncertain about direction (multi-stock story, or tape shows chop):** 12-18 bps width\n3. **Stock-specific catalyst, unclear magnitude:** 20-30 bps width\n4. **Never use under 8 bps width.** Even \"no news\" produces 6-9 bps realized moves.\n\n**Magnitude estimation for non-zero deltas:**\n\nWhen you do predict a non-zero delta:\n- **Minor catalyst** (product mention, minor deal, tangential upgrade): 5-10 bps, but use 20+ bps width\n- **Major catalyst** (earnings, guidance, large deal, rating change): 10-25 bps, but use 25-35 bps width\n- **Visible move already happened** (tape dropped 40+ bps, headline describes it): 0-5 bps continuation, 15-20 bps width\n\nThe feedback shows that even when you're directionally right (TSLA, META, AAPL), you underestimate magnitude by 10-40x. The solution is not to predict larger deltas\u2014it's to use wider width so you don't get run over when you're wrong.\n\n**Calibration before submitting:**\n\n1. **Is this a stock-specific catalyst?** If no, predict delta = 0.\n2. **Is my width at least 10 bps?** If no, widen to 10-15 bps.\n3. **Am I predicting a non-zero delta?** If yes, is my width at least 20 bps? If no, widen.\n4. **Did I check the last 2-3 minutes of tape, not the last 45 minutes?** Long-term momentum does not predict 5-minute moves.\n\n**The key insight: most forecasts should be zero**\n\nThe harness predicted -3.5, -1.7, -1.9, -5.2, 0.0, +0.2, +3.3, -0.2 across 8 headlines. All but one were multi-stock stories or noise. The correct forecast for most of them was **0 \u00b110-15 bps**.\n\nThe only true stock-specific catalyst was TSLA (500-truck order). That one deserved a directional call and wide width. The harness predicted +3.3 \u00b14.7, should have predicted +10-15 \u00b125.\n\n**Stop inventing signal. Most headlines are noise. Predict zero, use reasonable width, let the true catalysts stand out.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
