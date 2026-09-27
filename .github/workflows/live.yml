@@ -246,6 +246,62 @@ jobs:
           python scripts/publish_trading.py --topic kalshi-horizon-5m | tee -a live.txt \
             || echo "::warning::publishing the paper book failed; it is in the run artifact"
 
+      # The sweep's own files, off the runner before it is recycled.
+      #
+      # Postgres is the durable home for a live forecast and its book, and
+      # runs/live/ is gitignored on purpose - this workflow must never write to
+      # the branch the loop chains its generations off. What was missing is a copy
+      # for the days the publish fails: the artifact below holds one for a
+      # fortnight and then it is gone. The loop's trajectories now live under
+      # s3://$TRACE_BUCKET/rsi-arena/<topic>/<run>/; the sweeps live beside them
+      # under rsi-arena/live/<topic>/<date>/, one prefix per UTC day.
+      #
+      # sync, not cp: several sweeps a day append to the same jsonl, so each one
+      # uploads what the last one did not rather than the file again.
+      #
+      # A failed sync here is a warning, not a job failure - unlike loop.yml,
+      # where S3 is the only home the rollouts have left. Here the rows are
+      # already in Postgres, and an issue every time a sync blips teaches people
+      # to stop reading the issues.
+      - name: Keep the sweep in S3
+        if: always()
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
+          TRACE_BUCKET: ${{ secrets.TRACE_BUCKET }}
+          TOPIC: kalshi-horizon-5m
+        run: |
+          # Checked in the body, not in `if:`. A step's own env block is not in
+          # scope when its `if:` is evaluated - the same trap that kept
+          # SUPABASE_DB_URL reading empty and the reader unfed for a fortnight.
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::notice title=no AWS credentials::the sweep stays in Postgres and the run artifact"
+            exit 0
+          fi
+          if [ -z "$TRACE_BUCKET" ]; then
+            echo "::notice title=no bucket::AWS credentials are set but TRACE_BUCKET is not; skipping"
+            exit 0
+          fi
+          if [ -z "$(ls -A runs/live 2>/dev/null)" ]; then
+            echo "::notice::nothing in runs/live to upload"
+            exit 0
+          fi
+          # The whole directory: this runner only ever holds one topic's sweep
+          # (the paper-book cache is keyed per topic), so there is nothing here
+          # that belongs under another topic's prefix.
+          dest="s3://$TRACE_BUCKET/rsi-arena/live/$TOPIC/$(date -u +%Y-%m-%d)/"
+          for attempt in 1 2 3; do
+            if aws s3 sync runs/live "$dest" --only-show-errors; then
+              echo "- sweep in \`$dest\` (attempt $attempt)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::warning::S3 sync attempt $attempt failed"
+            [ "$attempt" = 3 ] || sleep $((attempt * 20 - 10))
+          done
+          echo "::warning::S3 sync failed after three attempts; the sweep is in Postgres and in the run artifact"
+
       # The only copy outside Postgres. Kept for the days the publish fails, and
       # kept short: nothing here is worth a month of storage.
       - name: Keep the forecasts as an artifact

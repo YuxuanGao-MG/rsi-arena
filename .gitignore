@@ -7,10 +7,26 @@ __pycache__/
 .env
 runs/live/
 
-# GEPA writes one JSON per (task, candidate) under here: 2,600 files and 10 MB
-# per generation, 70% of the repository file count from a single day. Their
-# durable homes are the per-run artifact and, when AWS secrets are set, S3.
-runs/*/gepa/generated_best_outputs_valset/
+# The heavy two thirds of a run directory. Neither of these is read by a later
+# generation or by the reader - `docs/design.md`, "What a later run needs from an
+# earlier one", says which files are - and both outgrew git. A rollout dump with
+# traces is roughly three times the same dump without them (28.5 MB becomes 9.3),
+# and when crypto's held-out set went from 30 days to 120 the candidate dump hit
+# 102.54 MB, which GitHub refuses. Three scheduled runs on 25 and 26 September
+# reached a verdict, published it, and then could not push the generation that
+# produced it; `rsi-arena next` could not see gen8 and the lineage restarted from
+# gen7.
+#
+# Their durable home is S3 (`s3://$TRACE_BUCKET/rsi-arena/<topic>/<run>/`, synced
+# before the commit step so the evidence survives a commit that fails) and, for a
+# fortnight, the per-run artifact. `scripts/fetch_run.py` brings either back.
+#
+# `runs/**/gepa/` also covers the 2,600-file generated_best_outputs_valset tree
+# this rule used to name on its own - and covers it at every depth, which the old
+# `runs/*/gepa/...` did not: every topic writes to `runs/<topic>/<gen>/gepa/`, so
+# 26,995 of those files were tracked anyway.
+runs/**/rollouts/
+runs/**/gepa/
 
 # Agent worktrees and local Claude state
 .claude/

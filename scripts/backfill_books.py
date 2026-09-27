@@ -11,6 +11,14 @@ agrees it is the same question, so a set quoted after the run was scored
 (``scripts/quote_windows.py``) lends its touch to the replay.
 
     python scripts/backfill_books.py runs/kalshi-jev/gen1 runs/crypto-horizon-1m/gen1
+    python scripts/backfill_books.py runs/crypto-horizon-1m/gen8 --fetch
+
+``rollouts/`` is no longer in the repository - it is in S3, under
+``rsi-arena/<topic>/<run>/rollouts/`` - so a fresh checkout has the manifest and
+the books and none of the evidence they were built from. ``--fetch`` is the
+sentence in which somebody asks for it back; without the flag an absent dump is
+reported and skipped, because a batch over twelve generations that quietly
+downloads twelve gigabytes is a surprise that arrives as a bill.
 """
 
 from __future__ import annotations
@@ -23,7 +31,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import fetch_run                                           # noqa: E402
 from rsi_arena.harness import Harness                      # noqa: E402
 from rsi_arena.loop import Outcome, Rollout, Settings       # noqa: E402
 from rsi_arena.loop.books import replay_books               # noqa: E402
@@ -118,14 +128,25 @@ def harness_of(run_dir: Path, manifest: dict[str, Any], side: str,
     return fp, name
 
 
-def backfill(run_dir: Path, *, log=print) -> dict[str, dict[str, Any]]:
+def backfill(run_dir: Path, *, log=print, fetch: bool = False,
+             bucket: str = "") -> dict[str, dict[str, Any]]:
     manifest = json.loads((run_dir / "manifest.json").read_text())
     topic = manifest["topic"]
+    # The dumps first, and the task only if there are any. Building the task
+    # reads the benchmark and a year of window files; doing that before finding
+    # out there is nothing to replay is a minute of work for an empty answer,
+    # and now that the dumps live in S3 an empty rollouts/ is the normal case on
+    # a fresh checkout rather than the odd one.
+    files = fetch_run.ensure_dir(run_dir / "rollouts", topic, run_dir.name,
+                                 what="rollouts", fetch_missing=fetch, bucket=bucket, log=log)
+    if not files:
+        log(f"  no rollouts in {run_dir / 'rollouts'}; they are in S3 - "
+            f"pass --fetch, or run scripts/fetch_run.py {topic} {run_dir.name} --what rollouts")
+        return {}
     task = load_task(topic, manifest.get("settings"))
     if getattr(task, "trading", None) is None:
         log(f"{run_dir}: {topic} has no trading spec; nothing to build")
         return {}
-    files = sorted((run_dir / "rollouts").glob("*.json"))
     loaded = {p: with_set_quotes(task, load_rollouts(task, p)) for p in files}
     # Every instance the run scored, so a deadline that falls back to "the
     # last window on this contract" reads the whole set and not one split.
@@ -153,6 +174,9 @@ def backfill(run_dir: Path, *, log=print) -> dict[str, dict[str, Any]]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("run_dir", nargs="+")
+    ap.add_argument("--fetch", action="store_true",
+                    help="download a run's rollouts from S3 when they are not on disk")
+    ap.add_argument("--bucket", default="", help="with --fetch; defaults to $TRACE_BUCKET")
     args = ap.parse_args(argv)
     failed = 0
     for raw in args.run_dir:
@@ -163,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         print(f"{run_dir}")
         try:
-            backfill(run_dir)
+            backfill(run_dir, fetch=args.fetch, bucket=args.bucket)
         except Exception as exc:  # noqa: BLE001 - one run's failure is not the batch's
             print(f"  failed: {type(exc).__name__}: {exc}")
             failed += 1

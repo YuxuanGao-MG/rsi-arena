@@ -11,10 +11,18 @@ have, does it beat what we run.
 
 ``--topic`` picks the task; the instances in the dump are rebuilt by it, so a
 dump from any topic compares on that topic.
+
+The dumps are no longer in the repository - they are in S3 under
+``rsi-arena/<topic>/<run>/rollouts/`` - so ``--fetch`` downloads the run's
+rollouts when the named file is not on disk. Without the flag an absent dump is
+an error naming the command that would bring it back, because a comparison is
+worth a deliberate download and not an accidental one.
 """
 import argparse, asyncio, json, sys
 from pathlib import Path
 sys.path.insert(0, ".")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fetch_run
 from rsi_arena.harness import Harness, OpenRouter
 from rsi_arena.loop import Scoreboard, Settings, evaluate, paired_bootstrap, summarise
 from rsi_arena.loop.task import Outcome, Rollout
@@ -33,6 +41,9 @@ ap.add_argument("--limit", type=int, default=0)
 ap.add_argument("--concurrency", type=int, default=8)
 ap.add_argument("--max-usd", type=float, default=5.0)
 ap.add_argument("--out", default="")
+ap.add_argument("--fetch", action="store_true",
+                help="download the run's rollouts from S3 when the named dump is not on disk")
+ap.add_argument("--bucket", default="", help="with --fetch; defaults to $TRACE_BUCKET")
 a = ap.parse_args()
 
 spec = TOPICS[a.topic]
@@ -51,7 +62,13 @@ if a.scoreboard:
                                  remembered_cost=board.cost_of(a.scoreboard, w)))
     print(f"scoreboard remembers {len(windows)} answers of {a.scoreboard}")
 else:
-    dump = json.load(open(a.rollouts))
+    path = Path(a.rollouts)
+    if not path.exists() and not a.fetch:
+        raise SystemExit(f"{path} is not on disk. The dumps live in S3 now; pass --fetch, "
+                         f"or run scripts/fetch_run.py {a.topic} {path.parent.parent.name} "
+                         "--what rollouts")
+    fetch_run.ensure_file(path, a.topic, fetch_missing=a.fetch, bucket=a.bucket)
+    dump = json.load(open(path))
     for r in dump:
         w = task.instance_from_dict(r["instance"])
         o = r["outcome"]

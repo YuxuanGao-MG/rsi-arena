@@ -36,4 +36,7 @@ topic) · `rsi_arena/topics/__init__.py` (`TopicSpec`: what each topic runs on)
 - Frozen tools never see past the instant. Split by fixture, never by window.
 - A failed run scores as silence. Promotion goes through `loop/gate.py` only.
 - `loop/` must not import from `topics/`.
+- `runs/**/rollouts/` and `runs/**/gepa/` are not committed; they live in S3
+  (`scripts/fetch_run.py` brings them back). Everything else in a run directory
+  is. `docs/design.md`, "What a later run needs from an earlier one".
 - Three topics share one loop; `rsi-arena topic --topic <name> --json` is the spec. `HANDOFF.md` first.

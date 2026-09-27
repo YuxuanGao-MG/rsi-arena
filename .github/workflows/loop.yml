@@ -489,47 +489,112 @@ jobs:
             echo "nothing new to publish"
           fi
 
-      # Full working trajectories, off the repository's back.
+      # The whole run directory, rollouts/ and gepa/ included, and before the
+      # commit rather than after it.
       #
-      # Every tool call and model turn is already recorded three ways: full
-      # traces in <run>/rollouts when --trace is on, trimmed spans in
-      # rsi.traces, and the per-run artifact below. What none of those gives is
-      # a durable home that is not git - a generation adds ~2,600 files and
-      # ~50 MB, which is an 82,000-file repository by day 30. With AWS secrets
-      # set, the whole run directory syncs to S3 and the bulky search outputs
-      # can stay out of git; without them this step says so and moves on.
+      # This is now the only durable home those two have: .gitignore stops
+      # committing them, because a rollout dump with traces reached 102.54 MB when
+      # crypto's held-out set went from 30 days to 120 and GitHub refuses anything
+      # over a hundred. Three generations on 25 and 26 September reached a verdict,
+      # published it, and then could not push the directory that held it - so
+      # `rsi-arena next` could not see gen8 and the lineage restarted from gen7.
+      #
+      # Before the commit, because the ordering is the point: the evidence has to
+      # survive a commit that fails, and on those three runs it did not. Failing
+      # here when the sync fails and the run reached a verdict is the other half -
+      # the old step swallowed AccessDenied behind a `||` and went green, which is
+      # exactly how the key being dead went unnoticed for a week.
+      #
+      # sync, not `cp --recursive`. The IAM user now has ListBucket on this bucket
+      # (it did not when this step was written, which is why it was cp), and sync
+      # is what makes a retry cheap: attempt two uploads what attempt one missed
+      # rather than the whole two hundred megabytes again.
       - name: Keep the trajectories in S3
-        if: always() && env.AWS_ACCESS_KEY_ID != ''
+        id: s3
+        if: always()
+        shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          # us-east-2 is where rsi-arena-traces is. The old default was
+          # us-east-1, which is the wrong guess for this bucket and the kind of
+          # wrong that only shows up as a redirect nobody reads.
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
+          TRACE_BUCKET: ${{ secrets.TRACE_BUCKET }}
         run: |
-          bucket="${{ secrets.TRACE_BUCKET }}"
           run_dir="${{ steps.chain.outputs.run_dir }}"
           run_dir="${run_dir:-$RUN_DIR}"
-          if [ -z "$bucket" ]; then
-            echo "::notice::AWS key is set but TRACE_BUCKET is not; skipping"
-          elif [ -d "$run_dir" ]; then
-            # cp --recursive, not sync. sync lists the bucket to diff against
-            # it, and the first real attempt died on exactly that: AccessDenied
-            # on s3:ListBucket, because the IAM policy named a different bucket
-            # than TRACE_BUCKET does. A run directory is immutable and uploaded
-            # exactly once, so there is nothing to diff - and with cp the policy
-            # can drop ListBucket entirely and become write-only, which is the
-            # tighter shape anyway: a leaked key could add trajectories but
-            # never read or enumerate them.
-            aws s3 cp "$run_dir" "s3://$bucket/rsi-arena/$TOPIC/$(basename "$run_dir")/" \
-                --recursive --only-show-errors \
-              && echo "- trajectories uploaded to s3://$bucket/rsi-arena/$TOPIC/$(basename "$run_dir")/" >> "$GITHUB_STEP_SUMMARY" \
-              || echo "::warning::S3 upload failed; the artifact below still has everything"
+          echo "run_dir=$run_dir" >> "$GITHUB_OUTPUT"
+
+          # Whether this run concluded anything. A partial run whose upload fails
+          # is a notice: there is no verdict to be the evidence for, and failing
+          # the job would turn one flaky sync into an issue every morning. A run
+          # that reached a verdict and could not store the trajectories behind it
+          # is a real failure, because the verdict is now the only thing left.
+          verdict=no
+          if [ -f "$run_dir/manifest.json" ]; then
+            verdict=$(python -c "
+          import json, sys
+          try:
+              print('yes' if json.load(open(sys.argv[1])).get('decision') else 'no')
+          except Exception:
+              print('no')
+          " "$run_dir/manifest.json")
           fi
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          echo "verdict: $verdict"
+
+          # A bucket or credentials that are not configured stay a notice, as
+          # before: this repository has run without them and must keep being able
+          # to. It is a configured upload that fails which is now fatal.
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::notice title=no AWS credentials::AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are not set; the trajectories stay in the run artifact only"
+            exit 0
+          fi
+          if [ -z "$TRACE_BUCKET" ]; then
+            echo "::notice title=no bucket::AWS credentials are set but TRACE_BUCKET is not; skipping"
+            exit 0
+          fi
+          if [ ! -d "$run_dir" ]; then
+            echo "::notice::no $run_dir to upload"
+            exit 0
+          fi
+
+          dest="s3://$TRACE_BUCKET/rsi-arena/$TOPIC/$(basename "$run_dir")/"
+          echo "dest=$dest" >> "$GITHUB_OUTPUT"
+          # Three attempts, 10s then 30s. A sync that fails twice is not a blip
+          # and a third wait longer than half a minute only delays the issue.
+          for attempt in 1 2 3; do
+            if aws s3 sync "$run_dir" "$dest" --only-show-errors; then
+              echo "- trajectories in [\`$dest\`]($dest) (attempt $attempt)" >> "$GITHUB_STEP_SUMMARY"
+              echo "uploaded on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::S3 sync attempt $attempt failed"
+            [ "$attempt" = 3 ] || sleep $((attempt * 20 - 10))
+          done
+
+          if [ "$verdict" = yes ]; then
+            echo "::error title=the evidence has nowhere to live::three aws s3 sync attempts to $dest failed and this generation reached a verdict. runs/**/rollouts/ and runs/**/gepa/ are no longer committed, so the only copy left is the run artifact, which expires in 14 days."
+            { echo "### The trajectories did not reach S3";
+              echo "Three \`aws s3 sync\` attempts to \`$dest\` failed, and this generation reached a verdict.";
+              echo "The run artifact below is the only copy and it expires in 14 days:";
+              echo "\`gh run download ${{ github.run_id }}\`, then \`aws s3 sync <run dir> $dest\`."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "::warning::S3 sync failed after three attempts; this run reached no verdict, so the artifact is enough"
 
       # Everything a generation writes that the next one reads: the question
       # set and the venue data discovery left beside it, the archive and the
       # scoreboard (flat in runs/, one pair per topic), and the topic's run
       # directories. For the first topic $RUNS_DIR is runs/ itself, which is
       # what this step always added.
+      #
+      # rollouts/ and gepa/ are inside $RUNS_DIR and are not committed: they are
+      # gitignored, so `git add -A` walks past them. That is the only reason this
+      # step can still add a whole directory rather than a list of filenames -
+      # .gitignore is the list, in one place, and the same list a person's `git
+      # add` obeys.
       - name: Commit results
         if: always()
         shell: bash
@@ -537,10 +602,23 @@ jobs:
           git config user.name "rsi-arena loop"
           git config user.email "loop@users.noreply.github.com"
           shopt -s nullglob
+          paths=()
           for d in benchmarks/windows benchmarks/windows-* benchmarks/crypto-data benchmarks/news-data \
                    runs/archive*.json runs/scoreboard*.json "$RUNS_DIR"; do
-            [ -e "$d" ] && git add -A -- "$d"
+            [ -e "$d" ] && paths+=("$d")
           done
+          [ ${#paths[@]} -eq 0 ] && { echo "nothing to commit"; exit 0; }
+
+          # Before `git add`, not after the push. GitHub refuses a file over
+          # 100 MB at push time, by which point the commit exists, the generation
+          # has been paid for, and the failure reads as a network problem. This
+          # names the file and where its copy is while there is still nothing
+          # staged to explain.
+          python scripts/check_commit_size.py "${paths[@]}" \
+            --bucket "${{ secrets.TRACE_BUCKET }}" --topic "$TOPIC" \
+            --run-dir "${{ steps.s3.outputs.run_dir }}"
+
+          git add -A -- "${paths[@]}"
           if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
           git commit -m "loop: $TOPIC ${{ inputs.command || 'optimize' }} run ${{ github.run_id }}"
           for i in 1 2 3; do

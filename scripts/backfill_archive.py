@@ -15,6 +15,17 @@ that, so their order is recovered from ``rollouts/baseline.train.json``, which
 was produced by a ``gather`` over the same list and is therefore in the same
 order.
 
+``gepa/`` and ``rollouts/`` are no longer in the repository - they are in S3, and
+``docs/design.md`` ("What a later run needs from an earlier one") says why. So a
+backfill over a run this checkout did not just produce needs them brought back
+first:
+
+    python scripts/fetch_run.py <topic> <run> --what gepa
+
+A run whose state is absent is already skipped rather than being an error, so
+without the fetch this reports fewer candidates than it should instead of failing
+- which is the shape it has always had, and is why the reminder is here.
+
     python scripts/backfill_archive.py            # writes runs/archive.json
     python scripts/backfill_archive.py --dry-run
 """

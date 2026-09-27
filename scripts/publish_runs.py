@@ -14,6 +14,16 @@ candles nobody reads twice. What a reader wants from a trace is which tools were
 called, what came back in summary, and the prompt and answer of the model call
 that ended it.
 
+``loop.yml`` runs this in the same job as the generation, so ``rollouts/`` and
+``gepa/`` are still on the runner when it does. Republishing an *older* run by
+hand is different: those two are no longer in the repository - they are in S3, see
+``docs/design.md``, "What a later run needs from an earlier one" - so bring them
+back first, or the rollouts and the search publish as nothing while the run row
+updates happily:
+
+    python scripts/fetch_run.py <topic> <run>         # --what all
+    python scripts/publish_runs.py runs/<topic>/<run>
+
     python scripts/publish_runs.py runs/gen1-floored
     python scripts/publish_runs.py runs/*             # everything
 """

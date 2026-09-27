@@ -620,7 +620,7 @@ generation - and `scripts/show_search.py <run_id>` prints the candidate table
 with the one line that says what the search actually mutated. Both are
 read-only and both take `--json`.
 
-**In the run directory**, committed but not queryable:
+**In the run directory**, which is where the large things are:
 
 - the **full traces**. A single window's trace is about 28 KB, most of it
   forty-five minute bars repeated in the tool answer and again in the prompt.
@@ -635,13 +635,98 @@ read-only and both take `--json`.
   been rebuilt from - the books, the archive, the quotes - because they carry
   each instance whole rather than the columns a reader wanted at the time.
 
-That split is deliberate but it is not finished: a run directory only exists
-where the workflow left it. `loop.yml` already has the step that copies one to
-S3 (`aws s3 cp --recursive`, write-only by design, so the IAM policy can drop
-`ListBucket`) and the `TRACE_BUCKET` secret is set - but the key is dead, so the
-step has been printing its notice and moving on. Refreshing the key is the whole
-of the remaining work; nothing in the repository has to change for the
-trajectories to start landing.
+### What a later run needs from an earlier one (2026-09-27)
+
+The run directory used to be committed whole, and that stopped working on
+25 September. Crypto's held-out set had gone from 30 days to 120, so a candidate
+dump became 2,880 rollouts each carrying a full trace, and the push said:
+
+    remote: error: File runs/crypto-horizon-1m/gen8/rollouts/candidate.holdout.json
+    is 102.54 MB; this exceeds GitHub's file size limit of 100.00 MB
+
+Three scheduled generations (runs 36124670799, 36203788229, 36235281845) failed
+that way. Each of them ran, reached a verdict and published it to Supabase - and
+then could not push the directory holding the evidence. The loud part was the
+push. The expensive part was silent: `rsi-arena next` finds the deepest
+*committed* generation, `runs/crypto-horizon-1m/` stopped at gen7, and so three
+nights in a row the lineage quietly restarted from gen7 and paid again for a
+generation nobody could see. The repository was 1.4 GB in the working tree and
+413 MB of `.git`; 126 rollout dumps were 1.30 GB of it, and stripping traces from
+one 28.5 MB dump leaves 9.3 MB, so traces were about two thirds of the weight.
+
+So the run directory is split, and the line is drawn by asking one question of
+the code: **what does a later generation, or a person's tooling, read out of the
+repository?**
+
+| in the run directory | read from the repo by | where it lives now |
+| --- | --- | --- |
+| `manifest.json` | `Generation.load` - and so `resolve_harness`, `rsi-arena next`, `lineage`, the workflow's own once-a-day guard | git |
+| `best.json` | `Generation.promoted()`, which is literally the harness the next generation starts from | git |
+| `books/*.json` | `publish_runs.publish_books`, `publish_trading.py`; ~1.8 MB a run | git |
+| `valset.json` | `backfill_archive.valset_ids`, and through it `from_gepa_state` - the subscore matrix is positional against this list and joins to nothing without it | git |
+| `rollouts/*.json` | `publish_runs.publish_rollouts` in the same job; `backfill_books.py` and `compare_on_rollouts.py` afterwards | S3 |
+| `gepa/` | `from_gepa_state` at publish time, in the same job; `backfill_archive.py` afterwards | S3 |
+
+And flat in `runs/`, outside any run directory: `archive*.json` and
+`scoreboard*.json`, one pair per topic. Both stay in git and both are load-bearing
+in a way no run directory is. The archive is the search's whole memory - `cmd_optimize`
+reads `gepa/` at the end of its own process, distils every candidate into
+`Entry` rows, and saves them there, so the archive is the durable form and
+`gepa/` is the raw material it was made from. The scoreboard is what stops the
+loop paying twice for an answer it already has. `web/server.py` reads
+`runs/archive*.json` too, which is why they are flat: `.railwayignore` cannot
+re-include a file inside a directory it never walks into.
+
+That is the whole of the reasoning. `gepa/` and `rollouts/` are read *after* the
+generation that wrote them only by tools a person runs deliberately, and never by
+the next generation - because everything the next generation wants from them has
+already been distilled into the archive, the scoreboard and the manifest. So they
+are gitignored (`runs/**/rollouts/`, `runs/**/gepa/`) and they go to S3:
+
+    s3://$TRACE_BUCKET/rsi-arena/<topic>/<run>/          # a generation, whole
+    s3://$TRACE_BUCKET/rsi-arena/live/<topic>/<date>/    # a day of live sweeps
+
+`loop.yml` syncs the run directory there **before** the commit step, three
+attempts with backoff, and fails the job if the sync fails after all three *and*
+the run reached a verdict. That ordering is the fix, not an implementation
+detail: the evidence has to survive a commit that fails, and on those three
+September runs it did not. The old step swallowed `AccessDenied` behind a `||`
+and went green, which is how a dead IAM key went unnoticed for a week - the
+25 September run uploaded nothing and said so only in a warning nobody reads.
+`live.yml`, `live-crypto.yml` and `live-news.yml` sync `runs/live/` the same way;
+there a failure stays a warning, because Postgres already holds those rows and an
+issue per blip teaches people to stop reading issues.
+
+Two more things follow from the split:
+
+- **A guard, so it cannot recur silently.** `scripts/check_commit_size.py` runs
+  before `git add`, not after the push: it walks what the step is about to stage,
+  names anything over 90 MB (ten under GitHub's hundred, because a dump that has
+  reached ninety is one held-out rotation from being refused), says where its S3
+  copy is, and exits non-zero. Files git already ignores are skipped - the point
+  is to catch a new heavy thing nobody has a rule for.
+- **Reading it back.** `scripts/fetch_run.py <topic> <run> [--what rollouts|gepa|all]`
+  downloads the heavy parts; `backfill_books.py --fetch` and
+  `compare_on_rollouts.py --fetch` call it when a dump is absent. Deliberately a
+  flag and not automatic: a backfill over twelve generations that quietly
+  downloads twelve gigabytes is a surprise that arrives as a bill.
+  `scripts/s3_usage.py` prints the object count and size under each
+  `<topic>/<run>`, so what the bucket costs is visible without the console - the
+  repository announced its own size every time somebody cloned it, and a bucket
+  announces nothing until the invoice.
+
+gen8 itself was recovered from run 36235281845's artifact, which had not yet
+expired: its light files are committed, so the lineage is continuous again and
+`rsi-arena next` names gen9. Its rollouts and `gepa/` were in the artifact too,
+and replaying them reproduced the four books byte for byte - which is as good a
+check as there is that the split keeps what the tooling needs.
+
+What is still on the wrong side of the line: `runs/scoreboard.crypto-horizon-1m.json`
+is 21 MB and `runs/scoreboard.kalshi-jev.json` 20 MB, both growing every
+generation, because a scoreboard remembers every answer every fingerprint ever
+gave. They are far from 90 MB and they are genuinely read by the next run, so
+they stay - but they are the next thing to outgrow git, and the answer will not be
+S3, it will be Postgres.
 
 ## Goal
 
