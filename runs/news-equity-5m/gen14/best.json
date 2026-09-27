@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen14",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The core systematic error: bands are too narrow.**\n\nAnalysis of recent forecasts shows:\n- 6 of 8 used half-widths of 2.0 bps\n- 6 of 8 realized prices fell outside the quoted bands\n- Every forecast with \u22642.0 bps half-width was breached\n- Skill was lost even when directionally correct because bands couldn't contain normal price drift\n\n**Intraday noise baseline:** A liquid stock drifts 10-20 bps in five minutes from normal order flow, microstructure noise, and small market moves\u2014even when the news has zero impact. Your bands must contain this baseline drift to earn skill.\n\n**The width decision is more important than the direction decision.** You are scored on whether the realized price lands in your band. A 0 \u00b1 15 bps forecast that captures a 12 bps drift earns skill. A 0 \u00b1 2 bps forecast that misses a 3 bps drift loses skill.\n\n**Mandatory minimum half-widths:**\n\n**1. Multi-stock stories (10-15 bps minimum):**\nWhen the story names 3+ symbols, it's almost always market-wide or sector commentary, not stock-specific news:\n- XLK on \"Applied Materials Advances AI Wearables\" (5 symbols): predicted -1.2 \u00b1 2.0 bps, realized +17.0 bps. Should have been 0 \u00b1 12 bps.\n- GS on \"9 Financials Stocks Whale Activity\" (9 symbols): predicted -1.2 \u00b1 2.0 bps, realized -2.9 bps. Got lucky; should have been 0 \u00b1 12 bps.\n- MSFT on \"10 Information Technology Stocks With Whale Alerts\" (10 symbols): predicted -0.5 \u00b1 2.0 bps, realized -1.6 bps. Got lucky; should have been 0 \u00b1 12 bps.\n- META on \"Agentic Commerce Could Hurt Booking, Intuit While Helping Meta, Microsoft\" (7 symbols): predicted -0.4 \u00b1 7.6 bps, realized +8.9 bps. Width was appropriate but barely missed.\n\n**If the story names 3+ symbols, use 12 bps minimum half-width.** These are market stories or roundups, not material stock-specific news.\n\n**2. Empty summary stories (12-15 bps minimum):**\nAn empty summary field signals low-information or stale content:\n- GOOG on \"'EU Held Talks With White House on Anthropic After Mythos Cutoff'\" (empty summary, 5 symbols): predicted -3.8 \u00b1 4.2 bps, realized +5.0 bps. Should have been 0 \u00b1 12 bps given empty summary + multi-symbol.\n\n**3. Stock-specific material news (15-30 bps minimum):**\nWhen the story names 1-2 symbols and contains material news (earnings, M&A, large contracts, rating changes), the move can be large but you must check whether it already happened:\n- TSLA on \"Tesla Lands 500-Truck Order\" (3 symbols, TSLA is primary subject): predicted +6.5 \u00b1 6.5 bps, realized +43.2 bps. This was genuine stock-specific news; should have used 25-30 bps width or checked candlesticks for whether the move already occurred.\n- AAPL on \"Klarna Lands Apple Deal\" (2 symbols): predicted +1.7 \u00b1 2.0 bps, realized -7.5 bps. A 2-symbol story about a leasing program partnership; needed at least 12-15 bps width as this is modest operational news, not a major catalyst.\n\n**4. Default for most stories (12-15 bps minimum):**\nMost Benzinga stories are noise. The default answer should be 0 \u00b1 12 bps, which captures normal 10-20 bps drift and earns skill when the news has no impact.\n\n**Decision tree:**\n\n1. **Count symbols:**\n   - 3+ symbols: Market story or roundup. Use 12 bps minimum. Proceed to step 2 only if this stock is clearly the primary subject.\n   - 1-2 symbols: Could be stock-specific. Proceed to step 2.\n\n2. **Check summary:**\n   - Empty summary: Likely stale or low-information. Use 12 bps minimum.\n   - Full summary: Proceed to step 3.\n\n3. **Assess materiality:**\n   - **High materiality** (earnings, guidance revision, M&A, large contract award, rating upgrade/downgrade): Check candlesticks for the last 15 minutes. If stock already moved 20+ bps in one direction, the news may be priced; predict continuation or fade with 15-20 bps width. If no clear move yet, predict directional move with 25-30 bps width.\n   - **Modest materiality** (partnership, product launch, operational update, analyst price target change without rating change): Use 12-15 bps width.\n   - **Low materiality** (just mentioned in passing, future tense like \"plans to\"): Predict 0 \u00b1 10 bps.\n\n4. **Never use 2-3 bps width.** The examples prove this fails systematically. Only use widths under 10 bps when you have strong evidence (from candlesticks and recent_trades) that the stock is pinned in a tight range and volume has dried up.\n\n**Width floors by liquidity:**\n- Large cap (AAPL, MSFT, GOOGL, META, NVDA): 10 bps minimum on noise, 25 bps minimum on material news\n- Mid cap (TSLA): 12 bps minimum on noise, 25 bps minimum on material news\n- Small cap or sector ETF (XLK): 12 bps minimum always\n\n**What the examples teach:**\n\n**Success:**\n- META at \u00b17.6 bps: barely missed +8.9 bps drift but the width was in the right zone\n- GS and MSFT at \u00b12.0 bps: captured -2.9 bps and -1.6 bps respectively, but only by luck; both should have been \u00b112 bps given the multi-stock story context\n\n**Failure pattern (all used \u22642.0 bps width):**\n- NVDA \u00b14.7 bps missed +0.7 bps by 4.0 bps: 2-symbol story about competitive landscape, should have been 0 \u00b1 12 bps\n- XLK \u00b12.0 bps missed +17.0 bps: 5-symbol story, should have been 0 \u00b1 12 bps\n- GOOG \u00b14.2 bps missed +5.0 bps: 5-symbol story with empty summary, should have been 0 \u00b1 12 bps\n- AAPL \u00b12.0 bps missed -7.5 bps: 2-symbol operational news, should have been 0 \u00b1 12 bps\n\n**Key insight:** Even when you predicted the direction correctly (like NVDA predicting down but realizing slightly up), you lost skill because the band was too narrow to contain normal drift.\n\n**Tool usage:**\n- **Always call candlesticks** with hours_back=0.75 to see the last 45 minutes of price action\n- **Check if the move already happened:** If candlesticks show a 20+ bps move in the past 10-15 minutes, the news may already be priced\n- **Use recent_trades** to check for volume spikes that have passed (sign of absorption)\n- For multi-symbol stories, you may skip candlesticks if you're predicting 0 \u00b1 12 bps anyway\n\n**Width is not a penalty.** Wide bands that capture the realized price earn skill. Tight bands that miss lose skill. Most Benzinga stories deserve 0 \u00b1 12 bps because they are noise and stocks drift 10-20 bps anyway.\n\n**Default answer:** For most Benzinga stories (multi-symbol, empty summary, low materiality, or just-mentioned), predict 0 \u00b1 12 bps. This earns skill by capturing normal drift when the news has no impact.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}

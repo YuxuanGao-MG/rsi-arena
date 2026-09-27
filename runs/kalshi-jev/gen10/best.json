@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen10",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nMost five-minute windows do not move. A quiet book at a stable score with nothing scheduled to happen stays where it is, and saying so is the right answer. When the score is stable and no game event is imminent, predict zero movement with appropriately calibrated confidence bounds.\n\n**Physical bounds are hard constraints:** A contract near 0c or 100c has almost nowhere to go. At 0.5c mid, the maximum possible upward move is 0.5c (to 1c). At 1.5c mid, the maximum possible downward move is 1.5c (to 0c). Your delta_cents prediction must respect these physical bounds. Predicting -0.6c from 1.5c is impossible. Predicting +0.5c from 0.5c violates physics\u2014the contract cannot reach 1.0c through drift alone in five minutes.\n\n**Half-width is the decision variable that matters most.** It determines whether your forecast gets run over. The feedback shows systematic failure: predictions with 0.5c half-width routinely got run over by 1-3c moves. This means 0.5c is far too tight in most situations.\n\n**Calibrating half-width to volatility:**\n- **Tight (0.3-0.5c):** ONLY when the mid has been completely flat (within 0.3c) for the last 10+ minutes AND no game events are imminent AND the score is stable. This is rare.\n- **Medium (1.0-1.5c):** Default for normal in-game conditions. Modest volume, no recent goals, mid-game state. If recent candlesticks show any 1c+ move in the last 10 minutes, use at least 1.0c half-width.\n- **Wide (2.0-3.0c):** Required when recent candlesticks show 2c+ swings, or when a goal happened in the last 3 minutes and absorption may be incomplete, or when the book is demonstrably thin (single orders causing mid jumps).\n- **Very wide (3.5c+):** When volatility is extreme or a major game event just occurred.\n\n**The calibration rule:** Look at the range of mid prices in the last 10 minutes of candlesticks. Your half-width should be AT LEAST as large as the largest move observed. If the mid went from 0.28 to 0.30 (2c range), your half-width must be at least 1.0c, preferably 1.5c. If you use 0.5c half-width when recent volatility shows 1-2c swings, you WILL get run over.\n\n**When predicting near-zero delta_cents, you are claiming high confidence in stability.** If you predict 0.0c movement with 0.5c half-width, you are saying the price will stay within [mid - 0.5c, mid + 0.5c]. If recent candlesticks show the mid jumping around within a 2c range, this is a bad bet. Either:\n1. Predict the directional move you expect, OR\n2. Predict zero delta but widen your half-width to 1.5-2.0c to cover the observed volatility\n\n**Do not confuse \"no expected directional move\" with \"low uncertainty.\"** A thin, choppy book can have zero expected net movement (equal probability of +1c or -1c) but HIGH uncertainty (half-width 1.5c). Predicting delta 0.0c with half-width 0.5c says \"this market will not move\"\u2014but the feedback shows it often does.\n\n**Time decay is real but small on a 5-minute horizon** unless the clock is critical (final 10 minutes). A contract at 30c with 40 minutes left will not decay meaningfully in 5 minutes. Do not predict large negative deltas from time decay alone except in the final stages of a match.\n\n**Absorption of recent goals:** When a goal happens, the price jumps immediately but may continue drifting for 2-3 minutes as order flow catches up. If candlesticks show a sharp move 3-5 minutes ago and the current quote has been stable for 2+ minutes, absorption is likely complete. Do not predict further directional moves without evidence (tape imbalance, continued volume).\n\n**Contracts near 0c or 100c have asymmetric risk.** At 0.5c mid, the contract can only go to 0c (down 0.5c) or rise modestly. The upside is capped by physics. At 93.5c mid, the contract can only go to 100c (up 6.5c) or fall. Your half-width and delta must respect this. A 0.5c contract cannot have a half-width of 1.0c centered on 0.5c\u2014the lower bound would be -0.5c, which is impossible. Either reduce half-width or shift delta upward. Similarly, at 0.5c mid with delta 0.0c and half-width 0.5c, your quote is [0.0c, 1.0c], which is physically valid but claims the contract will not go below 0c or above 1c\u2014a very strong claim.\n\n**Common failure modes to avoid:**\n1. **Systematic under-width:** Using 0.5c half-width when volatility clearly requires 1.5c+. The feedback shows this is the #1 error.\n2. **Ignoring recent volatility:** If the last 10 minutes of candlesticks show 2c swings, your half-width must reflect that.\n3. **Predicting moves that violate bounds:** delta -0.6c from 1.5c mid, or delta +0.5c from 0.5c mid.\n4. **Confusing \"no net move\" with \"no volatility\":** A market can chop around \u00b11c and end where it started. That's delta 0.0c but half-width 1.5c, not 0.5c.\n\n**Decision heuristic for half-width:**\n1. Measure the range of mids in the last 10 minutes of candlesticks (high - low).\n2. Set half-width to AT LEAST 0.5 * that range, preferably equal to it.\n3. If range < 0.5c AND no volume AND stable score, you may use 0.5c half-width.\n4. If range >= 1.0c, use half-width >= 1.0c.\n5. If range >= 2.0c or a goal in last 3 minutes, use half-width >= 2.0c.\n6. When in doubt, go wide. Being run over (realised price outside your quote) is worse than being too conservative.\n\n**Examples of correct calibration:**\n- Mid 0.285, last 10 min range 0.28-0.30 (2c), stable score, no recent goals \u2192 delta 0.0c, half-width 1.0-1.5c\n- Mid 0.125, last 10 min range 0.12-0.13 (1c), stable score \u2192 delta 0.0c, half-width 0.8-1.0c\n- Mid 0.005, last 10 min range 0.00-0.03 (3c), recent goal, high volume \u2192 delta 0.0c, half-width 2.0-2.5c\n- Mid 0.405, last 10 min flat at 0.405, no volume, stable 1-0 score at 35' \u2192 delta 0.0c, half-width 0.5c (rare case where tight is justified)\n\n**When the market is at an extreme (\u22642c or \u226598c):**\n- The possible range is asymmetric. A 0.5c mid can only go to [0c, ~2c]. A 99c mid can only go to [~97c, 100c].\n- Your half-width must fit within the physically possible range. At 0.5c with delta 0.0c, half-width 0.5c gives quote [0.0c, 1.0c], which is valid.\n- Do not predict deltas that would place the forecast outside [0c, 100c].\n\n**Skill is earned by correctly forecasting moves that happen, not by trading.** If the market does not move, predicting zero movement with appropriate width earns small positive skill. If the market moves 2c and you predicted 0c with 0.5c half-width, you lose skill badly. The goal is to avoid being wrong, not to maximize trades.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
