@@ -66,6 +66,23 @@ jobs:
           python scripts/check_leagues.py "${args[@]}" --json drift.json | tee drift.txt
           echo "drifted=$?" >> "$GITHUB_OUTPUT"
           set -e
+          # A run that checked nothing prints the same zeros as a run that
+          # found nothing wrong. The table has 73 entries; if far fewer were
+          # looked at, the check did not happen and saying "no drift" would be
+          # a lie told once a month.
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          import re
+          seen = len(re.findall(r"^  (ok|DEAD|BROKEN|NEW|PROMOTABLE)", Path("drift.txt").read_text(), re.M))
+          sys.path.insert(0, ".")
+          from rsi_arena.kalshi._series import SERIES_BY_LEAGUE
+          want = len(SERIES_BY_LEAGUE)
+          print(f"checked {seen} of {want} mapped leagues")
+          if seen < want * 0.8:
+              print(f"::error::the check only reached {seen} of {want} leagues; treating this as a failure rather than as no drift")
+              sys.exit(1)
+          PY
           { echo "### League table"; echo '```'; cat drift.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep the findings
