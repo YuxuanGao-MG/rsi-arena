@@ -28,7 +28,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rsi_arena.kalshi._client import KalshiClient                  # noqa: E402
 from rsi_arena.kalshi._gamestate import todays_games               # noqa: E402
 from rsi_arena.kalshi._linking import (harvest_team_codes,         # noqa: E402
-                                       link_event, names_from_markets)
+                                       link_event, names_from_markets,
+                                       parse_event_ticker)
+from rsi_arena.kalshi._series import (SWEEP_LEAGUES,               # noqa: E402
+                                      series_for as _series_for)
 from rsi_arena.kalshi._taxonomy import COMPETITIONS                # noqa: E402
 from rsi_arena.kalshi.replay import match_timeline                 # noqa: E402
 
@@ -58,8 +61,23 @@ def _days_around(date: str) -> list[str]:
 
 
 def series_for(league: str) -> str:
-    """Kalshi's match-winner series for a league, e.g. EPL -> KXEPLGAME."""
-    return f"KX{league.replace('_', '')}GAME"
+    """Kalshi's match-winner series for a league, e.g. EPL -> KXEPLGAME.
+
+    A verified lookup now, not the ``KX{LEAGUE}GAME`` rule this used to be. The
+    rule is right for the eight leagues this script was written against and
+    wrong for most of the rest — the UEFA Nations League trades as
+    ``KXUEFANLGAME`` — and a wrong series ticker returns an empty listing, which
+    reads as a competition with no matches rather than as a bug. See
+    ``rsi_arena/kalshi/_series.py``; it remains the fallback for a league nobody
+    has verified, and says so when it is used.
+    """
+    return _series_for(league)
+
+
+def event_day(event_ticker: str) -> str:
+    """The ISO day encoded in an event ticker, or "" when it encodes none."""
+    fixture = parse_event_ticker(event_ticker)
+    return fixture.date.isoformat() if fixture else ""
 
 
 def resolve(client: KalshiClient, league: str, event: str,
@@ -108,11 +126,26 @@ def resolve(client: KalshiClient, league: str, event: str,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--league", default="EPL", help="comma separated; see kalshi/_taxonomy.py")
+    ap.add_argument("--league", default="EPL",
+                    help="comma separated, or 'all' for every competition with a "
+                         "verified series in kalshi/_series.py")
     ap.add_argument("--limit", type=int, default=600,
                     help="settled events to examine per league. Kalshi has about "
                          "3,600 settled soccer fixtures across the majors; the "
                          "first version of this script looked at 40 of them")
+    ap.add_argument("--max-per-league", type=int, default=0,
+                    help="stop a league once it has contributed this many fixtures "
+                         "in this run; 0 is no cap. Seventy competitions at six "
+                         "hundred events each is a day of network, and a set that "
+                         "is nine tenths one league is not a broader exam. Counted "
+                         "per run, not against what --resume already held, so a "
+                         "second pass over a later window adds its own share")
+    ap.add_argument("--since", default="",
+                    help="ignore events dated before this (YYYY-MM-DD), read off "
+                         "the event ticker. The question set covers a window, and "
+                         "a new competition should be added over the same one")
+    ap.add_argument("--until", default="",
+                    help="ignore events dated after this (YYYY-MM-DD)")
     ap.add_argument("--workers", type=int, default=6,
                     help="fixtures resolved at once. Each costs two round trips "
                          "and the fixture feed is throttled at four a second")
@@ -131,35 +164,61 @@ def main() -> int:
         already = {r["event"] for r in rows}
         print(f"resuming with {len(rows)} fixtures already found")
     rejected: list[tuple[str, str]] = []
-    for league in [x.strip().upper() for x in args.league.split(",") if x.strip()]:
+    if args.league.strip().lower() == "all":
+        leagues = list(SWEEP_LEAGUES)
+    else:
+        leagues = [x.strip().upper() for x in args.league.split(",") if x.strip()]
+    contributed: dict[str, int] = {}
+    for league in leagues:
         if league not in COMPETITIONS:
             print(f"{league}: not a known competition", file=sys.stderr)
             continue
         # One sweep for the whole league: team codes and the names Kalshi prints
         # for them. Scoring a code against a feed name only works when the code
         # abbreviates it, and plenty do not — Liverpool trades as LFC.
+        #
+        # Guarded, because this now runs over seventy competitions: one league
+        # whose catalogue read times out must not take the fixtures every earlier
+        # league already paid for down with it.
         series = series_for(league)
-        codes = harvest_team_codes(client, series)
-        markets = list(client.paginate("/markets", "markets",
-                                       {"series_ticker": series}, max_items=4000))
-        names = names_from_markets(markets)
-        print(f"{league}: {len(codes)} team codes, {len(names)} names "
-              f"from {len(markets)} markets")
+        try:
+            codes = harvest_team_codes(client, series)
+            markets = list(client.paginate("/markets", "markets",
+                                           {"series_ticker": series}, max_items=4000))
+            names = names_from_markets(markets)
+            events = list(client.paginate("/events", "events",
+                                          {"series_ticker": series, "status": "settled"},
+                                          max_items=args.limit))
+        except Exception as exc:
+            print(f"{league}: catalogue failed ({type(exc).__name__}: {exc}); skipped",
+                  file=sys.stderr)
+            continue
+        print(f"{league} ({series}): {len(codes)} team codes, {len(names)} names "
+              f"from {len(markets)} markets, {len(events)} settled events")
 
-        events = list(client.paginate("/events", "events",
-                                      {"series_ticker": series_for(league), "status": "settled"},
-                                      max_items=args.limit))
+        found = 0
         for event in events:
             ticker = event.get("event_ticker", "")
             if not ticker:
                 continue
+            if args.max_per_league and found >= args.max_per_league:
+                print(f"  {league}: {found} fixtures is this league's share; moving on")
+                break
+            when = event_day(ticker)
+            if when and ((args.since and when < args.since)
+                         or (args.until and when > args.until)):
+                continue
+            if ticker in already:
+                continue
             row, why = resolve(client, league, ticker, names, codes)
             if row:
                 rows.append(row)
+                found += 1
                 print(f"  ok    {ticker:34} game {row['game']:>10}  {row['windows']:>3} windows")
             else:
                 rejected.append((ticker, why))
                 print(f"  skip  {ticker:34} {why}")
+        contributed[league] = found
 
     # Kalshi occasionally lists one match under two event tickers — RENPSG and
     # PSGREN both resolved to game 401876487. Two rows for one match would put
@@ -179,11 +238,21 @@ def main() -> int:
 
     print(f"\n{len(rows)} usable, {len(rejected)} rejected"
           + (f", {dropped} duplicate matches dropped" if dropped else ""))
+    if len(contributed) > 1:
+        print("by competition: " + ", ".join(
+            f"{lg} {n}" for lg, n in sorted(contributed.items(), key=lambda kv: -kv[1]) if n))
+        empty = [lg for lg, n in contributed.items() if not n]
+        if empty:
+            print(f"nothing from: {', '.join(sorted(empty))}")
     if args.out and rows:
         # `windows` is diagnostic; the benchmark contract is the other four keys.
         payload = [{k: v for k, v in r.items() if k != "windows"} for r in rows]
         Path(args.out).write_text(json.dumps(payload, indent=2) + "\n")
-        print(f"wrote {args.out}  ({sum(r['windows'] for r in rows)} windows total)")
+        # ``windows`` is only on the rows this run resolved; a resumed row came
+        # off disk without it, and reading it unconditionally turned a finished
+        # eight-hour sweep into a traceback after the file was already written.
+        print(f"wrote {args.out}  ({sum(r.get('windows', 0) for r in rows)} "
+              f"windows from this run's fixtures)")
     return 0 if rows else 1
 
 

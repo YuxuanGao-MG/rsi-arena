@@ -32,7 +32,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ._taxonomy import COMPETITIONS, resolve_league
+from ._taxonomy import COMPETITIONS, EXTRA_SCOREBOARD_SLUGS, resolve_league
 
 MLB_API = "https://statsapi.mlb.com/api/v1"
 NHL_API = "https://api-web.nhle.com/v1"
@@ -386,9 +386,17 @@ def nhl_game_state(game_id: str | int, with_plays: bool = True) -> GameState:
 
 def espn_scoreboard(league: str, date: str | None = None,
                     espn_slug: str | None = None) -> list[dict]:
-    """Today's fixtures for a league, with ESPN event ids."""
+    """Today's fixtures for a league, with ESPN event ids.
+
+    A league whose fixtures ESPN splits over more than one competition — a cup
+    and its qualifying rounds are two feeds, not one — is read from all of them
+    and the cards are concatenated. Without that, ``KXFACUPGAME`` links from
+    November and is invisible from August to October, which looks exactly like
+    an autumn with no cup football in it.
+    """
     if espn_slug:
         sport, lg = "soccer", espn_slug
+        extra: tuple[str, ...] = ()
     else:
         canonical = resolve_league(league)
         if canonical not in ESPN_PATHS:
@@ -397,8 +405,18 @@ def espn_scoreboard(league: str, date: str | None = None,
                 + ", ".join(sorted(ESPN_PATHS)[:12]) + ", ..."
             )
         sport, lg = ESPN_PATHS[canonical]
+        extra = EXTRA_SCOREBOARD_SLUGS.get(canonical, ()) if sport == "soccer" else ()
     qs = f"?dates={date.replace('-', '')}" if date else ""
-    return _get(f"{ESPN_API}/{sport}/{lg}/scoreboard{qs}", throttle=True).get("events", [])
+    events = _get(f"{ESPN_API}/{sport}/{lg}/scoreboard{qs}", throttle=True).get("events", [])
+    for slug in extra:
+        # One dead secondary feed must not cost the primary its card: a 400 on a
+        # competition ESPN has retired is the expected answer, not an outage.
+        try:
+            events += _get(f"{ESPN_API}/soccer/{slug}/scoreboard{qs}",
+                           throttle=True).get("events", [])
+        except Exception:
+            continue
+    return events
 
 
 def espn_game_state(league: str, event_id: str, with_plays: bool = True) -> GameState:

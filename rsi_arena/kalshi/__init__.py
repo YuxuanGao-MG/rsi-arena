@@ -14,6 +14,7 @@ from ._fees import breakeven, clv, edge, fee, kelly, maker_fee, taker_fee
 from ._gamestate import GameState, game_state, todays_games
 from ._history import DAY, HOUR, MINUTE, Candle, History
 from ._quotes import OrderBook, Quote, Quotes
+from ._series import SERIES_BY_LEAGUE, SWEEP_LEAGUES, series_for
 from ._taxonomy import COMPETITIONS, resolve_league
 from .replay import (HORIZON_MINUTES, MAX_STALE_S, NO_CACHE, MatchEvent, MatchTimeline,
                      ToolCache, fresh_quote, live_tools, match_timeline, realised_mid,
@@ -25,6 +26,7 @@ __all__ = [
     "GameState", "game_state", "todays_games",
     "DAY", "HOUR", "MINUTE", "Candle", "History",
     "OrderBook", "Quote", "Quotes", "COMPETITIONS", "resolve_league",
+    "SERIES_BY_LEAGUE", "SWEEP_LEAGUES", "series_for",
     "HORIZON_MINUTES", "MAX_STALE_S", "NO_CACHE", "MatchEvent", "MatchTimeline", "ToolCache",
     "fresh_quote", "live_tools", "match_timeline", "realised_mid", "replay_tools",
 ]

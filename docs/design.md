@@ -1,5 +1,82 @@
 # Design: the alternative
 
+## Status, 2026-09-27: a mapping, because the rule was wrong about most of football
+
+A Thursday of UEFA Nations League fixtures produced no forecasts and no error.
+Two independent failures, both of them silent, and both of them the same mistake
+in different clothes: a naming convention was treated as a fact.
+
+**The series ticker was derived, not looked up.** `collect_live.py` and
+`discover_fixtures.py` both asked Kalshi for `f"KX{league}GAME"`. That is right
+for the eight domestic leagues they were written against and wrong for most of
+the rest of the exchange. The Nations League trades as `KXUEFANLGAME`; the rule
+asks for `KXUEFANATIONSGAME`, which does not exist, and Kalshi answers an empty
+listing — which is exactly what it answers for a competition with no matches on.
+The English Championship is `KXEFLCHAMPIONSHIPGAME`, Argentina is
+`KXARGPREMDIVGAME`, Colombia is `KXDIMAYORGAME`, Sweden is `KXALLSVENSKANGAME`,
+Paraguay is `KXAPFDDHGAME`. Nothing about the rule announces where it stops
+working.
+
+**And the league code could not be routed to its feed anyway.**
+`resolve_league` stripped underscores out of a code *before* looking it up, so
+`UEFA_NATIONS` became `UEFANATIONS`, matched no key and no ticker stem, and came
+back `None` — on which `espn_scoreboard` raises. Seven canonical league codes
+were in that state. Even with the right series ticker, the Nations League could
+not have reached the fixture feed.
+
+`rsi_arena/kalshi/_series.py` is the mapping, and the rule is only its fallback,
+announced when it is used. Seventy-three `league -> series` pairs, every one
+verified on 2026-09-27 against both venues by one procedure: list Kalshi's 3,920
+`Sports` series, keep the 1,415 its own `tags` field calls soccer (sport from the
+metadata, never from the ticker — pattern-matching the ticker is what hid
+`KXUEFANLGAME`), keep the ones whose events split into two team codes, then link
+a few of each one's newest fixtures against the ESPN competition that serves it
+and build a timeline from a linked game. Recorded only when a link and a timeline
+both came out; the residue is in `UNMAPPED` with the reason, in `SEASONAL` for
+competitions out of season, and in `NOT_FIXTURES` for series that price something
+other than a match winner.
+
+Two things the verification found that a table alone would have missed:
+
+- **A cup and its qualifying rounds are different ESPN competitions.**
+  `KXFACUPGAME` trades the FA Cup all season, but September's rounds are served
+  by `eng.fa_qual` and only November's by `eng.fa`. Same for the Conference
+  League's whole August, and for AFCON's qualifiers.
+  `_taxonomy.EXTRA_SCOREBOARD_SLUGS` gives those leagues a second and third
+  scoreboard feed, unioned in `espn_scoreboard`. Only the scoreboard needs it:
+  ESPN's `summary?event=` endpoint is slug-agnostic, probed side by side —
+  a Conference League qualifier's summary came back identically through
+  `uefa.europa.conf_qual`, `uefa.europa.conf`, `uefa.champions` and `eng.1` —
+  so one canonical slug per league still serves every timeline.
+- **A slug that answers 200 is not a slug that serves football.** The previous
+  table's Swiss, Thai, Polish, Korean and Egyptian entries were "validated" in
+  the sense that the endpoint replied. Probed across a year of dates, several
+  reply with an empty card every single day, and several are a flat 400. Those
+  competitions are real on Kalshi and ungradeable here, which is a fact worth
+  recording rather than a mapping worth keeping.
+
+The sweep list is now every verified competition, biggest first, and
+`collect_live.py` builds a league's market catalogue only once it has seen an
+open event — so sixty-five extra competitions cost one events call each on a
+night they are not playing. Walked live on 2026-09-27: 28 competitions had open
+events, 344 of 350 were identified, 137 seconds of network for the whole sweep.
+Seventy of those events were Nations League fixtures and thirty-nine were
+CONCACAF Nations League, none of which the old list could see.
+
+The question set followed: 485 matches in nine leagues became 930 in seventy-two,
+31,243 windows, over the same span the set already covered. Eight fixtures per new
+competition, so the exam is broader without being one league's. `--keep` went from
+485 to 1,000 rather than letting the new competitions displace the oldest matches
+— displacement would have made the majors shallower to make the tail broader, and
+the keep is nearly free because `holdout`, `audit`, `cascade` and `valset` are
+absolute counts.
+
+`scripts/check_leagues.py` re-runs the verification against both venues and
+prints what has drifted — dead series, broken links, unmapped competitions that
+have started working, soccer series the table has never had an opinion about.
+Kalshi adds competitions most weeks, so run it occasionally; it is not a test,
+because a venue listing a new league is news rather than a regression.
+
 ## Status, 2026-09-24: the seeds quote a width on purpose, and reach for the whole box
 
 The book's finding was about the harnesses, so the harnesses are what changed.
@@ -286,12 +363,23 @@ day is therefore $70–$106, not the $60 the workflow's own comment claimed.
 
 ### The question set
 
-485 matches across nine leagues, 11,146 windows on disk, built by
+930 matches across 72 competitions, 31,243 windows on disk, built by
 `scripts/discover_fixtures.py` from settled Kalshi events that link to a fixture
-with a usable timeline. A generation thins to eight windows a match — about
-3,900 — because power comes from matches, not from windows within one.
+with a usable timeline. A generation thins to eight windows a match — 7,440 —
+because power comes from matches, not from windows within one.
 
-Up from five matches and 170 windows. The last jump was 168 matches recovered in
+Up from 485 matches in nine leagues on 2026-09-27, when the series mapping made
+the other sixty-odd competitions reachable: the same three-month window, eight
+new fixtures per competition, and the same bar every other fixture cleared. Two
+things the build found that discovery could not. Seven fixtures resolved with a
+timeline of ten windows and fewer than ten *quotable* ones — `resolve` counts the
+timeline, and a market nobody two-sided is not a question, so they were dropped;
+the original 485 had no fixture under 28 windows, which is how they stood out.
+And `KXFIFAWGAME` contributes nothing at all: its fifty June events have no
+settled markets, so the Women's World Cup qualifiers can be forecast live and
+never replayed.
+
+Up from five matches and 170 windows before that. The last jump was 168 matches recovered in
 one change: Kalshi dates an event by the day it listed the contract and the
 fixture feed by the day it kicked off, so Sevilla against Valencia trades as
 26SEP13 and was played on the 11th. Looking one day either side of the ticker's
@@ -538,7 +626,8 @@ the group. News by `(symbol, news_id)`, not by `news_id` alone — one story on
 two names is two rows by design.
 
 **Prune, and in what order.** Kalshi orders fixtures by ticker date and keeps
-the newest `--keep` (485, the size the set had when the roll began); crypto
+the newest `--keep` (1,000 since the sweep widened from eight competitions to
+seventy-three; it was 485, the size the set had when the roll began); crypto
 moves `from` to `to - keep + 1` (365 days); news drops whole session dates from
 the oldest while the remainder still holds `--keep` symbol-days (2,350).
 In every topic the benchmark is rewritten first, *then* the window files it no

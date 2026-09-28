@@ -41,6 +41,8 @@ from rsi_arena.kalshi._gamestate import todays_games              # noqa: E402
 from rsi_arena.kalshi._history import History                     # noqa: E402
 from rsi_arena.kalshi._linking import (harvest_team_codes,        # noqa: E402
                                        link_event, names_from_markets)
+from rsi_arena.kalshi._series import SWEEP_LEAGUES, series_for    # noqa: E402
+from rsi_arena.kalshi._taxonomy import COMPETITIONS               # noqa: E402
 from rsi_arena.harness.runner import Runner                       # noqa: E402
 from rsi_arena.kalshi.replay import (HORIZON_MINUTES,             # noqa: E402
                                      fresh_quote, live_tools,
@@ -102,9 +104,8 @@ def fixtures_on(league: str, day: str) -> list[dict]:
 
 def live_events(client: KalshiClient, league: str) -> list[dict]:
     """Open events on this league's match-winner series."""
-    series = f"KX{league.replace('_', '')}GAME"
     return list(client.paginate("/events", "events",
-                                {"series_ticker": series, "status": "open"},
+                                {"series_ticker": series_for(league), "status": "open"},
                                 max_items=200))
 
 
@@ -131,7 +132,7 @@ def identify(client: KalshiClient, league: str, event: str,
 
     try:
         link = link_event(client, event, league, by_date,
-                          series_ticker=f"KX{league.replace('_', '')}GAME",
+                          series_ticker=series_for(league),
                           names=names, codes=codes)
     except Exception as exc:
         return None, f"link raised {type(exc).__name__}: {exc}"
@@ -217,11 +218,25 @@ def write_resolved(pending: list[dict], hist: History, out: Path) -> list[dict]:
 
 async def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--league", default="EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE")
+    ap.add_argument("--league", default=",".join(SWEEP_LEAGUES),
+                    help="comma separated, or 'all' for every competition with a "
+                         "verified series in kalshi/_series.py — which is the "
+                         "default. It used to be the eight domestic leagues this "
+                         "was written for, which is why a card full of UEFA "
+                         "Nations League fixtures produced nothing")
     ap.add_argument("--harness", default="harnesses/horizon-5m.json")
     ap.add_argument("--minutes", type=int, default=120, help="how long to keep collecting")
-    ap.add_argument("--poll", type=int, default=300, help="seconds between sweeps")
-    ap.add_argument("--max-contracts", type=int, default=6, help="markets per sweep")
+    ap.add_argument("--poll", type=int, default=120,
+                    help="seconds to wait between sweeps. Was five minutes, which "
+                         "was most of a cycle when a sweep over eight leagues took "
+                         "seconds. A sweep over seventy-three takes two to four "
+                         "minutes of network on its own, so the wait is now the "
+                         "smaller half of the cycle rather than the larger")
+    ap.add_argument("--max-contracts", type=int, default=8,
+                    help="markets per sweep. The binding constraint is the clock, "
+                         "not the money: a forecast on the Jev harness costs about "
+                         "two hundredths of a cent and takes twenty to thirty "
+                         "seconds, so eight is about what fits between two sweeps")
     ap.add_argument("--window-usd", type=float, default=0.60,
                     help="per-forecast ceiling. The harness file says twenty cents, which is "
                          "right for replay and starved the first in-play window at a dollar "
@@ -248,7 +263,22 @@ async def main() -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    leagues = [x.strip().upper() for x in args.league.split(",") if x.strip()]
+    if args.league.strip().lower() == "all":
+        leagues = list(SWEEP_LEAGUES)
+    else:
+        leagues = [x.strip().upper() for x in args.league.split(",") if x.strip()]
+    # A league nobody has verified is swept on the KX<LEAGUE>GAME guess, which
+    # series_for announces. One that is not routed to a fixture feed at all can
+    # never be identified, so it is dropped here with a reason rather than
+    # spending the sweep's ceiling on markets nothing can attach to a match.
+    unrouted = [lg for lg in leagues if lg not in COMPETITIONS]
+    if unrouted:
+        print(f"::warning title=league not routed::no fixture feed for "
+              f"{', '.join(unrouted)}; skipped")
+        leagues = [lg for lg in leagues if lg in COMPETITIONS]
+    if not leagues:
+        print("::error title=nothing to sweep::no league in --league has a fixture feed")
+        return 1
     catalogue: dict[str, tuple[set[str], dict[str, str]]] = {}
     deadline = time.time() + args.minutes * 60
     unidentified: dict[str, str] = {}
@@ -271,17 +301,27 @@ async def main() -> int:
             # refused an hour ago deserves another ask.
             _DAYS.clear()
             _REFUSED.clear()
-            targets: list[tuple[str, str, str]] = []
+            targets: list[tuple[str, str, str, bool]] = []
             for league in leagues:
                 try:
+                    # The open events first, and the catalogue only if there are
+                    # any. A league's catalogue is a sweep of every market it
+                    # ever listed — thousands of rows — and paying that for a
+                    # competition that is not playing tonight is what made a
+                    # wide league list look expensive. Sixty-five extra
+                    # competitions now cost one events call each on a quiet
+                    # night, and the catalogue is still built once per league
+                    # for the whole invocation when they are playing.
+                    events = live_events(client, league)
+                    if not events:
+                        continue
                     if league not in catalogue:
-                        series = f"KX{league.replace('_', '')}GAME"
+                        series = series_for(league)
                         markets = list(client.paginate("/markets", "markets",
                                                        {"series_ticker": series}, max_items=4000))
                         catalogue[league] = (harvest_team_codes(client, series),
                                              names_from_markets(markets))
                     codes, names = catalogue[league]
-                    events = live_events(client, league)
                 except Exception as exc:
                     # Kalshi read the socket to a timeout while a catalogue was
                     # being built and the traceback came out through main, which
@@ -327,13 +367,23 @@ async def main() -> int:
                             targets.append((league, game, m["ticker"], in_play))
 
             if not targets:
-                print(f"  nothing live across {', '.join(leagues)}; waiting")
+                print(f"  nothing live across {len(leagues)} competitions; waiting")
             # In-play first, then least-forecast, and stable. A market whose
             # match is being played can move; a pre-match book two days out is
             # pinned by construction, and ninety-four of the first ninety-seven
             # live forecasts were spent proving that. Within each class,
             # least-forecast keeps the ceiling spread over the card instead of
             # on whichever league sorts first.
+            #
+            # This is also what stops a wider card starving the leagues the
+            # sweep already covered. The key is global, so the Premier League
+            # competes with college soccer on how often each has been forecast
+            # rather than on which league was read first; ``forecasts_on``
+            # survives the sweep, so the ceiling spreads over the whole night;
+            # and because the sort is stable and targets are appended in
+            # SWEEP_LEAGUES order, a tie at equal counts falls to the bigger
+            # competition. Seventy-three leagues therefore change how *many*
+            # markets get a forecast, not which ones can.
             targets.sort(key=lambda t: (not t[3], forecasts_on[t[2]]))
             for league, game, ticker, in_play in targets[:args.max_contracts]:
                 if llm.over_budget:
@@ -380,8 +430,13 @@ async def main() -> int:
     print(f"\n{made} forecasts written to {out}, ${llm.spent_usd:.2f} spent")
     print(f"{linked}/{len(seen_events)} open events identified")
 
+    # Which leagues were actually forecast on, not which were offered: seventy
+    # competition codes in a step summary is a wall, and the interesting number
+    # is how many of them had football on.
+    swept = sorted({t.split("-")[0] for t in forecasts_on})
     lines = ["### Live collection",
-             f"- {made} forecasts across {', '.join(leagues)}",
+             f"- {made} forecasts over {len(swept)} of {len(leagues)} competitions"
+             + (f": {', '.join(swept)}" if swept else ""),
              f"- ${llm.spent_usd:.2f} spent" + (f" of ${args.max_usd:.2f}" if args.max_usd else ""),
              f"- identified {linked}/{len(seen_events)} open events ({missed:.0%} missed)"]
     if starved:
@@ -399,7 +454,7 @@ async def main() -> int:
     report(lines)
 
     if seen_events and missed > args.max_unidentified:
-        # Measured at 112 of 112 across eight leagues, so this is a regression
+        # Measured at 112 of 112 across the original eight leagues, so this is a regression
         # alarm and not an expectation. The failure it exists to catch is the
         # quiet one: a ticker format changes, a third of the events stop
         # linking, and the collection keeps running and looks merely slow.

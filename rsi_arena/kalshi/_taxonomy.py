@@ -91,43 +91,122 @@ SOCCER_STEMS: dict[str, tuple[str, str]] = {
     # England
     "EPL": ("EPL", "eng.1"), "FACUP": ("FA_CUP", "eng.fa"),
     "EFLCUP": ("EFL_CUP", "eng.league_cup"), "ENGCS": ("ENG_SHIELD", "eng.charity"),
-    "EFL": ("EFL", "eng.2"),
+    "EFLL1": ("EFL_L1", "eng.3"), "ENGNL": ("ENG_NL", "eng.5"),
+    "EWSL": ("EWSL", "eng.w.1"), "EFL": ("EFL", "eng.2"),
     # Spain, Italy, Germany, France
-    "LALIGA": ("LALIGA", "esp.1"), "COPADELREY": ("COPA_DEL_REY", "esp.copa_del_rey"),
-    "SERIEA": ("SERIEA", "ita.1"), "SERIEB": ("SERIEB", "ita.2"),
+    "LALIGA2": ("LALIGA2", "esp.2"), "LALIGA": ("LALIGA", "esp.1"),
+    "COPADELREY": ("COPA_DEL_REY", "esp.copa_del_rey"),
+    "SERIEAW": ("SERIEA_W", "ita.w.1"), "SERIEA": ("SERIEA", "ita.1"),
+    "SERIEB": ("SERIEB", "ita.2"),
+    "SERIECSCUP": ("SERIEC_SUPERCUP", "ita.3"),
+    "SERIECCUP": ("SERIEC_CUP", "ita.3"), "SERIEC": ("SERIEC", "ita.3"),
     "COPPAITALIA": ("COPPA_ITALIA", "ita.coppa_italia"),
-    "BUNDESLIGA": ("BUNDESLIGA", "ger.1"), "DFBPOKAL": ("DFB_POKAL", "ger.dfb_pokal"),
-    "LIGUE1": ("LIGUE1", "fra.1"), "COUPEDEFRANCE": ("COUPE_DE_FRANCE", "fra.coupe_de_france"),
+    "ITASUPERCUP": ("ITA_SUPERCUP", "ita.super_cup"),
+    "ESPSUPERCUP": ("ESP_SUPERCUP", "esp.super_cup"),
+    "BUNDESLIGA2": ("BUNDESLIGA2", "ger.2"), "BUNDESLIGA": ("BUNDESLIGA", "ger.1"),
+    "GER3L": ("GER_3L", "ger.3"), "DFBPOKAL": ("DFB_POKAL", "ger.dfb_pokal"),
+    "GERSC": ("GER_SUPERCUP", "ger.super_cup"),
+    "LIGUE2": ("LIGUE2", "fra.2"), "LIGUE1": ("LIGUE1", "fra.1"),
+    "COUPEDEFRANCE": ("COUPE_DE_FRANCE", "fra.coupe_de_france"),
+    "FRASUPERCUP": ("FRA_SUPERCUP", "fra.super_cup"),
     # UEFA
     "UCLW": ("UCL_W", "uefa.wchampions"), "UCL": ("UCL", "uefa.champions"),
     "UEL": ("UEL", "uefa.europa"), "UECL": ("UECL", "uefa.europa.conf"),
     "UEFASC": ("UEFA_SUPERCUP", "uefa.super_cup"), "UEFANL": ("UEFA_NATIONS", "uefa.nations"),
     # Americas
-    "MLS": ("MLS", "usa.1"), "NWSL": ("NWSL", "usa.nwsl"),
-    "USLCUP": ("US_OPEN_CUP", "usa.open"), "USL": ("USL", "usa.usl.1"),
+    "MLSAST": ("MLS_ALLSTAR", "usa.1"), "MLS": ("MLS", "usa.1"),
+    "NWSL": ("NWSL", "usa.nwsl"),
+    "USOPENCUP": ("US_OPEN_CUP", "usa.open"), "USLCUP": ("USL_CUP", "usa.usl.l1.cup"),
+    "USL": ("USL", "usa.usl.1"), "NCAAMSOCCER": ("NCAA_SOCCER", "usa.ncaa.m.1"),
     "LIGAEXP": ("LIGA_EXPANSION", "mex.2"), "LIGAMX": ("LIGAMX", "mex.1"),
+    "BRASILEIROB": ("BRASILEIRAO_B", "bra.2"), "BRASILEIROC": ("BRASILEIRAO_C", "bra.3"),
     "BRASILEIRAOB": ("BRASILEIRAO_B", "bra.2"), "BRASILEIRO": ("BRASILEIRAO", "bra.1"),
-    "ARGPREMDIV": ("ARGENTINA", "arg.1"), "URYPD": ("URUGUAY", "uru.1"),
-    "CHILEAN": ("CHILE", "chi.1"), "COLOMBIAN": ("COLOMBIA", "col.1"),
+    "COPADOBRASIL": ("COPA_DO_BRASIL", "bra.copa_do_brazil"),
+    "ARGNACB": ("ARGENTINA2", "arg.2"), "ARGPREMDIV": ("ARGENTINA", "arg.1"),
+    "URYPD": ("URUGUAY", "uru.1"),
+    "CHILEAN": ("CHILE", "chi.1"), "CHLLDP": ("CHILE", "chi.1"),
+    "COLOMBIAN": ("COLOMBIA", "col.1"),
     "DIMAYOR": ("COLOMBIA", "col.1"), "PERLIGA1": ("PERU", "per.1"),
     "ECULP": ("ECUADOR", "ecu.1"), "VENFUTVE": ("VENEZUELA", "ven.1"),
+    "BOLPDIV": ("BOLIVIA", "bol.1"), "APFDDH": ("PARAGUAY", "par.1"),
+    "CANPL": ("CANADA", "can.1"),
     "CONMEBOLLIB": ("LIBERTADORES", "conmebol.libertadores"),
     "CONMEBOLSUD": ("SUDAMERICANA", "conmebol.sudamericana"),
+    "CONCACAFCCUP": ("CONCACAF_CL", "concacaf.champions"),
     "CONCACAFCL": ("CONCACAF_CL", "concacaf.champions"),
+    "CONCACAFNL": ("CONCACAF_NL", "concacaf.nations.league"),
     "LEAGUESCUP": ("LEAGUES_CUP", "concacaf.leagues.cup"),
     # Rest of Europe
-    "EREDIVISIE": ("EREDIVISIE", "ned.1"), "KNVBCUP": ("KNVB_CUP", "ned.cup"),
-    "LIGAPORTUGAL": ("PRIMEIRA", "por.1"), "SCOTTISHPREM": ("SCOTTISH", "sco.1"),
-    "BELGIANPL": ("BELGIUM", "bel.1"), "SUPERLIG": ("TURKEY", "tur.1"),
+    "EREDIVISIEW": ("EREDIVISIE_W", "ned.w.1"), "EREDIVISIE": ("EREDIVISIE", "ned.1"),
+    "EERSTEDIV": ("NED2", "ned.2"), "TWEEDEDIV": ("NED3", "ned.3"),
+    "KNVBCUP": ("KNVB_CUP", "ned.cup"),
+    "LIGAPORTUGAL": ("PRIMEIRA", "por.1"), "TACAPORT": ("TACA_PORTUGAL", "por.taca.portugal"),
+    "SCOTTISHPREM": ("SCOTTISH", "sco.1"), "SCOCUP": ("SCOTTISH_CUP", "sco.tennents"),
+    "BELGIANPL": ("BELGIUM", "bel.1"),
+    "SUPERLIG": ("TURKEY", "tur.1"), "TFF1LIG": ("TURKEY2", "tur.2"),
     "SLGREECE": ("GREECE", "gre.1"), "SWISSLEAGUE": ("SWITZERLAND", "sui.1"),
     "AUSTRIANBL": ("AUSTRIA", "aut.1"), "DENSUPERLIGA": ("DENMARK", "den.1"),
-    "ALLSVENSKAN": ("SWEDEN", "swe.1"), "ELITESERIEN": ("NORWAY", "nor.1"),
+    "ALLSVENSKAN": ("SWEDEN", "swe.1"), "ETTAN": ("SWEDEN2", "swe.2"),
+    "ELITESERIEN": ("NORWAY", "nor.1"), "EKSTRAKLASA": ("POLAND", "pol.1"),
+    "CZEFL": ("CZECH", "cze.1"), "CZEFNL": ("CZECH2", "cze.2"),
+    "HNL": ("CROATIA", "cro.1"), "SRBSL": ("SERBIA", "srb.1"),
+    "SVK2L": ("SLOVAKIA2", "svk.2"), "SVNPL": ("SLOVENIA", "svn.1"),
+    "ISRPLCUP": ("ISRAEL_PL_CUP", "isr.1"), "ISRNLCUP": ("ISRAEL_NL_CUP", "isr.2"),
+    "ISRSCUP": ("ISRAEL_STATE_CUP", "isr.1"), "ISRSUPCUP": ("ISRAEL_SUPERCUP", "isr.1"),
+    "ISRPL": ("ISRAEL", "isr.1"), "ISRNL": ("ISRAEL2", "isr.2"),
+    "FINCUP": ("FINLAND_CUP", "fin.cup"), "FINYL": ("FINLAND2", "fin.2"),
+    "FROCUP": ("FAROE_CUP", "fro.cup"), "FROPL": ("FAROE", "fro.1"),
+    "GRECUP": ("GREECE_CUP", "gre.cup"), "SRBCUP": ("SRB_CUP", "srb.1"),
+    "SVKCUP": ("SVK_CUP", "svk.cup"), "SVNCUP": ("SVN_CUP", "svn.1"),
+    "LVAVIR": ("LATVIA", "lva.1"),
     # Asia, Africa, Oceania
-    "JLEAGUE": ("JLEAGUE", "jpn.1"), "CHNSL": ("CHINA", "chn.1"),
-    "SAUDIPL": ("SAUDI", "ksa.1"), "THAIL1": ("THAILAND", "tha.1"),
+    "JLEAGUE": ("JLEAGUE", "jpn.1"), "J2LEAGUE": ("JLEAGUE2", "jpn.2"),
+    "KLEAGUE": ("KLEAGUE", "kor.1"), "K2LEAGUE": ("KLEAGUE2", "kor.2"),
+    "CHNSL": ("CHINA", "chn.1"), "CHNL1": ("CHINA2", "chn.2"),
+    "SAUDIPL": ("SAUDI", "ksa.1"), "UAEPL": ("UAE", "uae.1"),
+    "QSTARS": ("QATAR", "qat.1"),
+    "THAIL1": ("THAILAND", "tha.1"), "IDNSL": ("INDONESIA", "idn.1"),
+    "MYSL": ("MALAYSIA", "mys.1"), "SGPPL": ("SINGAPORE", "sgp.1"),
+    "VLEAGUE1": ("VIETNAM", "vie.1"), "EGYPL": ("EGYPT", "egy.1"),
     "INDIANSL": ("INDIA", "ind.1"), "ALEAGUE": ("A_LEAGUE", "aus.1"),
-    "AFCCL": ("AFC_CL", "afc.champions"), "AFCAC": ("AFC_CL", "afc.champions"),
+    "ASEAN": ("ASEAN", "aff.championship"),
+    # AFCAC is the AFC *Asian Cup*, a national-team tournament, and used to be
+    # mapped onto the AFC Champions League — a club competition on a different
+    # continent's calendar. They are two series and two ESPN competitions.
+    "AFCCL": ("AFC_CL", "afc.champions"), "AFCAC": ("AFC_ASIAN_CUP", "afc.asian.cup"),
     "AFCON": ("AFCON", "caf.nations"), "FIFAW": ("FIFA_WWC", "fifa.wwc"),
+    "CLUBWC": ("CLUB_WC", "fifa.cwc"),
+    "BALLERLEAGUE": ("BALLER_LEAGUE", "nonfifa"),
+    # Friendlies. Clubs and national teams are different ESPN competitions and
+    # different Kalshi series, so they are different leagues here.
+    "INTLFRIENDLY": ("INTL_FRIENDLY", "fifa.friendly"),
+    "CLUBF": ("CLUB_FRIENDLY", "club.friendly"),
+}
+
+# Competitions whose fixtures ESPN splits over more than one competition feed.
+#
+# A cup's qualifying rounds are a different ESPN competition from the cup:
+# ``KXFACUPGAME`` trades the FA Cup all season, but the September rounds are
+# served by ``eng.fa_qual`` and only the November ones by ``eng.fa``. One slug
+# per league therefore loses months of a competition, silently — the Conference
+# League's whole August was invisible for exactly this reason.
+#
+# The scoreboard is the only lookup that needs the right competition. ESPN's
+# ``summary?event=<id>`` endpoint is slug-agnostic — probed on 2026-09-27, a
+# Conference League qualifier's summary came back identically through
+# ``uefa.europa.conf_qual``, ``uefa.europa.conf``, ``uefa.champions`` and even
+# ``eng.1`` — so a timeline needs no entry here, and one canonical slug per
+# league in SOCCER_STEMS remains correct.
+EXTRA_SCOREBOARD_SLUGS: dict[str, tuple[str, ...]] = {
+    "UCL": ("uefa.champions_qual",),
+    "UEL": ("uefa.europa_qual",),
+    "UECL": ("uefa.europa.conf_qual",),
+    "UCL_W": ("uefa.wchampions_qual",),
+    "FA_CUP": ("eng.fa_qual",),
+    "AFCON": ("caf.nations_qual",),
+    # "FIFA Women's Game" is currently the 2027 Women's World Cup's European
+    # qualifying group stage, which ESPN serves as its own competition.
+    "FIFA_WWC": ("fifa.wworldq.uefa", "fifa.wwcq.ply"),
 }
 
 # Longest stem first, so LIGAMX is not shadowed by LIGA-prefixed neighbours.
@@ -206,7 +285,17 @@ def resolve_league(value: str) -> str | None:
     """
     if not value:
         return None
-    probe = value.strip().upper().replace("-", "").replace("_", "")
+    # The canonical code exactly as written, before anything is stripped out of
+    # it. Stripping first meant a code containing an underscore could fail to
+    # resolve to itself: ``UEFA_NATIONS`` became ``UEFANATIONS``, which is not a
+    # key and is not the ``UEFANL`` ticker stem either, so it came back None —
+    # and ``espn_scoreboard`` raises on None. The Nations League was therefore
+    # unreachable twice over: the series ticker was guessed wrong, and the one
+    # league code that names the competition could not be routed to its feed.
+    raw = value.strip().upper()
+    if raw in COMPETITIONS:
+        return raw
+    probe = raw.replace("-", "").replace("_", "")
     if probe in COMPETITIONS:
         return probe
 
@@ -222,7 +311,8 @@ def resolve_league(value: str) -> str | None:
             return league
 
     for league in COMPETITIONS:
-        if probe.startswith(league) or league.startswith(probe):
+        flat = league.replace("_", "")
+        if probe.startswith(flat) or flat.startswith(probe):
             return league
     return None
 
@@ -412,7 +502,16 @@ def classify_series(ticker: str, title: str = "", category: str = "",
         sport, league = Sport.SOCCER, "OTHERLEAGUE"
 
     market_type = MarketType.OTHER
-    for pattern, mt in _TYPE_PATTERNS:
+    # A stem that *ends* in GAME names the fixture's winner, whatever else the
+    # words in it say. The generic patterns test CHAMPIONSHIP before
+    # GAME_WINNER, so every cup's match-winner series came out a championship —
+    # KXFACUPGAME, KXEFLCUPGAME, KXCOPADELREYGAME, KXUSLCUPGAME — and
+    # ``is_game_level`` was then False for all of them, which is the wrong answer
+    # for a market that settles on one afternoon's result. Checked first because
+    # the suffix is the exchange's own statement about what the series is.
+    if stem.endswith("GAME"):
+        market_type = MarketType.GAME_WINNER
+    for pattern, mt in ([] if market_type is MarketType.GAME_WINNER else _TYPE_PATTERNS):
         # Match the ticker stem and the title separately: the stem is
         # concatenated words, so word-boundary anchors only work on the title.
         if re.search(pattern, stem) or re.search(pattern, title.upper()):
@@ -451,5 +550,15 @@ def classify_many(series: list[dict]) -> list[SeriesClass]:
 
 
 # Leagues for which a live game-state feed exists in gamestate.py.
-LIVE_STATE_SUPPORTED = {"MLB", "NHL", "NFL", "NBA", "WNBA", "NCAAF", "NCAAB",
-                        "EPL", "LALIGA", "SERIEA", "BUNDESLIGA", "LIGUE1", "MLS", "UCL"}
+#
+# Every key of COMPETITIONS, by construction: gamestate derives ESPN_PATHS from
+# it, so a league in the registry is a league with a feed. This used to be a
+# hand-written list of fourteen, which said the Champions League was the only
+# continental competition supported and the Nations League was not supported at
+# all — neither of which was ever true of the code, and both of which were the
+# kind of thing someone reads before deciding what to sweep.
+#
+# Whether a feed actually *answers* for a competition is a different question,
+# and an empirical one: see ``_series.UNMAPPED`` for the ones ESPN lists and does
+# not serve.
+LIVE_STATE_SUPPORTED = frozenset(COMPETITIONS)
