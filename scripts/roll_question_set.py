@@ -30,7 +30,8 @@ How each topic rolls, as a procedure
    ``discover_fixtures.DATE_SPREAD`` (three days), so the search window starts
    ``DATE_SPREAD`` days before newest and ends at ``--until`` (yesterday).
 2. For every league already in the set, in alphabetical order, the settled
-   events of its match-winner series (``KX<LEAGUE>GAME``) are read newest
+   events of its match-winner series (``kalshi/_series.py``, not the
+   ``KX<LEAGUE>GAME`` guess this used to derive) are read newest
    first. An event is a candidate when its ticker date is inside the window
    and its ticker is not already in the set. Reading stops once
    twenty-five consecutive events are older than the window.
@@ -49,7 +50,7 @@ How each topic rolls, as a procedure
    its horizon on them. The path script is imported defensively: a checkout
    without it logs a notice and rolls on, leaving the new windows pathless,
    which the book reads as a quote nothing ever filled.
-6. Prune: fixtures are ordered by ticker date, the newest ``--keep`` (485)
+6. Prune: fixtures are ordered by ticker date, the newest ``--keep`` (1,000)
    stay, the benchmark is rewritten without the rest, and then their window
    files are deleted. Nothing else under ``benchmarks/windows`` is touched.
 
@@ -151,7 +152,27 @@ ALL = "all"
 #: free and unlimited from the Binance mirror, so the set is a year: 365 days
 #: hold out 120 and resolve about 0.02. This is the number the weekly roll
 #: maintains; shrinking it silently shrinks the gate's eyesight.
-KEEP = {KALSHI: 485, CRYPTO: 365, NEWS: 2350}
+#
+# Kalshi was 485 matches across nine leagues, which is what one sweep of eight
+# domestic leagues plus the Champions League produced. The sweep now covers
+# seventy-three competitions, and 930 matches across seventy-two of them are on
+# disk. Raising the keep rather than letting the new competitions displace the
+# oldest matches, for three reasons:
+#
+#   * Displacement would have made the exam *narrower* in the majors to make it
+#     broader elsewhere — pruning to 485 by recency would drop half the EPL and
+#     LaLiga history to fit the Ekstraklasa in. Breadth was the point; trading
+#     depth for it is not.
+#   * It is nearly free at the gate, which is what the cost question is about.
+#     `holdout` (300) and `audit` (60) are absolute counts, and the search's
+#     `cascade` and `valset` are absolute too, so a generation pays for the same
+#     number of window evaluations whatever the set's size. What grows is the
+#     pool those are drawn from, which is the thing a wider set is for.
+#   * Disk is 34 KB a match: 930 matches is 31 MB of `benchmarks/windows`
+#     against 17 MB before, and the discovery that built them was about three
+#     hours of throttled network, once.
+#
+KEEP = {KALSHI: 1000, CRYPTO: 365, NEWS: 2350}
 #: Where each topic's discovery leaves venue data, beside the question set.
 DATA_DIRS = {CRYPTO: "benchmarks/crypto-data", NEWS: "benchmarks/news-data"}
 #: Minutes a topic may spend discovering before it keeps what it has.

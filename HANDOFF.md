@@ -25,6 +25,68 @@ copied into `rsi_arena/kalshi/`. `docs/sean-runtime-notes.md` describes the
 old codebase; `docs/frameworks.md` is the survey that chose GEPA. Treat the old
 repo as reference only; do not depend on it.
 
+## The sweep covers every competition Kalshi prices (2026-09-27)
+
+It covered eight. A Thursday full of UEFA Nations League fixtures produced no
+forecasts and no error, for two reasons that are the same reason twice:
+
+1. `collect_live.py` and `discover_fixtures.py` derived the series ticker as
+   `f"KX{league}GAME"`. The Nations League trades as `KXUEFANLGAME`, so the
+   sweep asked for `KXUEFANATIONSGAME`, got an empty listing, and reported a
+   quiet evening — an empty listing is what Kalshi answers for a competition
+   with no matches on, so there was nothing to notice.
+2. `resolve_league` stripped underscores *before* looking a code up, so
+   `UEFA_NATIONS` resolved to nothing and `espn_scoreboard` raised on it. Seven
+   league codes were in that state. Even with the right ticker, the Nations
+   League could not have reached its fixture feed.
+
+**`rsi_arena/kalshi/_series.py` is the mapping now.** Seventy-three
+`league -> series` pairs, each verified on 2026-09-27 against the live exchange
+*and* the live fixture feed, with a comment per line saying which ESPN
+competition answered and how many sampled fixtures linked. `series_for()` is a
+lookup; `KX{LEAGUE}GAME` is only its fallback and says so when it is used. The
+residue is recorded too, with reasons: `UNMAPPED` (49 real per-match series ESPN
+cannot grade — a flat 400 for Poland, Korea, Croatia, Egypt; an empty card every
+day of the year for Switzerland, Thailand, the Czech top flight), `SEASONAL`
+(8 out of season), `NOT_FIXTURES` (10 series ending in GAME that price something
+else, or nothing).
+
+Two things worth keeping in mind before editing any of it:
+
+- **A cup's qualifying rounds are a different ESPN competition from the cup.**
+  September's FA Cup rounds are `eng.fa_qual`, November's are `eng.fa`.
+  `_taxonomy.EXTRA_SCOREBOARD_SLUGS` unions the extra feeds in
+  `espn_scoreboard`. Only the scoreboard needs it — ESPN's `summary?event=`
+  endpoint is slug-agnostic, so one canonical slug still serves every timeline.
+- **An ESPN slug that answers 200 is not a slug that serves football.** That is
+  how the old table came to claim `sui.1`, `tha.1`, `pol.1` and `egy.1`.
+
+**Run `python scripts/check_leagues.py` occasionally** — monthly is plenty, or
+whenever a sweep looks thinner than the fixture list. It re-asks both venues and
+prints the drift: series that have died, mapped leagues that stopped linking,
+unmapped ones that started working, and soccer series the table has never had an
+opinion about. `--quick` skips the fixture feed and takes about a minute; the
+full run takes five. It is deliberately not a test: Kalshi listing a new
+competition is news, not a regression, and the table is edited by a person who
+can say why in the commit. What *is* a test is that the table is self-consistent
+and that every league in it reaches a fixture feed (`tests/test_leagues.py`),
+including a named regression test for `UEFA_NATIONS -> KXUEFANLGAME`.
+
+**The question set went with it.** 485 matches in nine leagues became 930 in
+seventy-two, 31,243 windows, over the same three-month span (2026-07-16 to
+2026-09-26) — `discover_fixtures.py --league all --max-per-league 5` twice, once
+over the set's own window and once over the eleven days past its end, so the new
+competitions are added rather than the old ones displaced. `--keep` is 1,000 now;
+the reasoning is in `roll_question_set.py`. `preflight.py` passes 22 of 22 on it.
+
+`live.yml` sweeps `all` (the seventy-three, biggest first) at
+`--max-contracts 8`, and the unidentified alarm moved from a tenth to a fifth
+because a wide card always has a few competitions in a round the feed files
+elsewhere. Walked live on 2026-09-27: 28 competitions had open events, 344 of 350
+identified, 137 seconds of network for the whole sweep. `collect_live.py` builds a
+league's market catalogue only once it has seen an open event, which is what keeps
+sixty-five extra competitions free on a quiet night.
+
 ## Read this first (2026-09-22)
 
 **Three topics now, one loop, one reader.** `rsi-arena topic --topic <name> --json`
@@ -32,7 +94,7 @@ prints what each runs on; the workflows read the same spec with `--shell`.
 
 | topic | instance | unit / tick | seed harness | question set | keys |
 |---|---|---|---|---|---|
-| `kalshi-horizon-5m` | a Kalshi soccer contract at an instant, 5 min out | cents / 1c | `harnesses/horizon-5m-jev.json` (Jev; the Opus lineage's 11 generations stay under `runs/`, the Jev lineage is `runs/kalshi-jev/`) | 485 matches, `benchmarks/windows/`; held-out 300 | OpenRouter |
+| `kalshi-horizon-5m` | a Kalshi soccer contract at an instant, 5 min out | cents / 1c | `harnesses/horizon-5m-jev.json` (Jev; the Opus lineage's 11 generations stay under `runs/`, the Jev lineage is `runs/kalshi-jev/`) | 930 matches over 72 competitions, `benchmarks/windows/`; held-out 300 | OpenRouter |
 | `crypto-horizon-1m` | BTC/ETH/SOL spot at an instant, 1 min out, every 5 min | bps / 2 | `harnesses/crypto-horizon-1m-jev.json` (Jev) | 365 UTC days, 8,760 windows, `benchmarks/windows-crypto/` + `benchmarks/crypto-data/`; held-out 120, audit 60 | none for data |
 | `news-equity-5m` | a Benzinga item on a US stock/ETF, 5 min out, RTH | bps / 5 | `harnesses/news-equity-5m-jev.json` (Jev) | **empty until Alpaca keys exist**; then `scripts/discover_news.py` | `APCA_API_KEY_ID`, `APCA_API_SECRET_KEY` |
 
@@ -133,7 +195,7 @@ records. Each component now sees evidence it can act on.
 | Kalshi horizon topic (windows, score, background, feedback) | `rsi_arena/topics/kalshi_horizon/` | done |
 | CLI `rsi-arena windows / bench / optimize / show` | `rsi_arena/cli.py` | done; `windows` verified live |
 | GitHub Actions: `ci` (pytest) and `loop` (workflow_dispatch) | `.github/workflows/` | done; `loop windows` ran twice successfully |
-| Question set: 11,146 windows over 485 matches in nine leagues, thinned to 8 a match | `benchmarks/windows/` | committed, built by the workflow |
+| Question set: 31,243 windows over 930 matches in 72 competitions, thinned to 8 a match | `benchmarks/windows/` | committed, built by the workflow |
 | Tests, 32, offline, fake model and fake history | `tests/` | passing |
 
 **Model calls have now happened.** Baseline, and two full generations against
@@ -150,7 +212,8 @@ the measurement rather than the harness:
    matches cannot support an interval at all.
 
 The question set is 485 matches now, not five, because the gate's power turned
-on that and not on the optimizer.
+on that and not on the optimizer. (930 across seventy-two competitions as of
+2026-09-27; see the 2026-09-27 section above.)
 
 ## The question sets roll every Sunday (2026-09-23)
 
@@ -159,10 +222,17 @@ step per topic, and commits only `benchmarks/` paths. Each topic appends the
 markets its venue settled since the set's newest group — Kalshi fixtures newer
 than the newest event-ticker date, crypto days after the benchmark's `to`, news
 sessions after the latest New York date — and then prunes back to `--keep`
-groups by recency: 485 matches, 365 days, 2,350 symbol-days - the sizes the sets
+groups by recency: 1,000 matches, 365 days, 2,350 symbol-days - the sizes the sets
 had when the roll began, except crypto, whose quarter was deepened to a year on
 2026-09-24 because thirty held-out days could not resolve any gap the search
-produces. `--keep` is a count of *groups*, not of windows or instances, because
+produces, and Kalshi, whose 485 became 1,000 on 2026-09-27 when the sweep went
+from eight leagues to seventy-three. Raising that keep rather than displacing the
+oldest matches, because pruning to 485 by recency would have dropped half the
+Premier League and LaLiga history to fit the Ekstraklasa in — narrower where it
+was deep, to be broader where it was empty. It costs disk (33 KB a match) and
+nothing at the gate: `holdout`, `audit`, `cascade` and `valset` are absolute
+counts, so a generation buys the same number of window evaluations whatever the
+set's size, drawn from a wider pool. `--keep` is a count of *groups*, not of windows or instances, because
 the split is by group and power comes from groups. The
 procedure, the dedupe rules and the full list of what a roll must never do are
 written out in the script's module docstring and in `docs/design.md`, *How the

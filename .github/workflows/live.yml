@@ -53,8 +53,14 @@ on:
   workflow_dispatch:
     inputs:
       league:
-        description: "leagues to sweep"
-        default: EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE
+        description: "leagues to sweep, or 'all' for every verified competition"
+        # 'all' is the seventy-three competitions with a verified series ticker
+        # and a working fixture feed in rsi_arena/kalshi/_series.py, biggest
+        # first. This input used to name eight domestic leagues, which is why a
+        # Thursday of UEFA Nations League fixtures produced no forecasts at all:
+        # no continental or national-team competition was swept, and the series
+        # ticker the sweep would have asked for did not exist.
+        default: all
       minutes:
         description: "how long to collect; must leave room under the job timeout"
         default: "50"
@@ -63,10 +69,22 @@ on:
         default: "0.5"
       max_contracts:
         description: "markets forecast per sweep; the ceiling divided over the window"
-        default: "2"
+        # Eight, not two. Two was sized for a narrow card and a nearly empty key;
+        # the card is now seventy-three competitions, and a forecast on the Jev
+        # harness costs about $0.0002, so eight a sweep over six or seven sweeps
+        # is fifty forecasts for roughly a cent. The clock is what binds: each
+        # forecast is a model call with tool calls behind it, twenty to thirty
+        # seconds, and eight of them is most of the five minutes between sweeps.
+        default: "8"
       max_unidentified:
         description: "fail the job past this fraction of unlinkable open events"
-        default: "0.10"
+        # A fifth, not a tenth. The alarm exists to catch a ticker format
+        # changing under us, and it still does at this level. What changed is the
+        # card: among seventy-three competitions there are always a few in a
+        # round the fixture feed files under a different competition, and holding
+        # a wide sweep to the tenth a narrow one achieved would turn every
+        # weeknight into a red job nobody reads.
+        default: "0.20"
       harness:
         description: "the harness that forecasts"
         default: harnesses/horizon-5m-jev.json
@@ -158,7 +176,7 @@ jobs:
           fi
 
       # Fails the job when more than a tenth of the open events could not be
-      # attached to a fixture. Identification is 112 of 112 across eight leagues
+      # attached to a fixture. Identification was 112 of 112 across eight leagues
       # today, so this is a regression alarm: the failure worth catching is the
       # quiet one, where a ticker format shifts and the collection keeps running
       # against a third fewer matches while looking merely uneventful. The script
@@ -172,13 +190,13 @@ jobs:
         shell: bash
         run: |
           python scripts/collect_live.py \
-            --league "${{ inputs.league || 'EPL,LALIGA,SERIEA,BUNDESLIGA,LIGUE1,MLS,LIGAMX,EREDIVISIE' }}" \
+            --league "${{ inputs.league || 'all' }}" \
             --harness "${{ inputs.harness || 'harnesses/horizon-5m-jev.json' }}" \
             --minutes "${{ inputs.minutes || '50' }}" \
-            --max-contracts "${{ inputs.max_contracts || '2' }}" \
+            --max-contracts "${{ inputs.max_contracts || '8' }}" \
             --max-usd "${{ inputs.max_usd || '2' }}" \
             --window-usd "0.60" \
-            --max-unidentified "${{ inputs.max_unidentified || '0.10' }}" | tee live.txt
+            --max-unidentified "${{ inputs.max_unidentified || '0.20' }}" | tee live.txt
 
       # `always()`, because the two ways the collect step fails — identification
       # degrading past the threshold, or the job being cancelled — both leave
