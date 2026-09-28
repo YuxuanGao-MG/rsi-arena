@@ -619,6 +619,16 @@ jobs:
             --run-dir "${{ steps.s3.outputs.run_dir }}"
 
           git add -A -- "${paths[@]}"
+          # `.gitignore` does not apply to a path git already tracks, and a
+          # generation directory created by an earlier run carries its rollouts
+          # and gepa tree into the index the first time anything adds it with
+          # `-A`. That is how 23,570 heavy files and 778 MB were still on main a
+          # day after they were supposed to have left it, and how two runs on 28
+          # September died pushing an 82 MB dump. Unstage them every time, not
+          # once.
+          git diff --cached --name-only -z \
+            | grep -zE 'runs/.*/(rollouts|gepa)/' \
+            | xargs -0 --no-run-if-empty git rm -q --cached --ignore-unmatch || true
           if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
           git commit -m "loop: $TOPIC ${{ inputs.command || 'optimize' }} run ${{ github.run_id }}"
           for i in 1 2 3; do
