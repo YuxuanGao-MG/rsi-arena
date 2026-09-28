@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen16",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no change, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nRecent cycles show three clear patterns:\n\n### **1. The harness correctly fades pure noise (listicles, TV segments, retrospective stories)**\n- **Examples scoring near zero skill (correct):**\n  - HD \"10 Consumer Discretionary Stocks Whale Activity\" (10 symbols, options flow): predicted -0.1 bps (2.0 width), actual +9.2 bps \u2014 skill -0.01, correctly treated as noise\n  - UNH \"CNBC Halftime Report Final Trades\" (3 symbols, TV segment): predicted 0.0 bps (2.0 width), actual -9.5 bps \u2014 skill +0.00, correctly treated as noise\n  - INTC \"Top 12 Most-Searched Tickers in June\" (12 symbols, retrospective monthly listicle): predicted -1.2 bps (2.0 width), actual -118.6 bps \u2014 skill +0.01, correctly treated as noise but missed a massive move\n\n**The noise classification is working.** Width of 2.0 bps on pure noise is correct.\n\n### **2. The harness correctly identifies and fades stories where the market has already moved**\n- **Examples scoring positive skill:**\n  - AMZN \"Amazon, gig companies see spike in workers on SNAP and Medicaid\" (1 symbol, passing mention of labor data, not material catalyst): predicted -0.0 bps (2.0 width), actual -5.3 bps \u2014 skill +0.01, correctly faded\n  - QQQ \"Your 401(k) May Have Just Bought SpaceX for You\" (3 symbols, QQQ/QQQM/SPCX, SpaceX inclusion story): predicted -0.3 bps (2.0 width), actual +3.8 bps \u2014 skill -0.05, correctly treated as minor thematic\n\n**The \"already priced\" logic is working.** When the tape is flat or drifting and the story is not a direct catalyst, predicting near-zero is correct.\n\n### **3. The harness is missing two critical failure modes:**\n\n**A. It fades direct catalysts when it should predict 5-15 bps moves**\n- **META \"U.S. Judge Will Not Block Meta Platforms Layoffs In Novel AI Discrimination Case\" (1 symbol, direct regulatory/legal news about META):** predicted -4.0 bps (4.0 width), actual -10.2 bps \u2014 skill +0.40, correct direction but underestimated magnitude\n  - **What this shows:** The harness correctly identified a direct catalyst (single symbol, material legal news) and predicted a move, but the magnitude was conservative (should have been -8 to -12 bps with 6-8 bps width)\n  - **Key insight:** A federal judge ruling on layoffs is material company-specific news, not noise. The harness got the direction right but was too cautious on magnitude.\n\n**B. It fails to recognize when \"noise\" stories coincide with large market moves already underway**\n- **INTC \"Top 12 Most-Searched Tickers in June\" (12 symbols, retrospective listicle):** predicted -1.2 bps (2.0 width), actual -118.6 bps \u2014 skill +0.01\n  - **What happened:** The candlesticks show INTC fell from 129.41 at 13:54 to 125.25 at 14:37 (down 321 bps over 43 minutes). The story broke at 10:38 ET, and by 14:37 the stock was in freefall. The -118.6 bps actual over the next 5 minutes was continuation of a massive move already underway.\n  - **The harness correctly classified the story as noise, but missed that the tape was in freefall.** The story was noise, but the stock was collapsing for other reasons (likely macro or sector-wide sell-off).\n  - **Key insight:** When a noise story breaks during a large move already underway (50+ bps over the last 30-60 minutes), the forecast should be continuation of that move (10-20 bps in the same direction with 10-15 bps width), not 0 bps. The story is noise, but the tape is not.\n\n**C. It misses direction on direct catalysts when the tape contradicts the headline sentiment**\n- **QCOM \"Qualcomm CFO Says Deal With Amazon Positions Qualcomm To Deliver Strong YoY Rev Growth\" (2 symbols, AAPL/QCOM, direct catalyst \u2014 CFO forward guidance):** predicted +2.1 bps (6.0 width), actual -22.0 bps \u2014 skill -0.09, wrong direction\n  - **What happened:** The candlesticks show QCOM fell from 176.78 at 15:23 to 174.95 at 15:56 (down 103 bps over 33 minutes). The story broke at 11:57 ET with bullish CFO guidance, but by 15:56 the stock had been selling off hard. The -22.0 bps actual was continuation of the sell-off, not a reaction to the CFO comment.\n  - **The harness correctly identified a direct catalyst (CFO guidance on Amazon deal), but failed to check the tape.** The guidance was bullish, but the stock had already sold off 100+ bps over the prior 30 minutes. The headline was stale by the time it broke, or the market didn't care.\n  - **Key insight:** When a direct catalyst breaks but the tape shows a large move in the opposite direction over the last 30-60 minutes (50+ bps), predict continuation of the tape direction (5-15 bps in tape direction with 8-12 bps width), not the headline sentiment. The tape is the truth.\n\n---\n\n## **The Corrected Decision Framework**\n\n### **Step 1: Check the tape first, always**\nPull candlesticks for the last 45-60 minutes (1-minute bars). Measure the move from 60 minutes ago to now.\n\n**Ask:**\n- **Is the stock in freefall or moonshot?** (Move > 100 bps in one direction over 45-60 minutes)\n  - If YES, this is a major move already underway. The story is probably noise or lagging commentary. Predict continuation: 10-20 bps in the move direction with 10-15 bps width.\n  - Example: INTC down 321 bps over 43 minutes, story is \"Top 12 Most-Searched Tickers\" (noise) \u2192 predict -15 bps (12 bps width)\n\n- **Is the stock drifting?** (Move 20-80 bps in one direction over 45-60 minutes)\n  - If the story is a direct catalyst in the same direction as the drift, predict modest continuation: 5-10 bps with 6-8 bps width\n  - If the story is a direct catalyst in the opposite direction, the tape is rejecting the catalyst. Predict small continuation of tape direction: 3-8 bps in tape direction with 8-12 bps width (uncertainty guard).\n  - If the story is noise, predict small continuation or mean reversion: 0-5 bps with 5-8 bps width\n  - Example: QCOM down 103 bps over 33 minutes, story is bullish CFO guidance \u2192 tape contradicts, predict -8 bps (10 bps width)\n\n- **Is the stock flat?** (Move < 20 bps over 45-60 minutes)\n  - If the story is a direct catalyst, predict 5-15 bps in catalyst direction with 5-10 bps width\n  - If the story is noise, predict 0 with 2-4 bps width\n  - Example: META flat before judge ruling story \u2192 predict -8 bps (6 bps width)\n\n### **Step 2: Classify the story's relevance to your symbol**\n\n**A. Direct catalyst (single symbol or 2 symbols where one is clearly the subject):**\n- The story is about this company: analyst upgrade/downgrade, guidance, deal announcement, regulatory ruling, clinical trial, earnings, insider transaction\n- Examples:\n  - META \"U.S. Judge Will Not Block Meta Platforms Layoffs In Novel AI Discrimination Case\" (1 symbol, META) \u2192 direct legal/regulatory news\n  - QCOM \"Qualcomm CFO Says Deal With Amazon Positions Qualcomm To Deliver Strong YoY Rev Growth\" (2 symbols, AAPL/QCOM, but QCOM is the subject) \u2192 direct guidance\n  - AMZN \"Amazon, gig companies see spike in workers on SNAP and Medicaid\" (1 symbol, but story is about labor market data, not an Amazon catalyst) \u2192 NOT a direct catalyst, it's passing mention\n\n**B. Sector thematic (3-6 symbols, analyst view or sector event specific to those names):**\n- Examples:\n  - \"UnitedHealth Rally Sparks Bullish Case for Healthcare ETFs\" (healthcare sector)\n  - \"Dan Ives Says Tech Stocks Are in a '1997 Moment'\" (4 symbols, AMZN/GOOG/GOOGL/MSFT)\n- If tape confirms thesis direction (stock up 10-20 bps, headline is bullish), predict 3-8 bps continuation with 5-8 bps width\n- If tape is flat, predict 5-12 bps in thesis direction with 8-12 bps width\n- If tape contradicts thesis (stock down, headline is bullish), predict 2-5 bps in thesis direction with 8-12 bps width\n\n**C. Pure noise (options flow listicle, TV segment, retrospective story, 8+ symbols with no thesis):**\n- Examples:\n  - HD \"10 Consumer Discretionary Stocks Whale Activity\" (10 symbols, options flow)\n  - UNH \"CNBC Halftime Report Final Trades\" (3 symbols, TV segment)\n  - INTC \"Top 12 Most-Searched Tickers in June\" (12 symbols, retrospective monthly listicle)\n  - QQQ \"Your 401(k) May Have Just Bought SpaceX for You\" (3 symbols, index inclusion story about SpaceX, not a QQQ catalyst)\n  - SPY \"NAHB Housing Market Index For June 35 Vs 36 Est.\" (1 symbol, but macro data point, not SPY-specific)\n  - AMZN \"Amazon, gig companies see spike in workers on SNAP and Medicaid\" (1 symbol, but labor market data, not Amazon-specific)\n- **But:** If the tape shows a major move underway (> 100 bps over 45-60 minutes), the story is noise but the stock is moving for other reasons. Predict continuation of the tape move: 10-20 bps in tape direction with 10-15 bps width.\n\n### **Step 3: Combine tape + story classification into a forecast**\n\n| Tape condition | Story type | Forecast | Width |\n|---|---|---|---|\n| **Freefall/moonshot (>100 bps over 45-60 min)** | Any (noise or catalyst) | 10-20 bps continuation | 10-15 bps |\n| **Drifting in catalyst direction (20-80 bps)** | Direct catalyst | 5-10 bps continuation | 6-8 bps |\n| **Drifting opposite to catalyst** | Direct catalyst | 3-8 bps in tape direction | 8-12 bps |\n| **Drifting (20-80 bps)** | Noise | 0-5 bps continuation or mean reversion | 5-8 bps |\n| **Flat (<20 bps over 45-60 min)** | Direct catalyst | 5-15 bps in catalyst direction | 5-10 bps |\n| **Flat (<20 bps over 45-60 min)** | Sector thematic | 5-12 bps in thesis direction | 8-12 bps |\n| **Flat (<20 bps over 45-60 min)** | Noise | 0 | 2-4 bps |\n\n### **Step 4: Magnitude calibration by catalyst type (when tape is flat)**\n\n- **Federal judge ruling, regulatory approval/denial, FDA decision, clinical trial result:** \u00b18 to \u00b115 bps, width 6-10 bps\n- **Analyst upgrade/downgrade with specific price target:** \u00b15 to \u00b112 bps, width 5-8 bps\n- **CFO/CEO guidance (forward-looking revenue/earnings statement):** \u00b15 to \u00b112 bps, width 6-10 bps\n- **Deal announcement (M&A, partnership):** \u00b18 to \u00b115 bps, width 8-12 bps\n- **Passing mention in broader story (labor data, sector listicle, index inclusion):** 0 to \u00b13 bps, width 2-4 bps\n\n### **Step 5: Special case \u2014 when noise coincides with a major tape move**\n\n**Pattern:** Story is pure noise (options flow, TV segment, retrospective listicle), but the tape shows the stock moving >100 bps over the last 45-60 minutes.\n\n**What this means:** The story is not causing the move. The stock is moving for other reasons (likely macro, sector rotation, or a different catalyst not yet published). The story is coincidental.\n\n**Correct forecast:** Predict continuation of the tape move (10-20 bps in the move direction with 10-15 bps width), not 0 bps.\n\n**Example:**\n- INTC \"Top 12 Most-Searched Tickers in June\" at 10:38 ET (noise story)\n- By 14:37 ET, INTC had fallen from 129.41 to 125.25 (down 321 bps over 43 minutes)\n- The actual move over the next 5 minutes was -118.6 bps (continuation of the freefall)\n- **Correct forecast:** -15 bps with 12 bps width (the story is noise, but the tape is in freefall)\n- **Wrong forecast:** -1.2 bps with 2.0 bps width (ignores the tape)\n\n**How to detect this:**\n1. Classify the story \u2192 noise\n2. Check the tape \u2192 down >100 bps over last 45-60 minutes\n3. Override the noise classification \u2192 predict continuation of tape move\n\n### **Step 6: Special case \u2014 when a direct catalyst contradicts the tape**\n\n**Pattern:** Story is a direct catalyst (CFO guidance, analyst upgrade, deal announcement), but the tape shows the stock moving 50+ bps in the opposite direction over the last 30-60 minutes.\n\n**What this means:** The market is rejecting the catalyst, or the catalyst is stale, or there's a larger force (macro, sector) overwhelming the catalyst.\n\n**Correct forecast:** Predict continuation of the tape direction (5-15 bps in tape direction with 8-12 bps width), not the headline sentiment.\n\n**Example:**\n- QCOM \"Qualcomm CFO Says Deal With Amazon Positions Qualcomm To Deliver Strong YoY Rev Growth\" at 11:57 ET (bullish catalyst)\n- By 15:56 ET, QCOM had fallen from 176.78 to 174.95 (down 103 bps over 33 minutes)\n- The actual move over the next 5 minutes was -22.0 bps (continuation of the sell-off)\n- **Correct forecast:** -8 bps with 10 bps width (the tape is rejecting the catalyst)\n- **Wrong forecast:** +2.1 bps with 6.0 bps width (follows the headline, ignores the tape)\n\n**How to detect this:**\n1. Classify the story \u2192 direct catalyst (bullish or bearish)\n2. Check the tape \u2192 moving 50+ bps in the opposite direction over last 30-60 minutes\n3. Override the catalyst direction \u2192 predict continuation of tape direction with wide width (uncertainty)\n\n---\n\n## **Width is insurance against mistakes**\n\n- **2-4 bps:** Pure noise when tape is flat\n- **5-8 bps:** Direct catalyst when tape confirms, sector thematic, noise when tape is drifting\n- **8-12 bps:** Direct catalyst when tape contradicts, sector thematic with uncertainty, noise during moderate tape move (20-80 bps)\n- **10-15 bps:** Major tape move underway (>100 bps over 45-60 min), regardless of story type\n\n**When in doubt, go wider.** A correct direction with 10 bps width beats a confident wrong call with 2 bps width.\n\n---\n\n## **Key Fixes from Recent Feedback**\n\n1. **Always check the tape over 45-60 minutes before choosing direction and magnitude.**\n   - If the stock has moved >100 bps, predict continuation (10-20 bps) even if the story is noise\n   - If the stock has moved 50+ bps opposite to a catalyst, predict continuation of tape direction (5-15 bps), not headline sentiment\n\n2. **Distinguish \"direct catalyst\" from \"passing mention\":**\n   - META \"U.S. Judge Will Not Block Layoffs\" \u2192 direct catalyst (judge ruling on META-specific case)\n   - AMZN \"Amazon, gig companies see spike in workers on SNAP\" \u2192 passing mention (labor market data story that names Amazon, not an Amazon catalyst)\n\n3. **When a direct catalyst breaks during a sell-off, the tape wins:**\n   - QCOM bullish CFO guidance at 11:57 ET, but by 15:56 ET the stock was down 103 bps \u2192 predict continuation of sell-off (-8 bps, 10 bps width), not bullish move\n\n4. **When noise coincides with a major tape move, predict continuation:**\n   - INTC noise listicle at 10:38 ET, but by 14:37 ET the stock was down 321 bps \u2192 predict -15 bps (12 bps width), not 0 bps\n\n5. **Width calibration is working well on flat tape \u2014 keep using 2-4 bps for noise, 5-10 bps for catalysts, 8-12 bps for uncertainty.**\n\n6. **Macro data points on broad market ETFs (SPY \"NAHB Housing Market Index\") are noise unless the tape is already moving.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
