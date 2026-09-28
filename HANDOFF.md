@@ -62,6 +62,10 @@ Two things worth keeping in mind before editing any of it:
   how the old table came to claim `sui.1`, `tha.1`, `pol.1` and `egy.1`.
 
 **Run `python scripts/check_leagues.py` occasionally** — monthly is plenty, or
+The `leagues` workflow runs it at 06:20 UTC on the first of each month and opens
+an issue only when something has drifted; the table itself is never edited
+automatically, because a new competition wants a verified slug and a dead one
+wants a decision.
 whenever a sweep looks thinner than the fixture list. It re-asks both venues and
 prints the drift: series that have died, mapped leagues that stopped linking,
 unmapped ones that started working, and soccer series the table has never had an

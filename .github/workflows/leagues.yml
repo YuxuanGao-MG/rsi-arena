@@ -1,0 +1,98 @@
+# Ask the venues whether the league table is still true.
+#
+# `rsi_arena/kalshi/_series.py` maps a competition to the Kalshi series that
+# prices its matches, and every entry was verified against a real fixture on the
+# day it was written. Kalshi adds competitions most weeks and retires others;
+# ESPN drops a competition from its scoreboard without announcing it. Neither
+# shows up as a failure here - the sweep simply goes quiet for that competition,
+# which is indistinguishable from a night with no football. That is the mistake
+# this repository has now made twice, and a monthly question is the cheap way
+# not to make it a third time.
+#
+# Nothing is written and nothing is committed. The run prints the drift and, if
+# there is any, opens an issue with it, because the fix is an edit somebody
+# should make deliberately: a new competition wants a verified slug, a dead one
+# wants removing from the sweep, a renamed ticker wants correcting.
+name: leagues
+
+on:
+  schedule:
+    # 06:20 UTC on the first of the month. Away from the loop's slots (03:17,
+    # 05:47, 08:17, 11:17) and the live sweeps, so a five-minute read of both
+    # venues never queues behind a generation.
+    - cron: "20 6 1 * *"
+  workflow_dispatch:
+    inputs:
+      league:
+        description: "comma separated, or blank for the whole table"
+        required: false
+        default: ""
+      quick:
+        description: "skip the fixture-feed links (about a minute)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: leagues
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Five minutes of reading, and both venues throttle. Twenty leaves room for
+    # a slow ESPN without leaving room for a hang.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+
+      - name: Ask Kalshi and ESPN
+        id: check
+        run: |
+          args=()
+          [ -n "${{ inputs.league }}" ] && args+=(--league "${{ inputs.league }}")
+          [ "${{ inputs.quick }}" = "true" ] && args+=(--quick)
+          # The script exits 1 when anything has drifted. That is the point of
+          # running it, not a failure of the run, so the status is captured
+          # rather than allowed to end the job.
+          set +e
+          python scripts/check_leagues.py "${args[@]}" --json drift.json | tee drift.txt
+          echo "drifted=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          { echo "### League table"; echo '```'; cat drift.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: leagues-${{ github.run_id }}
+          path: |
+            drift.txt
+            drift.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # An issue only when something moved. A month where the table is still
+      # true should cost nobody a notification.
+      - name: Say what moved
+        if: steps.check.outputs.drifted != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(printf '%s\n' \
+            "The monthly league check found drift. Nothing was changed; the table lives in" \
+            "\`rsi_arena/kalshi/_series.py\` and wants a deliberate edit." \
+            "" \
+            "Run [$GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" \
+            "" \
+            '```' ; cat drift.txt ; printf '%s\n' '```')
+          gh issue create --title "Leagues: the table has drifted ($(date -u +%Y-%m))" \
+                          --body "$body" --label leagues 2>/dev/null \
+            || gh issue create --title "Leagues: the table has drifted ($(date -u +%Y-%m))" --body "$body"
