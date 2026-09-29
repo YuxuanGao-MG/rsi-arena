@@ -27,6 +27,12 @@ runs/live/
 # 26,995 of those files were tracked anyway.
 runs/**/rollouts/
 runs/**/gepa/
+# A bench writes its dumps beside a run rather than inside one, so neither rule
+# above reaches them, and a 99.78 MB file from a hand-run bench on 27 September
+# stopped a generation committing two days later. The books a bench produces are
+# small and worth keeping; the dumps are evidence like any other.
+runs/**/bench/*.rollouts.json
+runs/**/*.rollouts.json
 
 # Agent worktrees and local Claude state
 .claude/
