@@ -1,0 +1,91 @@
+# Every hour, ask whether the arena is still working.
+#
+# The loops, the sweeps, the roll and the league check all fail loudly when they
+# fail. The failure none of them can see is the one that looks like nothing
+# happening: a scheduled run GitHub never fired, a sweep that found no market, a
+# topic that stopped chaining, heavy files creeping back into the index until a
+# push dies. Each of those has cost a day before a person happened to look.
+#
+# So this looks, hourly, and says so in one issue rather than in a dashboard
+# nobody has open. It changes nothing: a watchdog that repairs things hides what
+# it was built to reveal. The issue is updated rather than duplicated, and
+# closed automatically when the next hour finds everything well.
+name: watchdog
+
+on:
+  schedule:
+    - cron: "40 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: true
+
+jobs:
+  look:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The repository check reads origin/main, and a shallow clone cannot.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q psycopg2-binary || echo "::notice::no psycopg2; the database checks will skip"
+
+      - name: Look
+        id: look
+        run: |
+          set +e
+          # Not `python ... | tee`: a pipeline reports the exit code of its last
+          # command, so tee's success would hide every fault the watchdog found.
+          python scripts/watchdog.py --json watchdog.json > watchdog.txt 2>&1
+          faults=$?
+          cat watchdog.txt
+          echo "faults=$faults" >> "$GITHUB_OUTPUT"
+          set -e
+          { echo "### Watchdog"; echo '```'; cat watchdog.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # One issue, reused. A new issue an hour would be its own outage.
+      - name: Say so, once
+        if: steps.look.outputs.faults != '0'
+        run: |
+          title="Watchdog: something is not running"
+          body=$(printf '%s\n' \
+            "Checked at $(date -u +'%Y-%m-%d %H:%M UTC') by [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)." \
+            "" '```' ; cat watchdog.txt ; printf '%s\n' '```')
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      # An hour where everything is well closes the standing complaint, so the
+      # issue's state is the arena's state rather than a log of every wobble.
+      - name: Close it when it is well
+        if: steps.look.outputs.faults == '0'
+        run: |
+          n=$(gh issue list --state open --search "Watchdog: something is not running in:title" --json number --jq '.[0].number')
+          [ -n "$n" ] && gh issue close "$n" --comment "Everything the watchdog checks is running again as of $(date -u +'%Y-%m-%d %H:%M UTC')." || true
+
+      - name: Keep the verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchdog-${{ github.run_id }}
+          path: |
+            watchdog.txt
+            watchdog.json
+          if-no-files-found: ignore
+          retention-days: 14

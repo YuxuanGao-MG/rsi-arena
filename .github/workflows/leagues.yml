@@ -63,8 +63,12 @@ jobs:
           # running it, not a failure of the run, so the status is captured
           # rather than allowed to end the job.
           set +e
-          python scripts/check_leagues.py "${args[@]}" --json drift.json | tee drift.txt
-          echo "drifted=$?" >> "$GITHUB_OUTPUT"
+          # Not piped into tee: a pipeline reports its last command's status, so
+          # tee's success would report "no drift" whatever the check found.
+          python scripts/check_leagues.py "${args[@]}" --json drift.json > drift.txt 2>&1
+          drifted=$?
+          cat drift.txt
+          echo "drifted=$drifted" >> "$GITHUB_OUTPUT"
           set -e
           # A run that checked nothing prints the same zeros as a run that
           # found nothing wrong. The table has 73 entries; if far fewer were
