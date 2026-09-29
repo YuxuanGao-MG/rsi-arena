@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen21",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nRecent outcomes reveal systematic width underestimation on multi-symbol market commentary stories:\n\n- **ORCL \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\"** (10 symbols including IBM, ACN, CRM, CTSH, INFY, MSFT, NOW, ORCL, SAP, WIT; IBM -24% revenue miss): predicted -4.3 bps (4.3 width), actual +85.3 bps \u2014 **4.3 bps width on a 10-symbol sector contagion story where IBM crashed 24%**\n\n- **META \"Microsoft, Amazon, Meta, Google Are 'Collectively Overinvesting' In AI\"** (5 symbols: AMZN, GOOG, GOOGL, META, MSFT; \"Dean of Valuation\" warns on AI capex): predicted -4.7 bps (4.7 width), actual -22.9 bps \u2014 **4.7 bps width on negative AI investment commentary from prominent analyst**\n\n- **AMZN \"Walmart's Outlook Signals Cautious Spending Ahead\"** (79+ symbols including AAPL, AMZN, BTCUSD, GOOG, META, MSFT, MU, NVDA, QQQ; Walmart outlook + macro): predicted -2.2 bps (2.2 width), actual -9.2 bps \u2014 **2.2 bps width on consumer spending warning**\n\n- **NVDA \"Oil Surge and Carry Trade Weigh On Stocks; Apple Bets Big On $2K Foldable iPhone\"** (12 symbols including AAPL, AMZN, BTCUSD, GOOG, META, MSFT, NVDA, QQQ, SPY; macro headwinds): predicted -0.1 bps (2.0 width), actual -2.9 bps \u2014 **correct near-zero on broad macro commentary**\n\n- **AMD \"10 Information Technology Stocks With Whale Alerts In Today's Session\"** (10 symbols: AMD, CORZ, INTC, KLAC, MU, NVDA, PLTR, RGTI, SMCI, SNDK; options activity roundup): predicted -0.2 bps (2.0 width), actual -15.2 bps \u2014 **2.0 bps width on whale alerts listicle**\n\n- **MSFT \"What's Going On With Dell Technologies Stock Tuesday?\"** (9 symbols including ACSI, AMD, DELL, DLLL, INTC, MSFT, NVDA; Dell +4% on AI strategies): predicted +2.3 bps (2.3 width), actual -2.7 bps \u2014 **wrong direction on Dell supplier story**\n\n- **QQQ \"Japan Outpaces S&P 500 By 81%\u2014Yen Drops After BOJ Hike\"** (11 symbols including AAPL, AMZN, BTCUSD, EWJ, GOOG, META, MSFT, NVDA, QQQ, SPY, TSLA; BOJ policy + Japan comparison): predicted -0.1 bps (2.0 width), actual -1.7 bps \u2014 **correct near-zero on Japan macro**\n\n- **AAPL \"China's AI Breakthrough Triggers A Semiconductor Selloff\"** (13+ symbols including AAPL, AMZN, BTCUSD, GOOG, META, MSFT, NFLX, NVDA, QQQ, SOXL; China AI competitiveness): predicted -1.5 bps (2.0 width), actual -6.2 bps \u2014 **2.0 bps width on China semiconductor threat**\n\n---\n\n## **What These Reveal**\n\n1. **Sector contagion stories move the questioned stock 10-100+ bps even when it's not the focus.** ORCL moved +85.3 bps on \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\" (10 symbols, IBM -24% on revenue miss). The headline says IBM crashed and dragged the sector down, but ORCL bounced +85 bps (perhaps relief it wasn't the one reporting, or rebalancing flows). **When a peer crashes -20% or more on earnings and the headline warns of sector contagion, predict 40-100 bps in either direction (relief bounce or sympathy selloff) with 40-60 bps width.** Check the tape to see which way the stock is moving in the first 30-45 minutes after the news breaks.\n\n2. **Negative commentary from prominent analysts moves mega-caps 20-40 bps.** META moved -22.9 bps on \"Microsoft, Amazon, Meta, Google Are 'Collectively Overinvesting' In AI\" (Aswath Damodaran, \"Dean of Valuation,\" calling AI capex \"betting, not investing\"). This is a named, credible critic questioning the largest capital allocation theme in the market. Predict 15-30 bps down with 15-20 bps width (the market debates the thesis; some agree, some fade).\n\n3. **Consumer spending warnings from Walmart move mega-cap retail/tech 5-15 bps.** AMZN moved -9.2 bps on \"Walmart's Outlook Signals Cautious Spending Ahead\" (79+ symbols). Walmart is the largest US retailer; its consumer spending outlook affects AMZN, AAPL, and other consumer-facing names. Predict 5-15 bps down with 10-15 bps width.\n\n4. **Broad macro listicles (10+ symbols, no single catalyst) are noise when the story has no stock-specific thesis.** Correctly predicted near-zero on \"Oil Surge and Carry Trade Weigh On Stocks\" (12 symbols, macro headwinds; NVDA -2.9 bps) and \"Japan Outpaces S&P 500 By 81%\" (11 symbols, BOJ policy; QQQ -1.7 bps). These are market-wide observations; predict 0 with 3-5 bps width.\n\n5. **Whale alerts listicles (10 symbols, options activity) move individual names 10-20 bps unpredictably.** AMD moved -15.2 bps on \"10 Information Technology Stocks With Whale Alerts\" (10 symbols). Options activity can signal informed flow or hedging; direction is uncertain. Predict 0 with 12-18 bps width to guard both sides.\n\n6. **Supplier/partner stories move the questioned stock 5-15 bps in uncertain direction.** MSFT moved -2.7 bps (predicted +2.3 bps) on \"What's Going On With Dell Technologies Stock Tuesday?\" (9 symbols, Dell +4% on AI strategies). Dell's AI partnership momentum could lift MSFT (Azure demand) or be neutral (already priced). Predict 0 with 10-15 bps width when direction is uncertain.\n\n7. **Geopolitical competitiveness warnings (China AI, semiconductor threats) move US tech 5-15 bps down.** AAPL moved -6.2 bps on \"China's AI Breakthrough Triggers A Semiconductor Selloff\" (13+ symbols). China achieving AI parity threatens US semiconductor dominance. Predict 5-15 bps down with 10-15 bps width.\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 30-45 minutes, 1-minute bars\n   - Is the stock drifting, spiking, or flat?\n   - Has it already moved significantly (20+ bps) in a clear direction?\n   - If a peer in the same sector crashed -20%+ on earnings, which way is the questioned stock moving? (relief bounce up, or sympathy selloff down?)\n\n### **2. Classify the story's relevance and signal strength**\n\n   **A. Sector contagion (one peer crashes -20%+ on earnings, headline warns of sector drag):**\n   - Examples: \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\" (10 symbols: IBM, ACN, CRM, CTSH, INFY, MSFT, NOW, ORCL, SAP, WIT)\n   - **A peer (IBM) crashed -24% on a revenue miss; the headline says it's dragging the sector down**\n   - But the questioned stock (ORCL) may move either way:\n     - **Relief bounce (up 40-100 bps):** \"Thank god it wasn't us; we're relatively stronger\"\n     - **Sympathy selloff (down 40-100 bps):** \"The whole sector is weak; earnings risk is contagion\"\n   - **Check the tape:** if ORCL is up 50-80 bps in the first 30 minutes after IBM's crash, predict +60-100 bps continuation with 50-60 bps width\n   - If ORCL is down 30-50 bps, predict -50 to -80 bps with 50-60 bps width\n   - Example: ORCL moved +85.3 bps (predicted -4.3 bps with 4.3 width \u2192 should have checked tape, predicted +70 bps with 50 bps width if tape showed relief bounce)\n   \n   **B. Prominent analyst negative commentary on mega-cap themes (AI capex, valuation):**\n   - Examples: \"Microsoft, Amazon, Meta, Google Are 'Collectively Overinvesting' In AI\" (5 symbols: AMZN, GOOG, GOOGL, META, MSFT; Aswath Damodaran, \"Dean of Valuation\")\n   - **A named, credible analyst (not anonymous) questions the largest capital allocation theme in the market**\n   - This is negative for all names in the story, but the market debates the thesis (some agree, some fade the call)\n   - Predict 15-30 bps down with 15-20 bps width\n   - Example: META moved -22.9 bps (predicted -4.7 bps with 4.7 width \u2192 should have predicted -20 bps with 18 bps width)\n   \n   **C. Consumer spending warnings from Walmart (affects retail/tech with consumer exposure):**\n   - Examples: \"Walmart's Outlook Signals Cautious Spending Ahead\" (79+ symbols including AMZN, AAPL)\n   - **Walmart is the largest US retailer; its consumer spending outlook affects other consumer-facing names**\n   - Predict 5-15 bps down with 10-15 bps width\n   - Example: AMZN moved -9.2 bps (predicted -2.2 bps with 2.2 width \u2192 should have predicted -8 to -10 bps with 12 bps width)\n   \n   **D. Geopolitical competitiveness warnings (China AI, semiconductor threats):**\n   - Examples: \"China's AI Breakthrough Triggers A Semiconductor Selloff\" (13+ symbols including AAPL, NVDA)\n   - **China achieving AI parity or semiconductor independence threatens US tech dominance**\n   - Predict 5-15 bps down with 10-15 bps width\n   - Example: AAPL moved -6.2 bps (predicted -1.5 bps with 2.0 width \u2192 should have predicted -8 bps with 12 bps width)\n   \n   **E. Supplier/partner stories (one stock has a catalyst, others are named as partners/suppliers):**\n   - Examples: \"What's Going On With Dell Technologies Stock Tuesday?\" (9 symbols including MSFT; Dell +4% on AI strategies)\n   - **Dell's AI momentum could lift MSFT (Azure demand) or be neutral (already priced)**\n   - Direction is uncertain; predict 0 with 10-15 bps width\n   - Example: MSFT moved -2.7 bps (predicted +2.3 bps with 2.3 width \u2192 should have predicted 0 with 12 bps width)\n   \n   **F. Whale alerts listicles (10 symbols, options activity roundup):**\n   - Examples: \"10 Information Technology Stocks With Whale Alerts In Today's Session\" (10 symbols: AMD, CORZ, INTC, KLAC, MU, NVDA, PLTR, RGTI, SMCI, SNDK)\n   - **Options activity can signal informed flow (bullish) or hedging (bearish); direction is uncertain**\n   - Predict 0 with 12-18 bps width to guard both sides\n   - Example: AMD moved -15.2 bps (predicted -0.2 bps with 2.0 width \u2192 should have predicted 0 with 15 bps width)\n   \n   **G. Broad macro listicles (10+ symbols, market-wide observation, no stock-specific catalyst):**\n   - Examples: \"Oil Surge and Carry Trade Weigh On Stocks\" (12 symbols), \"Japan Outpaces S&P 500 By 81%\u2014Yen Drops After BOJ Hike\" (11 symbols)\n   - **Market-wide macro observation; no stock-specific thesis**\n   - Predict 0 with 3-5 bps width\n   - Examples: NVDA -2.9 bps (predicted -0.1 bps with 2.0 width), QQQ -1.7 bps (predicted -0.1 bps with 2.0 width) \u2192 both correct near-zero calls\n\n### **3. Direction discipline: check the tape**\n\n   - **If predicting up but the tape shows the stock drifting down over the last 15-30 minutes, stop.**\n   - **If the tape is flat or mixed, predict 0 with wide width (10-15 bps) to guard both sides.**\n   - **If the tape confirms momentum (stock rising after a peer's crash = relief bounce, or falling after negative analyst commentary), predict continuation (15-100 bps depending on story type).**\n   - **Sector contagion: the questioned stock can move either way (relief bounce up, or sympathy down). Check the tape in the first 30-45 minutes to see which way it's going, then predict 40-100 bps continuation.**\n\n### **4. Magnitude calibration by story type**\n\n   - **Broad macro listicle (10+ symbols, market-wide observation, no stock-specific catalyst):** 0 \u00b1 3-5 bps, width 3-5 bps\n   - **Supplier/partner story (direction uncertain):** 0 bps, width 10-15 bps\n   - **Geopolitical competitiveness warning (China AI, semiconductor threat):** 5-15 bps down, width 10-15 bps\n   - **Consumer spending warning from Walmart:** 5-15 bps down, width 10-15 bps\n   - **Whale alerts listicle (10 symbols, options activity, direction uncertain):** 0 bps, width 12-18 bps\n   - **Prominent analyst negative commentary on mega-cap themes:** 15-30 bps down, width 15-20 bps\n   - **Sector contagion (peer crashes -20%+ on earnings):** check tape direction, predict 40-100 bps continuation (relief bounce up or sympathy down), width 40-60 bps\n\n### **5. Width is insurance against confident mistakes**\n\n   - **2-3 bps: RARELY USE.** Only on broad macro listicles (10+ symbols, market-wide observation, no stock-specific catalyst).\n   - **5-8 bps: routine single-symbol news with flat tape**\n   - **10-15 bps: supplier/partner stories (direction uncertain), consumer spending warnings, geopolitical competitiveness warnings, or any story where direction is moderately uncertain**\n   - **12-18 bps: whale alerts listicles (options activity, direction very uncertain)**\n   - **15-20 bps: prominent analyst negative commentary on mega-cap themes (market debates the thesis)**\n   - **40-60 bps: sector contagion stories (peer crashes -20%+ on earnings, questioned stock can move 40-100 bps either way)**\n   \n   **When in doubt, go wider.** A correct direction with 15 bps width beats zero-with-2bps that misses by 20.\n\n### **6. Special case: Sector contagion (peer crashes -20%+ on earnings, headline warns of sector drag)**\n\n   When a peer in the same sector crashes -20% or more on earnings and the headline says it's dragging the sector down, the questioned stock can move 40-100+ bps in either direction:\n   - **Relief bounce (up 40-100 bps):** \"Thank god it wasn't us; we're relatively stronger\"\n   - **Sympathy selloff (down 40-100 bps):** \"The whole sector is weak; earnings risk is contagion\"\n   - **Check the tape:** look at the first 30-45 minutes after the peer's crash. Is the questioned stock up 50-80 bps (relief) or down 30-50 bps (contagion)?\n   - Predict 40-100 bps continuation in tape direction, width 40-60 bps\n   - Example: ORCL moved +85.3 bps on \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\" (10 symbols) \u2192 should have checked ORCL's tape, predicted +70 bps with 50 bps width if tape showed relief bounce\n\n### **7. Special case: Prominent analyst negative commentary on mega-cap themes**\n\n   When a named, credible analyst (e.g., Aswath Damodaran, \"Dean of Valuation\") questions a major capital allocation theme (AI capex, valuation), mega-caps move 15-30 bps down:\n   - The market debates the thesis (some agree, some fade the call)\n   - Predict 15-30 bps down with 15-20 bps width\n   - Example: META moved -22.9 bps on \"Microsoft, Amazon, Meta, Google Are 'Collectively Overinvesting' In AI\" (Aswath Damodaran) \u2192 should have predicted -20 bps with 18 bps width\n\n### **8. Special case: Consumer spending warnings from Walmart**\n\n   When Walmart warns on consumer spending, other consumer-facing names (AMZN, AAPL, retail) move 5-15 bps down:\n   - Walmart is the largest US retailer; its consumer outlook affects the sector\n   - Predict 5-15 bps down with 10-15 bps width\n   - Example: AMZN moved -9.2 bps on \"Walmart's Outlook Signals Cautious Spending Ahead\" \u2192 should have predicted -8 to -10 bps with 12 bps width\n\n### **9. Special case: Whale alerts listicles (10 symbols, options activity)**\n\n   When a story lists 10 symbols with whale alerts (large options flow), direction is uncertain (informed bullish flow or bearish hedging):\n   - Predict 0 with 12-18 bps width to guard both sides\n   - Example: AMD moved -15.2 bps on \"10 Information Technology Stocks With Whale Alerts\" \u2192 should have predicted 0 with 15 bps width\n\n### **10. Cross-check before finalizing**\n\n   - **Is my magnitude plausible for this story type?** (Sector contagion moves 40-100 bps, not 0-5 bps; prominent analyst negative commentary moves 15-30 bps, not 0-5 bps)\n   - **Is my width wide enough to guard against a 20-100 bps miss?** (If I'm predicting +10 bps on a sector contagion story, 40-60 bps width covers a 100 bps actual move)\n   - **Did I check the tape for direction?** (If a peer crashed and I'm predicting down but the tape shows the questioned stock bouncing up, stop)\n   - **If it's a sector contagion story, did I check the tape in the first 30-45 minutes to see which way the questioned stock is moving?** (Relief bounce up, or sympathy selloff down?)\n   - **If direction is uncertain (whale alerts, supplier story, business metric), did I predict 0 with 10-18 bps width?**\n   - **Did I use 2 bps width?** (If yes, ask: is this a 10+ symbol broad macro listicle with no stock-specific catalyst? If no, widen to 10-15 bps minimum)\n\n---\n\n## **The pattern is clear:**\n\nThe harness correctly identified noise on broad macro listicles (correctly predicted near-zero with 2-3 bps width on \"Oil Surge and Carry Trade Weigh On Stocks\" and \"Japan Outpaces S&P 500\"). But it systematically underestimated width and magnitude on sector contagion stories (ORCL +85.3 bps on IBM -24%, predicted -4.3 with 4.3 width), prominent analyst negative commentary (META -22.9 bps on Damodaran AI capex warning, predicted -4.7 with 4.7 width), consumer spending warnings (AMZN -9.2 bps on Walmart outlook, predicted -2.2 with 2.2 width), and whale alerts listicles (AMD -15.2 bps, predicted -0.2 with 2.0 width). **Sector contagion stories move the questioned stock 40-100+ bps in either direction (relief bounce or sympathy selloff); check the tape in the first 30-45 minutes to see which way.** Prominent analyst negative commentary moves 15-30 bps with 15-20 bps width. Consumer spending warnings move 5-15 bps with 10-15 bps width. Whale alerts get 0 with 12-18 bps width. Never use 2 bps width unless the story names 10+ symbols with a market-wide observation and no stock-specific catalyst.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
