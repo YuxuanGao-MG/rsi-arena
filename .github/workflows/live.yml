@@ -38,18 +38,16 @@ on:
     # Where the matches are, not where a tidy schedule would put them. The
     # first ninety-seven live forecasts included exactly three on markets that
     # moved, because one short sweep a day mostly caught pre-match books pinned
-    # days from kickoff. Weekend European kickoffs cluster near 11:30, 14:00,
-    # 16:30 and 19:00 UTC; weekday evenings near 17:45-20:00; the Americas run
-    # to the small hours. Each firing is a fifty-minute sweep that prefers
-    # in-play markets, so these land mid-half on purpose.
-    - cron: "5 12 * * 0,6"
-    - cron: "35 14 * * 0,6"
-    - cron: "5 17 * * 0,6"
-    - cron: "35 19 * * 0,6"
-    - cron: "5 19 * * 1-5"
-    - cron: "35 20 * * 1-5"
-    - cron: "5 1 * * *"
-    - cron: "5 3 * * *"
+    # days from kickoff. Eight kickoff-shaped slots replaced that, and on 28
+    # September GitHub fired none of the two weekday ones: a Belgium-France
+    # Nations League match played out with no forecast at all. The scheduler is
+    # best-effort on a busy repository and drops firings without saying so, the
+    # same way it turned the crypto sweep's hourly cron into seven runs a day.
+    # So coverage comes from the length of a sweep rather than the punctuality
+    # of a cron: six firings a day, each running nearly four hours, queued
+    # behind each other by the concurrency group. A sweep with no match in play
+    # costs the poll loop and nothing else.
+    - cron: "5 */4 * * *"
   workflow_dispatch:
     inputs:
       league:
@@ -63,7 +61,7 @@ on:
         default: all
       minutes:
         description: "how long to collect; must leave room under the job timeout"
-        default: "50"
+        default: "230"
       max_usd:
         description: "model spend this invocation may not pass"
         default: "0.5"
@@ -110,7 +108,7 @@ jobs:
     # of the last sweep's forecasts — a forecast is only worth keeping once the
     # price it predicted has printed — then the publish. Seventy leaves room for
     # a slow checkout without leaving room for a hang.
-    timeout-minutes: 70
+    timeout-minutes: 250
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # At job level, not on the publish step: a step's own `env:` block is not
@@ -192,7 +190,7 @@ jobs:
           python scripts/collect_live.py \
             --league "${{ inputs.league || 'all' }}" \
             --harness "${{ inputs.harness || 'harnesses/horizon-5m-jev.json' }}" \
-            --minutes "${{ inputs.minutes || '50' }}" \
+            --minutes "${{ inputs.minutes || '230' }}" \
             --max-contracts "${{ inputs.max_contracts || '8' }}" \
             --max-usd "${{ inputs.max_usd || '2' }}" \
             --window-usd "0.60" \

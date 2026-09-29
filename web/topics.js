@@ -55,7 +55,7 @@ export const TOPICS = {
     loopWhen: "03:17, 11:17 and 19:17 UTC",
     liveCrons: [{ h: 1, m: 5 }, { h: 19, m: 5, dows: [1, 2, 3, 4, 5] },
                 { h: 15, m: 5, dows: [0, 6] }],
-    liveText: "19:05 weekdays · 15:05 weekends · 01:05 daily, UTC",
+    liveText: "every four hours at :05 UTC, nearly four hours each",
     /** `KXEPLGAME-26SEP05NFOTOT-NFO@2026-09-05T14:05:00+00:00` → the event ticker. */
     groupOf(instance) {
       const ticker = String(instance).split("@")[0];
