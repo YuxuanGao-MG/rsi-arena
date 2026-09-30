@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen20",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n## Core Principle: Half-Width Is Your Uncertainty Radius\n\nYour half_width_cents is NOT a bid-ask spread you are offering. It is the radius of genuine uncertainty around your forecast.\n\n**Default half_width should be 1.5 cents. Use less only with overwhelming evidence of stability.**\n\nThe feedback shows systematic underestimation of uncertainty:\n- Seven of eight examples had realized price outside the quoted band\n- Example 3: Predicted +0.0c \u00b1 0.5c at minute 25 of 1-0 match, realized -26.0c (opponent scored to tie)\n- Example 6: Predicted -0.2c \u00b1 0.8c at minute 35 after NYC goal at minute 28, realized +26.0c (Toronto scored twice)\n- Example 7: Predicted -0.3c \u00b1 0.5c at minute 35 of 0-0 match, realized +1.0c\n- Example 5: Predicted -0.3c \u00b1 0.5c at minute 75 of 0-0 match, realized -1.0c\n- Example 2: Predicted -0.1c \u00b1 0.5c at minute 15 of 0-0 match, realized +0.0c\n- Example 8: Predicted -0.1c \u00b1 0.5c at minute 15 of 0-0 match, realized +0.0c\n\nOnly Example 4 (minute 25, score 3-0, massive blowout) had realised price inside the quote.\n\n## When to Use Each Half-Width\n\n**0.8-1.0 cents (extremely rare, only with overwhelming evidence):**\n- Two-goal lead or more (3-0, 3-1, 4-0, etc.)\n- Score unchanged 20+ minutes\n- No goals in last 20 minutes\n- Candlesticks flat (< 0.5c range) for 20+ bars\n- Volume steady and moderate (not sporadic)\n- Spread tight (< 1.5c)\n- Clock in minutes 25-65 (not early, not late)\n\n**1.5 cents (baseline for most situations):**\n- Use this unless you have specific reasons for wider\n- One-goal lead (1-0, 2-1) and score stable 10+ minutes\n- Tied match in minutes 20-60 with no recent events\n- Mid-match (minutes 20-65) with moderate book\n- Any thin book (spread > 2c or volume sporadic)\n- Any time you are uncertain\n\n**2.5-3.0 cents (recent goal still absorbing):**\n- Goal in last 5-10 minutes (check candlesticks for continued drift)\n- Start of second half after first-half goal\n- High volume bars (5x+ typical volume) in recent candlesticks\n- Candlesticks show 5c+ move followed by continued drift\n\n**3.5-4.5 cents (high volatility or very early match):**\n- Very early match (minutes 1-20): use 3.5-4.0c minimum\n- Goal in last 1-5 minutes (still absorbing, high volatility)\n- Multiple goals in last 10 minutes\n- Red card just issued\n- Final 10 minutes with one-goal margin or draw\n- Spread > 5c\n\n## The Catastrophic Event Problem\n\nExamples 3 and 6 demonstrate the core failure mode: a goal can happen at any moment during a match, causing a 20-40c move that no reasonable forecast can predict.\n\n**Example 3:** Fredrikstad 1-0 Sarpsborg at minute 25. Predicted +0.0c \u00b1 0.5c. Five minutes later: Sarpsborg scored to tie 1-1, mid dropped from 0.645 to 0.385 (-26.0c). The contract is \"Fredrikstad to win\" - when Sarpsborg scores to tie, it drops 20-30c.\n\n**Example 6:** Toronto 0-1 NYC at minute 35 (NYC scored at minute 28). Predicted -0.2c \u00b1 0.8c. Five minutes later: Toronto scored twice to go up 2-1, mid jumped from 0.305 to 0.565 (+26.0c). The contract is \"Toronto to win\" - when Toronto scores twice, it jumps from ~30c to ~55c.\n\n**The lesson:** A goal can happen at any time in a live match. No forecast can predict when. Your half_width must account for this tail risk.\n\n**Mandatory minimum half-widths to avoid catastrophic misses:**\n\n1. **Score within one goal (0-0, 1-0, 1-1, 2-1):** Use half_width 1.5c minimum, preferably 2.0c. A single goal causes a 15-30c move.\n\n2. **Very early match (minutes 1-20):** Use half_width 3.5-4.0c minimum. The match has barely started, both teams are attacking, a goal is likely.\n\n3. **Recent goal (last 1-10 minutes):** Use half_width 2.5-3.5c minimum. The market is still absorbing, and another goal could happen soon.\n\n4. **Tied match at any time:** Use half_width 1.5-2.0c minimum. A goal by either team causes a 20-30c move in one direction or the other.\n\n5. **One-goal lead in final 20 minutes:** Use half_width 2.0-3.0c minimum. The losing team will attack desperately, a goal is likely.\n\n## Goal Absorption: The 5-15 Minute Rule\n\n**Markets do NOT instantly reach fair value after a goal. Absorption takes 5-15 minutes, longer if multiple goals or halftime interrupts.**\n\nExample 1 shows ongoing absorption: Le Mans 2-1 Brest at minute 65 (Brest scored at minute 61, 4 minutes ago). Contract is \"Brest to win\". Candlesticks show: minute 61 jump from 0.365 to 0.635 (+27c), then continued drift up to 0.65 by minute 65. Predicted +0.4c \u00b1 2.1c, realized -2.5c. The absorption had mostly completed by minute 65, so the -2.5c move is normal variance or time decay.\n\n**How to identify ongoing absorption:**\n\n1. **Check recent_events for goals in last 15 minutes.** If goal is 1-10 minutes ago, assume absorption is ongoing.\n\n2. **Check candlesticks for the price path since the goal:**\n   - Sharp jump of 5c+ immediately after goal: absorption has begun\n   - Continued drift in same direction over next 5-10 bars: still absorbing\n   - Flat or oscillating for 10+ bars after the jump: absorption likely complete\n\n3. **Equalizing goals take longer to absorb than go-ahead goals:**\n   - A goal that ties the match moves the mid from ~25-35c toward 50c, a 15-25c move, takes 7-15 minutes\n   - A goal that extends a lead moves the mid 5-15c and absorbs in 5-10 minutes\n   - A goal that gives the losing team the lead causes a massive 30-50c move and takes 10-20 minutes\n\n**When recent_events shows a goal in last 1-10 minutes:**\n- Examine candlesticks: if price is still drifting (consecutive bars moving same direction), predict continuation of 1-3c\n- Use half_width 2.5-3.5c\n- If goal just happened (1-3 minutes ago), use half_width 3.5-4.5c\n\n**After absorption completes (goal 10+ minutes ago, candlesticks flat):**\n- Use normal half_width based on match situation\n- If score is now tied or within one goal, use 1.5-2.0c (another goal could happen)\n- If score is two-goal lead, use 1.0-1.5c\n\n## Time Decay: Slow Until Final 15 Minutes\n\nA \"Team X to win\" contract decays toward zero as time passes if Team X is behind or drawing. A \"TIE\" contract decays toward zero if one team is ahead. But decay is **very slow** until the final 15 minutes.\n\n**Minutes 1-30:** Negligible decay (< 0.2c per 5 minutes)\n**Minutes 31-60:** Very slow decay (~0.2-0.5c per 5 minutes)\n**Minutes 61-75:** Slow decay (~0.5-1.0c per 5 minutes)\n**Minutes 76-85:** Moderate decay (~1.0-2.0c per 5 minutes)\n**Minutes 86-90+:** Fast decay (~2.0-5.0c per 5 minutes)\n\nExample 7: Carabobo 0-0 Deportivo La Guaira at minute 35, contract \"Carabobo to win\" at 0.475. Predicted -0.3c (time decay), realized +1.0c. At minute 35, time decay is negligible (< 0.2c per 5 minutes). The +1.0c move is normal variance for a tied match.\n\nExample 5: Nottingham 0-0 Leeds at minute 75, contract \"Nottingham to win\" at 0.285. Predicted -0.3c (time decay), realized -1.0c. At minute 75, time decay is ~0.5c per 5 minutes, so -0.5c is reasonable. The realized -1.0c includes both decay and variance.\n\nDo not over-predict time decay in minutes 1-70. Under-predict if anything.\n\n## Thin Book Drift and Match Timing\n\n**Thin book:** spread > 2c, volume sporadic (some bars 10x others, some bars zero), mid oscillates \u00b11-2c with no game events.\n\nExample 7: Carabobo 0-0 Deportivo at minute 35, spread 1c (yes_bid 0.47, yes_ask 0.48), volume very low (58.46 total, recent bars 0-100). Candlesticks show oscillation: 0.515 -> 0.505 -> 0.515 -> 0.54 -> 0.57 -> 0.52 -> 0.49 -> 0.475 (last 10 bars, 10c range). This is thin book volatility. Predicted -0.3c \u00b1 0.5c, realized +1.0c. Half_width should be 2.0c for this level of recent volatility.\n\n**Very early match (minutes 1-20):** Extremely high uncertainty. Neither team has established control, the book may be thin, a goal is likely. Use half_width 3.5-4.0c minimum even if predicting zero movement.\n\nExample 2: Vancouver 0-0 Houston at minute 15. Predicted -0.1c \u00b1 0.5c, realized +0.0c. Half_width should be 3.5c at minute 15 of a 0-0 match. A goal can happen at any moment.\n\nExample 8: Ava\u00ed 0-0 Vila Nova at minute 15. Predicted -0.1c \u00b1 0.5c, realized +0.0c. Same: half_width should be 3.5c.\n\n**Mid-match (minutes 20-70):** Moderate uncertainty. Use half_width 1.5-2.0c baseline, wider if thin book or recent goals.\n\n**Late match (minutes 71-90+):** High uncertainty if score is close. Time decay accelerates, but a goal can still happen. Use half_width 2.0-3.0c if one-goal margin or tied, 1.5c if two-goal margin.\n\n## When to Predict Zero Movement\n\nPredict delta_cents = 0 when:\n- Score stable 15+ minutes\n- No goal in last 15 minutes\n- Candlesticks show < 1c range for 10+ bars\n- Volume steady and moderate\n- Clock in minutes 25-60 (past early chaos, not yet late decay)\n- Spread < 2c\n- Score has a two-goal or larger lead\n\n**But even when predicting zero, use appropriate half_width:**\n- Two-goal lead, stable: 1.0-1.5c\n- One-goal lead, stable: 1.5c\n- Tied match: 1.5-2.0c (a goal can happen)\n- Any thin book: 2.0c+\n\nDo not predict significant non-zero delta unless you have evidence:\n- Goal in last 10 minutes (predict continued absorption: +1 to +3c in direction of jump)\n- Very late match (minutes 75+) with score not settled (predict time decay: -0.5 to -2.0c)\n- Candlesticks showing clear trend over last 10 bars (predict continuation: \u00b11 to \u00b12c)\n\n## Physical Bounds at Price Extremes\n\nA contract at 5c can fall at most 5c (to 0c). A contract at 95c can rise at most 5c (to 100c).\n\n**When mid < 20c:**\n- Max downward move = mid (cannot go below zero)\n- Max upward move ~10-30c on 5-minute horizon if a goal happens\n- Use half_width 1.5-2.0c minimum, wider if very early match or recent goal\n\n**When mid > 80c:**\n- Max upward move = 100 - mid\n- Max downward move ~10-30c on 5-minute horizon if opponent scores\n- Use half_width 1.5-2.0c minimum, wider if very early match or recent goal\n\n**When mid between 20c and 80c:**\n- Typical max move \u00b13-5c with no goal\n- \u00b115-30c if a goal happens (cannot predict when)\n- Use normal half_width rules\n\n## Match Situation and Contract Type\n\n**\"Team X to win\" contract:**\n\n- **Team X is winning:** Contract is at 50-80c depending on goal margin and time. Rises slowly as time passes (time decay helps). If opponent scores to tie or take lead, drops 15-40c. Use half_width 1.5c if two-goal lead, 2.0c if one-goal lead.\n\n- **Team X is tied:** Contract is at 30-40c depending on how the match is going. Minimal time decay until final 20 minutes. If Team X scores, jumps 15-25c. If opponent scores, drops 15-25c. Use half_width 1.5-2.0c (goal could happen either way).\n\n- **Team X is losing:** Contract is at 10-30c depending on goal margin and time. Decays slowly toward zero. If Team X scores to tie or take lead, jumps 15-40c. Use half_width 1.5-2.0c if one-goal deficit, 1.0c if two-goal deficit (comeback unlikely).\n\n**\"TIE\" contract:**\n\n- **Score is tied:** Contract is at 40-50c. Rises slightly as time passes (both teams failing to score). If either team scores, drops 15-30c toward 20-30c. High uncertainty: use half_width 2.0c minimum (goal could happen).\n\n- **One team is ahead:** Contract is at 20-40c depending on time remaining. Decays toward zero as time passes. If losing team scores to tie, jumps 15-30c toward 50c. Use half_width 1.5-2.0c.\n\n## Summary: How to Set Half-Width\n\n1. **Start with baseline 1.5 cents unless you have specific reasons for different**\n\n2. **Use 0.8-1.0c only when you have very strong evidence:** two-goal lead or more, flat candlesticks for 20+ bars, no goals in 20+ minutes, moderate steady volume, tight spread, clock in minutes 25-65\n\n3. **Use 1.5c (baseline) when:**\n   - One-goal lead and score stable 10+ minutes\n   - Tied match in minutes 20-60 with no recent events\n   - Mid-match (minutes 20-65) with moderate book\n   - Any time you are uncertain\n\n4. **Use 2.0-2.5c when:**\n   - Tied match at any time (goal could happen either way)\n   - One-goal lead in minutes 50+ (losing team will push)\n   - Goal 5-10 minutes ago and candlesticks still drifting\n   - Thin book (spread > 2c or volume sporadic)\n   - Candlesticks show 3c+ volatility in last 10 bars\n\n5. **Use 2.5-3.5c when:**\n   - Goal in last 5-10 minutes (still absorbing)\n   - Start of second half after first-half goal\n   - High volume bars (5x+ typical) in last 5 minutes\n   - Spread > 3c\n   - Late match (minutes 75+) with tight score\n\n6. **Use 3.5-4.5c when:**\n   - Very early match (minutes 1-20): always use 3.5-4.0c minimum\n   - Goal in last 1-5 minutes (just happened, high volatility)\n   - Multiple goals in last 10 minutes\n   - Red card just issued\n   - Final 10 minutes with one-goal margin or draw\n   - Spread > 5c\n\n7. **Mandatory minimums to avoid catastrophic misses:**\n   - Score within one goal (0-0, 1-0, 1-1, 2-1): 1.5c minimum, preferably 2.0c\n   - Very early match (minutes 1-20): 3.5c minimum\n   - Recent goal (last 1-10 minutes): 2.5c minimum\n   - Tied match: 1.5-2.0c minimum\n   - One-goal lead in final 20 minutes: 2.0c minimum\n\nThe harness is scored on skill against no-change, but a half_width that is too narrow causes catastrophic misses when a goal happens. Seven of eight examples had realized price outside the band. **Err on the side of wider half_width.** A goal can happen at any time in a live match, causing a 20-40c move that no reasonable forecast can predict. Your half_width must account for this.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
