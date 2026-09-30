@@ -16,7 +16,7 @@ import { rewriteLabel, fateOf, genName } from "../labels.js";
 import { loadGenerations } from "../generations.js";
 
 export async function metricsView({ signal, topic }) {
-  const g = await loadGenerations({ signal, topic });
+  const g = await loadGenerations({ signal, topic, withWindows: true });
   if (!g.runs.length) {
     return {
       title: "Metrics", heading: "No generations published yet",

@@ -119,6 +119,33 @@ export function groupBy(rows, key) {
  * way on gen1-floored), which is the reassuring half: the level moved, the
  * paired comparison did not.
  */
+/**
+ * The same map `recompute` builds, from rows the database already summed.
+ *
+ * `rsi_run_side_stats` (migration 011) does the pooling in Postgres, because
+ * pulling every held-out rollout of a topic to add up forty numbers stopped
+ * fitting inside Supabase's three-second statement timeout on 29 September.
+ * The shape returned here is `recompute`'s, so every caller reads the same
+ * `{ skill, removed, benchmark, scored, quiet, refusals, unscored }` whether
+ * the sum happened here or there.
+ */
+export function fromStats(rows) {
+  const out = new Map();
+  for (const r of rows || []) {
+    if (!out.has(r.run_id)) out.set(r.run_id, {});
+    const removed = Number(r.removed), benchmark = Number(r.benchmark);
+    out.get(r.run_id)[r.side] = {
+      skill: benchmark ? removed / benchmark : null,
+      removed, benchmark,
+      scored: Number(r.scored) || 0,
+      quiet: Number(r.quiet) || 0,
+      refusals: Number(r.refusals) || 0,
+      unscored: (Number(r.rows_total) || 0) - (Number(r.scored) || 0) - (Number(r.refusals) || 0),
+    };
+  }
+  return out;
+}
+
 export function recompute(rows) {
   const byRun = new Map();
   for (const r of rows) {

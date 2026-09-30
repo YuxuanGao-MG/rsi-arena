@@ -7,7 +7,7 @@
  */
 
 import { qAll, topicFilter } from "./data.js";
-import { groupBy, recompute, metricGap, runStatus } from "./stats.js";
+import { fromStats, groupBy, metricGap, runStatus } from "./stats.js";
 import { DEFAULT } from "./topics.js";
 
 export const RUN_COLUMNS = "id,topic,created,parent,accepted,reasons,incumbent_fp,candidate_fp," +
@@ -16,7 +16,7 @@ export const RUN_COLUMNS = "id,topic,created,parent,accepted,reasons,incumbent_f
 /** What a broken record's slot on the chart says instead of a number. */
 export const GAP_LABEL = { exhausted: "ran out of money", incomplete: "crashed" };
 
-export async function loadGenerations({ signal, topic = DEFAULT }) {
+export async function loadGenerations({ signal, topic = DEFAULT, withWindows = false }) {
   const runs = await qAll(`runs?select=${RUN_COLUMNS}${topicFilter(topic)}&order=created.desc`,
                           { signal, pageSize: 200, max: 2000 });
   if (!runs.length) {
@@ -25,28 +25,25 @@ export async function loadGenerations({ signal, topic = DEFAULT }) {
              exhausted: [], incomplete: [], drifted: [], underpowered: [] };
   }
 
-  // Every held-out window of every generation, both sides, narrow. It pays for
-  // three things at once: the sparklines, the pooled levels recomputed on one
-  // metric, and the refusal exclusion — `ok` and `scored` ride along so a
-  // budget refusal is never pooled as a forecast.
+  // Summed where the rows are. The browser used to fetch every held-out
+  // rollout of the topic - 25,061 of them for news, growing every generation -
+  // to produce about forty numbers, and on 29 September that fetch crossed
+  // Supabase's statement timeout and the overview started answering 500.
+  // `rsi_run_side_stats` (migration 011) returns one row per run and side.
+  const stats = await qAll(
+    `run_side_stats?select=run_id,side,rows_total,scored,refusals,quiet,removed,benchmark` +
+    `&split=eq.holdout${topicFilter(topic)}`, { signal, max: 2_000 });
+  const level = fromStats(stats);
+  // The individual windows, only for a caller that draws one per window. The
+  // overview needs the levels above and nothing else; the metrics page draws a
+  // sparkline a window wide, and pays for the rows to do it.
   let windows = [];
-  if (runs.length <= 24) {
+  if (withWindows) {
     windows = await qAll(
-      // By topic, not by a list of twenty run ids: `rsi.rollouts` is indexed on
-      // (topic, run_id, side, split), and the id list could not use it - the
-      // same query took 2.1s as an IN list and 0.25s by topic, on either side
-      // of a three-second timeout. Every rollout carries its run's topic
-      // (migration 008 backfilled it and publish_runs has written it since),
-      // so this is the same set of rows by a route the index can serve.
       `rollouts?select=run_id,side,skill,err,naive_error,unmeasurable,ok,scored` +
-      `&split=eq.holdout${topicFilter(topic)}`,
-      { signal, max: 24_000 });
-    // The tick each window is floored at is its topic's. Stamped from the run
-    // rather than selected: the runs were filtered by topic already, and a
-    // window's own `topic` column only exists from migration 008 on.
+      `&split=eq.holdout${topicFilter(topic)}`, { signal, max: 24_000 });
     for (const w of windows) w.topic = topic;
   }
-  const level = recompute(windows);
   const byRunSide = groupBy(windows, r => `${r.run_id}|${r.side}`);
   const statusOf = new Map(runs.map(r => [r.id, runStatus(r)]));
   const ordered = [...runs].reverse();          // oldest first, as time reads

@@ -67,6 +67,10 @@ const SCHEMA = {
   // live_forecasts, and topic to progress and guesses. 010 added quote, fills
   // and path to rollouts and live_forecasts: what the paper book offered on
   // that window, what crossed it, and what the path did.
+  // The view migration 011 added: the pooled statistic per run, side and
+  // split, summed in the database rather than in the browser.
+  run_side_stats: ["topic", "run_id", "side", "split", "rows_total", "scored",
+                   "refusals", "quiet", "removed", "benchmark"],
   rollouts: ["id", "run_id", "side", "split", "fixture", "ticker", "at",
              "mid_now", "realised", "predicted", "half_width", "err",
              "naive_error", "skill", "echoed", "unmeasurable", "scored",
