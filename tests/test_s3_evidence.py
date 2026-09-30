@@ -205,10 +205,13 @@ def test_kalshis_two_lineages_do_not_share_a_prefix():
     trajectories under one name and a fetch would have brought back a blend.
     Nothing had collided only because none of the colliding pairs had uploaded.
     """
-    assert fetch_run.key_for("kalshi-horizon-5m", "gen12", "gepa") == \
+    assert fetch_run.key_for("kalshi-horizon-5m", "gen12@kalshi-jev", "gepa") == \
         "rsi-arena/kalshi-horizon-5m/kalshi-jev/gen12/gepa/"
+    # and bare means the original lineage, which is what the overview shows for it
+    assert fetch_run.key_for("kalshi-horizon-5m", "gen12") == \
+        "rsi-arena/kalshi-horizon-5m/gen12/"
     assert fetch_run.key_for("kalshi-horizon-5m", "gen12@kalshi-jev") != \
-        fetch_run.legacy_key_for("kalshi-horizon-5m", "gen12")
+        fetch_run.key_for("kalshi-horizon-5m", "gen12")
 
 
 def test_a_topic_whose_runs_directory_is_its_own_name_gains_no_level():
@@ -220,15 +223,40 @@ def test_a_topic_whose_runs_directory_is_its_own_name_gains_no_level():
         assert len(fetch_run.plan(topic, "gen8", bucket="b")) == 1
 
 
-def test_a_reader_id_means_the_lineage_it_names():
-    """`gen10@kalshi-jev` is how the overview and the database spell it."""
-    assert (fetch_run.key_for("kalshi-horizon-5m", "gen10@kalshi-jev")
-            == fetch_run.key_for("kalshi-horizon-5m", "gen10"))
+def test_a_run_id_means_what_the_overview_says_it_means():
+    """Bare is the original lineage; `@kalshi-jev` is the Jev one.
+
+    Resolving a bare id to *today's* lineage is the friendlier command line and
+    wrong twice over: it renames ten Opus generations into a lineage they are not
+    from, and it made the hourly check ask about a folder holding none of them
+    while never asking about the one that does.
+    """
+    assert fetch_run.within("kalshi-horizon-5m", "gen10") == "gen10"
+    assert fetch_run.within("kalshi-horizon-5m", "gen10@kalshi-jev") == "kalshi-jev/gen10"
+    # A lineage named after its topic says nothing: the topic is already the key.
+    assert fetch_run.within("crypto-horizon-1m", "gen8@crypto-horizon-1m") == "gen8"
+
+
+def test_the_id_of_a_run_directory_is_the_one_the_database_uses():
+    """`loop.yml` asks for this; a basename cannot say which lineage it is."""
+    assert fetch_run.id_of("runs/kalshi-jev/gen17", "kalshi-horizon-5m") == "gen17@kalshi-jev"
+    assert fetch_run.id_of("runs/gen10", "kalshi-horizon-5m") == "gen10"
+    assert (fetch_run.id_of("runs/crypto-horizon-1m/gen14", "crypto-horizon-1m")
+            == "gen14@crypto-horizon-1m")
+
+
+def test_the_local_home_is_not_the_bucket_key():
+    """On disk the lineage is the directory; in the bucket the topic already is."""
+    assert (fetch_run.local_home("crypto-horizon-1m", "gen8@crypto-horizon-1m")
+            == Path("runs/crypto-horizon-1m/gen8"))
+    assert fetch_run.local_home("kalshi-horizon-5m", "gen10") == Path("runs/gen10")
+    assert (fetch_run.local_home("kalshi-horizon-5m", "gen10@kalshi-jev")
+            == Path("runs/kalshi-jev/gen10"))
 
 
 def test_the_old_location_is_tried_second_and_only_second():
     """The kalshi-jev generations uploaded before 30 September sit bare."""
-    steps = fetch_run.plan("kalshi-horizon-5m", "gen15", bucket="b")
+    steps = fetch_run.plan("kalshi-horizon-5m", "gen15@kalshi-jev", bucket="b")
     assert [uri for uri, _ in steps] == [
         "s3://b/rsi-arena/kalshi-horizon-5m/kalshi-jev/gen15/",
         "s3://b/rsi-arena/kalshi-horizon-5m/gen15/"]
@@ -245,7 +273,7 @@ def test_the_fallback_is_skipped_when_the_first_prefix_delivered(tmp_path):
             (Path(cmd[4]) / "baseline.holdout.json").write_text("[]")
             return type("R", (), {"returncode": 0})()
     runner = Delivers()
-    fetch_run.fetch("kalshi-horizon-5m", "gen15", what="rollouts", bucket="b",
+    fetch_run.fetch("kalshi-horizon-5m", "gen15@kalshi-jev", what="rollouts", bucket="b",
                     dest=str(tmp_path / "gen15"), runner=runner, log=lambda *a: None)
     assert len(runner.calls) == 1
     assert "kalshi-jev/gen15" in runner.calls[0][3]
@@ -254,7 +282,7 @@ def test_the_fallback_is_skipped_when_the_first_prefix_delivered(tmp_path):
 def test_an_empty_first_prefix_falls_back(tmp_path):
     """A sync from a prefix that does not exist exits zero and writes nothing."""
     runner = FakeRun()
-    fetch_run.fetch("kalshi-horizon-5m", "gen15", what="rollouts", bucket="b",
+    fetch_run.fetch("kalshi-horizon-5m", "gen15@kalshi-jev", what="rollouts", bucket="b",
                     dest=str(tmp_path / "gen15"), runner=runner, log=lambda *a: None)
     assert len(runner.calls) == 2, "the old location was never tried"
     assert "kalshi-jev/gen15" in runner.calls[0][3]

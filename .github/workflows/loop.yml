@@ -569,9 +569,10 @@ jobs:
           # because none of the colliding pairs had uploaded at all.
           key=$(python -c "
           import sys; sys.path.insert(0, 'scripts')
-          from fetch_run import key_for
-          print(key_for(sys.argv[1], sys.argv[2]))
-          " "$TOPIC" "$(basename "$run_dir")")
+          from fetch_run import id_of, key_for
+          topic, run_dir = sys.argv[1], sys.argv[2]
+          print(key_for(topic, id_of(run_dir, topic)))
+          " "$TOPIC" "$run_dir")
           dest="s3://$TRACE_BUCKET/$key"
           echo "dest=$dest" >> "$GITHUB_OUTPUT"
           # Three attempts, 10s then 30s. A sync that fails twice is not a blip

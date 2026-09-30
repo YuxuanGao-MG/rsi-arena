@@ -49,7 +49,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from rsi_arena.topics import spec_of                          # noqa: E402
+from rsi_arena.topics import TOPICS, spec_of                  # noqa: E402
 
 #: Everything the loop writes to S3 sits under this one prefix, so a bucket can
 #: hold other things and ``s3_usage.py`` can still answer "what does the arena
@@ -79,24 +79,30 @@ def bucket_of(explicit: str = "") -> str:
 def within(topic: str, run_id: str) -> str:
     """``<lineage>/<run>`` when the lineage needs saying, else just ``<run>``.
 
-    A reader id may arrive qualified, ``gen10@kalshi-jev`` - that is how the
-    overview and the database spell it - and means the same lineage. A bare id
-    means the lineage the loop runs now, which is the topic's runs directory.
-    ``runs/gen10``, the Opus lineage, is bare by construction and stays bare.
+    A run id means exactly what the overview and the database say it means:
+    ``gen10@kalshi-jev`` is the Jev lineage and bare ``gen10`` is the original
+    one, which for Kalshi is the Opus months under ``runs/``. Resolving a bare id
+    to *today's* lineage instead was briefly tempting - it is the friendlier
+    command line - and wrong twice over: it renamed ten Opus generations into a
+    lineage they are not from, and it made the hourly check ask about a folder
+    that holds none of them while never asking about the one that does.
+
+    A lineage that is the topic's own name says nothing, because the topic is
+    already in the key: ``gen8@crypto-horizon-1m`` is ``crypto-horizon-1m/gen8/``.
     """
-    run, _, said = run_id.partition("@")
-    if said:
-        lineage = said
-    else:
-        # An unknown topic keys by the run alone rather than raising. This is a
-        # path builder: it is called to print a key and to compare one, and a
-        # caller that has already been told its topic is unknown should not be
-        # told again by a KeyError from inside a string.
-        try:
-            lineage = Path(spec_of(topic).runs_dir).name
-        except KeyError:
-            lineage = topic
+    run, _, lineage = run_id.partition("@")
     return run if lineage in (topic, "runs", "") else f"{lineage}/{run}"
+
+
+def id_of(run_dir: str | Path, topic: str) -> str:
+    """The run id of a directory, as the database and the overview spell it.
+
+    ``loop.yml`` asks for this rather than passing a basename, because a basename
+    cannot say which lineage it came from and every other part of the system
+    keys by an id that can. Same function the publisher uses.
+    """
+    from rsi_arena.loop.generation import qualified
+    return qualified(run_dir, topic) or Path(run_dir).name
 
 
 def key_for(topic: str, run_id: str, what: str = "all") -> str:
@@ -128,6 +134,26 @@ def uri_for(bucket: str, topic: str, run_id: str, what: str = "all") -> str:
     return f"s3://{bucket}/{key_for(topic, run_id, what)}"
 
 
+def local_home(topic: str, run_id: str) -> Path:
+    """Where a run lives on disk: ``runs/<lineage>/<run>``, or ``runs/<run>``.
+
+    Not the same rule as the S3 key, and deliberately so. In the bucket the topic
+    is already a path segment, so a lineage named after the topic says nothing
+    and is dropped; on disk the lineage *is* the directory, so
+    ``gen8@crypto-horizon-1m`` is ``runs/crypto-horizon-1m/gen8``. A bare id is
+    the original lineage in ``runs/`` itself, which is where the Opus generations
+    are - defaulting it to the current lineage would download the Opus gen10 on
+    top of a different generation.
+    """
+    run, _, lineage = run_id.partition("@")
+    if lineage:
+        return Path("runs") / lineage / run
+    if topic in TOPICS and Path(spec_of(topic).runs_dir).name == topic:
+        # A topic whose own runs directory is named after it, addressed bare.
+        return Path(spec_of(topic).runs_dir) / run
+    return Path("runs") / run
+
+
 def dest_for(topic: str, run_id: str, what: str = "all", dest: str = "") -> Path:
     """Where the download lands: the topic's runs directory, or ``--dest``.
 
@@ -136,7 +162,7 @@ def dest_for(topic: str, run_id: str, what: str = "all", dest: str = "") -> Path
     the only reading under which ``--what all`` and ``--what rollouts`` put the
     same file in the same place.
     """
-    root = Path(dest) if dest else Path(spec_of(topic).runs_dir) / run_id
+    root = Path(dest) if dest else local_home(topic, run_id)
     return root if what == "all" else root / what
 
 
