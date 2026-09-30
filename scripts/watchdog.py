@@ -397,6 +397,24 @@ def check_reader(rep: Report) -> None:
             rep.ok(name, ", ".join(notes))
 
 
+def prefixes_under(bucket: str, folder: str, *, runner=subprocess.run) -> tuple[set[str], str]:
+    """The immediate sub-prefixes of ``folder``, and an error message or "".
+
+    ``aws s3 ls`` on a prefix that holds nothing exits 1 and prints nothing at
+    all, which is not a failure - it is the answer "empty", and the first version
+    of this check reported it as "cannot list" the moment the new kalshi-jev
+    prefix existed in the code and not yet in the bucket. A real problem -
+    AccessDenied, NoSuchBucket, no credentials - says so on stderr.
+    """
+    out = runner(["aws", "s3", "ls", f"s3://{bucket}/{folder}"],
+                 capture_output=True, text=True, timeout=120)
+    stdout, stderr = (out.stdout or ""), (out.stderr or "").strip()
+    if out.returncode != 0 and stderr:
+        return set(), f"cannot list s3://{bucket}/{folder}: {stderr[:100]}"
+    return ({folder + line.split("PRE", 1)[1].strip()
+             for line in stdout.splitlines() if "PRE" in line}, "")
+
+
 def backlog_of(path: Path = None) -> set[str]:
     """The generations `s3_backlog.txt` accounts for. Comments and blanks out."""
     path = path or S3_BACKLOG
@@ -466,14 +484,11 @@ def check_evidence(rep: Report) -> None:
     want = {(t, f"{PREFIX}/{t}/{within(t, i)}/") for t, i, _ in runs}
     holds: set[str] = set()
     for folder in sorted({key.rsplit("/", 2)[0] + "/" for _, key in want}):
-        out = subprocess.run(["aws", "s3", "ls", f"s3://{bucket}/{folder}"],
-                             capture_output=True, text=True, timeout=120)
-        if out.returncode != 0:
-            rep.bad("evidence reaches S3", f"cannot list s3://{bucket}/{folder}: "
-                                           f"{(out.stderr or '').strip()[:100]}")
+        found, problem = prefixes_under(bucket, folder)
+        if problem:
+            rep.bad("evidence reaches S3", problem)
             return
-        holds |= {folder + line.split("PRE", 1)[1].strip()
-                  for line in out.stdout.splitlines() if "PRE" in line}
+        holds |= found
     rep.note("prefixes_in_s3", sorted(holds))
 
     fresh, stale = unseen([(t, i) for t, i, _ in runs], holds, backlog_of(),

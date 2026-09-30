@@ -23,6 +23,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import watchdog                                                    # noqa: E402
+from watchdog import prefixes_under                                # noqa: E402
 
 LAYOUT = lambda t, i: f"{watchdog.S3_PREFIX}/{t}/{i}/"             # noqa: E731
 
@@ -74,6 +75,41 @@ def test_the_shipped_backlog_lists_real_looking_generations():
         assert run, f"{entry!r} is not <topic>/<run>"
         assert topic in ("kalshi-horizon-5m", "news-equity-5m", "crypto-horizon-1m"), \
             f"{entry!r} names no topic this arena runs"
+
+
+# ---------------------------------------------------------------------------
+# Listing the bucket.
+
+class Aws:
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.out = (stdout, stderr, returncode)
+    def __call__(self, cmd, **kw):
+        stdout, stderr, rc = self.out
+        return type("R", (), {"stdout": stdout, "stderr": stderr, "returncode": rc})()
+
+
+def test_an_empty_prefix_is_empty_not_broken():
+    """`aws s3 ls` on a prefix holding nothing exits 1 and prints nothing.
+
+    Reported as a failure it made the check red the moment the new kalshi-jev
+    prefix existed in the code and not yet in the bucket.
+    """
+    found, problem = prefixes_under("b", "rsi-arena/t/", runner=Aws(returncode=1))
+    assert (found, problem) == (set(), "")
+
+
+def test_a_real_listing_error_is_reported():
+    found, problem = prefixes_under("b", "rsi-arena/t/",
+                                    runner=Aws(stderr="An error occurred (AccessDenied)",
+                                               returncode=1))
+    assert found == set() and "AccessDenied" in problem
+
+
+def test_the_sub_prefixes_are_returned_with_their_folder():
+    found, problem = prefixes_under(
+        "b", "rsi-arena/t/", runner=Aws(stdout="                           PRE gen1/\n"
+                                              "                           PRE gen2/\n"))
+    assert problem == "" and found == {"rsi-arena/t/gen1/", "rsi-arena/t/gen2/"}
 
 
 # ---------------------------------------------------------------------------
