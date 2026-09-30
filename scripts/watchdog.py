@@ -483,12 +483,18 @@ def check_evidence(rep: Report) -> None:
     # topics and, for Kalshi, its lineage - rather than one call per run.
     want = {(t, f"{PREFIX}/{t}/{within(t, i)}/") for t, i, _ in runs}
     holds: set[str] = set()
+    listed: dict[str, int] = {}
     for folder in sorted({key.rsplit("/", 2)[0] + "/" for _, key in want}):
         found, problem = prefixes_under(bucket, folder)
         if problem:
             rep.bad("evidence reaches S3", problem)
             return
+        listed[folder] = len(found)
         holds |= found
+    # Which folders were asked and what each held. Two readings of this bucket
+    # disagreed on 30 September and the verdict did not say enough to tell which
+    # was wrong, so it says it now.
+    rep.note("listed", listed)
     rep.note("prefixes_in_s3", sorted(holds))
 
     fresh, stale = unseen([(t, i) for t, i, _ in runs], holds, backlog_of(),
