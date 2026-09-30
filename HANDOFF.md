@@ -290,7 +290,7 @@ add and remove without touching anything.
 On GitHub, the same three commands are the `loop` workflow's `command` input;
 results are committed to `main` and summarised on the run page — except
 `rollouts/` and `gepa/`, which are gitignored and go to
-`s3://$TRACE_BUCKET/rsi-arena/<topic>/<run>/` instead. A run you did not just
+`s3://$TRACE_BUCKET/rsi-arena/<topic>/[<lineage>/]<run>/` instead. A run you did not just
 produce yourself has only its light files in the checkout; `scripts/fetch_run.py
 <topic> <run>` brings the rest back, `scripts/s3_usage.py` says what is up there.
 `docs/design.md`, "What a later run needs from an earlier one", is the reasoning

@@ -5,18 +5,84 @@
 # they live. For about a week it was not: the IAM user that `loop.yml` uses had
 # no policy allowing `s3:PutObject`, and the sync step of the time swallowed the
 # AccessDenied behind a `||` and went green. Every generation in that window
-# reached a verdict whose evidence went only into a run artifact, and those
-# expire after fourteen days.
+# reached a verdict whose evidence went only into a run artifact, and a run
+# artifact expires after fourteen days.
 #
-# So for these the only copy is on the author's machine, under `runs/`. They are
-# listed here rather than excused by a cutoff date, because a date would also
-# excuse the next genuine sync failure that happened to fall before it.
+# They are listed here rather than excused by a cutoff date, because a date would
+# also excuse the next genuine sync failure that happened to fall before it.
 # `scripts/watchdog.py` reports the count of this file every hour and fails only
-# on a generation that is missing and *not* listed here.
+# on a generation that is missing and *not* listed here. It is a record, not a
+# suppression list.
 #
-# To clear a line: `aws s3 sync runs/<family>/<gen> \
-#   s3://rsi-arena-traces/rsi-arena/<topic>/<gen>/` with credentials that have
-# PutObject on the bucket, then delete the line. The file being empty is the
-# goal; deleting a line whose upload did not happen puts the gap back to silent.
+# One `<topic>/<run id>` per line, the run id as the database and the overview
+# spell it. To clear a line:
 #
-# One `<topic>/<run>` per line.
+#     python scripts/fetch_run.py --help          # for the key layout
+#     aws s3 sync runs/<lineage>/<gen> \
+#       s3://rsi-arena-traces/rsi-arena/<topic>/<lineage>/<gen>/
+#
+# then delete the line. Deleting a line whose upload did not happen puts the gap
+# back to silent, which is the state this file exists to end.
+
+# -- still on the author's machine, and nowhere else (20 generations, 682 MB)
+#
+# These need credentials with PutObject on the bucket. The machine has none: its
+# ~/.aws/credentials holds an expired session token from April 2024, and the
+# working key exists only as a repository secret, which GitHub will not read
+# back. So this half of the backlog clears when that key is put in the
+# environment once - not by creating a new one.
+kalshi-horizon-5m/gen1-1k                  # 2026-09-14  runs/gen1-1k  gepa  74 KB
+kalshi-horizon-5m/gen1-floored             # 2026-09-14  runs/gen1-floored  gepa  75 KB
+kalshi-horizon-5m/gen5                     # 2026-09-16  runs/gen5  gepa  57 KB
+kalshi-horizon-5m/gen7@kalshi-jev          # 2026-09-25  runs/kalshi-jev/gen7  rollouts+gepa  97 MB
+kalshi-horizon-5m/gen8@kalshi-jev          # 2026-09-25  runs/kalshi-jev/gen8  rollouts+gepa  15 MB
+kalshi-horizon-5m/gen9@kalshi-jev          # 2026-09-25  runs/kalshi-jev/gen9  rollouts+gepa  101 MB
+kalshi-horizon-5m/gen10@kalshi-jev         # 2026-09-26  runs/kalshi-jev/gen10  rollouts+gepa  16 MB
+kalshi-horizon-5m/gen11@kalshi-jev         # 2026-09-26  runs/kalshi-jev/gen11  rollouts+gepa  15 MB
+kalshi-horizon-5m/gen12@kalshi-jev         # 2026-09-26  runs/kalshi-jev/gen12  rollouts+gepa  16 MB
+kalshi-horizon-5m/gen13@kalshi-jev         # 2026-09-27  runs/kalshi-jev/gen13  rollouts+gepa  40 MB
+kalshi-horizon-5m/gen14@kalshi-jev         # 2026-09-27  runs/kalshi-jev/gen14  rollouts+gepa  97 MB
+news-equity-5m/gen7@news-equity-5m         # 2026-09-25  runs/news-equity-5m/gen7  rollouts+gepa  37 MB
+news-equity-5m/gen8@news-equity-5m         # 2026-09-25  runs/news-equity-5m/gen8  rollouts+gepa  6 MB
+news-equity-5m/gen9@news-equity-5m         # 2026-09-25  runs/news-equity-5m/gen9  rollouts+gepa  58 MB
+news-equity-5m/gen10@news-equity-5m        # 2026-09-26  runs/news-equity-5m/gen10  rollouts+gepa  7 MB
+news-equity-5m/gen11@news-equity-5m        # 2026-09-26  runs/news-equity-5m/gen11  rollouts+gepa  33 MB
+news-equity-5m/gen12@news-equity-5m        # 2026-09-26  runs/news-equity-5m/gen12  rollouts+gepa  33 MB
+news-equity-5m/gen13@news-equity-5m        # 2026-09-27  runs/news-equity-5m/gen13  rollouts+gepa  52 MB
+news-equity-5m/gen14@news-equity-5m        # 2026-09-27  runs/news-equity-5m/gen14  rollouts+gepa  53 MB
+news-equity-5m/gen15@news-equity-5m        # 2026-09-27  runs/news-equity-5m/gen15  rollouts+gepa  6 MB
+
+# -- gone (26 generations)
+#
+# No local copy and the run artifact has expired. The verdicts, scoreboards,
+# manifests and paper books of these generations are committed and their rollout
+# rows are in Postgres; what is lost is the per-window trajectories - the tool
+# calls and the model's own text. Nothing downstream reads them, which is why
+# their absence went unnoticed for a week, and it is also why this is a record of
+# a loss rather than an incident to recover from.
+crypto-horizon-1m/gen2@crypto-horizon-1m   # 2026-09-23  no copy anywhere
+crypto-horizon-1m/gen3@crypto-horizon-1m   # 2026-09-23  no copy anywhere
+crypto-horizon-1m/gen4@crypto-horizon-1m   # 2026-09-23  no copy anywhere
+crypto-horizon-1m/gen5@crypto-horizon-1m   # 2026-09-24  no copy anywhere
+crypto-horizon-1m/gen6@crypto-horizon-1m   # 2026-09-24  no copy anywhere
+crypto-horizon-1m/gen7@crypto-horizon-1m   # 2026-09-25  no copy anywhere
+crypto-horizon-1m/gen8@crypto-horizon-1m   # 2026-09-25  no copy anywhere
+kalshi-horizon-5m/gen4                     # 2026-09-16  no copy anywhere
+kalshi-horizon-5m/gen6                     # 2026-09-17  no copy anywhere
+kalshi-horizon-5m/gen7                     # 2026-09-17  no copy anywhere
+kalshi-horizon-5m/gen8                     # 2026-09-18  no copy anywhere
+kalshi-horizon-5m/gen9                     # 2026-09-19  no copy anywhere
+kalshi-horizon-5m/gen10                    # 2026-09-20  no copy anywhere
+kalshi-horizon-5m/gen11                    # 2026-09-21  no copy anywhere
+kalshi-horizon-5m/gen12                    # 2026-09-22  no copy anywhere
+kalshi-horizon-5m/gen2@kalshi-jev          # 2026-09-23  no copy anywhere
+kalshi-horizon-5m/gen3@kalshi-jev          # 2026-09-23  no copy anywhere
+kalshi-horizon-5m/gen4@kalshi-jev          # 2026-09-24  no copy anywhere
+kalshi-horizon-5m/gen5@kalshi-jev          # 2026-09-24  no copy anywhere
+kalshi-horizon-5m/gen6@kalshi-jev          # 2026-09-24  no copy anywhere
+news-equity-5m/gen1@news-equity-5m         # 2026-09-22  no copy anywhere
+news-equity-5m/gen2@news-equity-5m         # 2026-09-23  no copy anywhere
+news-equity-5m/gen3@news-equity-5m         # 2026-09-23  no copy anywhere
+news-equity-5m/gen4@news-equity-5m         # 2026-09-24  no copy anywhere
+news-equity-5m/gen5@news-equity-5m         # 2026-09-24  no copy anywhere
+news-equity-5m/gen6@news-equity-5m         # 2026-09-24  no copy anywhere

@@ -53,6 +53,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 UTC = timezone.utc
 
@@ -103,7 +104,12 @@ SLOW_SECONDS = {"pooled skill": 2.0}
 #: a second attempt before it becomes a fault.
 CONFIRM = 2
 
-#: Where the trajectories live, and what each topic is called there. A run's
+#: Where the trajectories live, and what each topic is called there.
+#:
+#: The layout is `fetch_run.py`'s, imported rather than restated so the check
+#: cannot drift from the thing it checks: `rsi-arena/<topic>/[<lineage>/]<run>/`,
+#: the lineage said only where it disambiguates - which is Kalshi, whose two
+#: lineages share generation numbers. A run's
 #: rollouts and GEPA state are no longer committed - they are what pushed three
 #: runs past GitHub's file limit - so S3 is the only copy after the run artifact
 #: expires in fourteen days. "Not in git" is only safe if "in S3" is true, and
@@ -402,6 +408,8 @@ def check_evidence(rep: Report) -> None:
     Skipped, not failed, without credentials or a bucket: the repository has run
     without them and must keep being able to.
     """
+    from fetch_run import PREFIX, within         # the layout, from its owner
+
     bucket = os.environ.get("TRACE_BUCKET", "")
     if not bucket or not os.environ.get("AWS_ACCESS_KEY_ID"):
         rep.ok("evidence reaches S3", "no bucket or credentials here; skipped")
@@ -427,24 +435,26 @@ def check_evidence(rep: Report) -> None:
         rep.ok("evidence reaches S3", "no generation old enough to have been uploaded")
         return
 
-    # One listing per topic rather than one per run: the bucket is laid out
-    # `rsi-arena/<topic>/<run>/`, and forty runs would otherwise be forty calls.
-    seen: dict[str, set[str]] = {}
-    for topic in {t for t, _, _ in runs}:
-        out = subprocess.run(["aws", "s3", "ls", f"s3://{bucket}/{S3_PREFIX}/{topic}/"],
+    # One listing per directory that expected keys actually live in - three
+    # topics and, for Kalshi, its lineage - rather than one call per run.
+    want = {(t, f"{PREFIX}/{t}/{within(t, i)}/") for t, i, _ in runs}
+    holds: set[str] = set()
+    for folder in sorted({key.rsplit("/", 2)[0] + "/" for _, key in want}):
+        out = subprocess.run(["aws", "s3", "ls", f"s3://{bucket}/{folder}"],
                              capture_output=True, text=True, timeout=120)
         if out.returncode != 0:
-            rep.bad("evidence reaches S3",
-                    f"cannot list s3://{bucket}/{S3_PREFIX}/{topic}/: "
-                    f"{(out.stderr or '').strip()[:100]}")
+            rep.bad("evidence reaches S3", f"cannot list s3://{bucket}/{folder}: "
+                                           f"{(out.stderr or '').strip()[:100]}")
             return
-        seen[topic] = {line.split("PRE", 1)[1].strip().rstrip("/")
-                       for line in out.stdout.splitlines() if "PRE" in line}
+        holds |= {folder + line.split("PRE", 1)[1].strip()
+                  for line in out.stdout.splitlines() if "PRE" in line}
+    rep.note("prefixes_in_s3", sorted(holds))
 
-    # A run_id is qualified as `gen1@crypto-horizon-1m` in the database and
-    # stored under its bare directory name, which is what the loop uploaded.
-    missing = [f"{t}/{i.split('@', 1)[0]}" for t, i, _ in runs
-               if i.split("@", 1)[0] not in seen.get(t, set())]
+    # A kalshi-jev generation uploaded before 30 September sits under the bare
+    # name, which `fetch_run.fetch` falls back to; present there is present.
+    missing = sorted({f"{t}/{i}" for t, i, _ in runs
+                      if f"{PREFIX}/{t}/{within(t, i)}/" not in holds
+                      and f"{PREFIX}/{t}/{i.split('@', 1)[0]}/" not in holds})
     known = set()
     if S3_BACKLOG.exists():
         known = {line.split("#", 1)[0].strip() for line in S3_BACKLOG.read_text().splitlines()}
@@ -452,22 +462,19 @@ def check_evidence(rep: Report) -> None:
     fresh = [m for m in missing if m not in known]
     stale = [m for m in missing if m in known]
     if missing:
-        rep.note("missing_from_s3", sorted(missing))
+        rep.note("missing_from_s3", missing)
     if stale:
         # Said every hour, as a fact rather than a fault: these have one copy
         # each, on one machine, and that is worth seeing until it is not true.
         rep.ok("evidence backlog", f"{len(stale)} generation(s) predate the working "
                                    f"bucket and are local-only; see {S3_BACKLOG.name}")
     if fresh:
-        # What it did see, per topic, so the next reader can tell a genuinely
-        # empty bucket from a layout this check has guessed wrong. The full list
-        # is in the JSON verdict rather than truncated into a sentence.
-        held = ", ".join(f"{t}: {len(p)}" for t, p in sorted(seen.items()))
+        # The full list is in the JSON verdict rather than truncated into a
+        # sentence, so acting on this does not mean re-running the check.
         rep.bad("evidence reaches S3",
-                f"{len(fresh)} generation(s) have no trajectories in "
-                f"s3://{bucket}/{S3_PREFIX}/<topic>/: {', '.join(fresh[:4])}"
-                + (" ..." if len(fresh) > 4 else "")
-                + f" (prefixes present - {held})")
+                f"{len(fresh)} generation(s) have no trajectories under "
+                f"s3://{bucket}/{PREFIX}/: {', '.join(fresh[:4])}"
+                + (" ..." if len(fresh) > 4 else ""))
     else:
         rep.ok("evidence reaches S3",
                f"{len(runs) - len(stale)} of {len(runs)} generation(s) present"

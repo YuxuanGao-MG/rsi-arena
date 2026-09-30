@@ -772,8 +772,24 @@ the next generation - because everything the next generation wants from them has
 already been distilled into the archive, the scoreboard and the manifest. So they
 are gitignored (`runs/**/rollouts/`, `runs/**/gepa/`) and they go to S3:
 
-    s3://$TRACE_BUCKET/rsi-arena/<topic>/<run>/          # a generation, whole
-    s3://$TRACE_BUCKET/rsi-arena/live/<topic>/<date>/    # a day of live sweeps
+    s3://$TRACE_BUCKET/rsi-arena/<topic>/<run>/             # a generation, whole
+    s3://$TRACE_BUCKET/rsi-arena/<topic>/<lineage>/<run>/   # ... when the topic has two
+    s3://$TRACE_BUCKET/rsi-arena/live/<topic>/<date>/       # a day of live sweeps
+
+The lineage appears only where it has to, which today is Kalshi: `runs/gen1..12`
+are the Opus months and `runs/kalshi-jev/gen1..16` are since the base model
+changed, and ten pairs of those share a number. Keyed by the run name alone both
+lineages synced into one prefix, which would have mixed two generations'
+trajectories under one name the moment the backlog was uploaded, and a fetch
+would have brought back a blend of the two. Nothing had collided yet only because
+none of the colliding pairs had been uploaded at all. The reader's run ids have
+carried the same distinction since the crypto topic's gen1 overwrote Kalshi's
+(`loop/generation.py::qualified`); S3 was the last place keyed by the bare name.
+`scripts/fetch_run.py` owns the layout, `loop.yml` asks it for the key rather
+than spelling it out again, and a fetch falls back to the pre-30-September
+location when the lineage prefix is empty. `scripts/s3_backlog.txt` lists the
+generations that never reached the bucket at all, and the hourly watchdog fails
+on any *other* generation that is missing.
 
 `loop.yml` syncs the run directory there **before** the commit step, three
 attempts with backoff, and fails the job if the sync fails after all three *and*

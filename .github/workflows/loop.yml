@@ -560,7 +560,19 @@ jobs:
             exit 0
           fi
 
-          dest="s3://$TRACE_BUCKET/rsi-arena/$TOPIC/$(basename "$run_dir")/"
+          # The key comes from `scripts/fetch_run.py`, which is also what reads
+          # it back, rather than being spelled out twice. It was
+          # `$TOPIC/$(basename run_dir)` until 30 September, and the basename
+          # alone is ambiguous: Kalshi has two lineages, runs/gen1..12 from the
+          # Opus months and runs/kalshi-jev/gen* since, and ten pairs share a
+          # number. Both synced into one prefix, which nothing had noticed only
+          # because none of the colliding pairs had uploaded at all.
+          key=$(python -c "
+          import sys; sys.path.insert(0, 'scripts')
+          from fetch_run import key_for
+          print(key_for(sys.argv[1], sys.argv[2]))
+          " "$TOPIC" "$(basename "$run_dir")")
+          dest="s3://$TRACE_BUCKET/$key"
           echo "dest=$dest" >> "$GITHUB_OUTPUT"
           # Three attempts, 10s then 30s. A sync that fails twice is not a blip
           # and a third wait longer than half a minute only delays the issue.

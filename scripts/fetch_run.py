@@ -18,12 +18,25 @@ Deliberately not automatic. A backfill over twelve generations that quietly
 downloads twelve gigabytes because one file was missing is a surprise, and the
 surprise arrives as a bill. ``--fetch`` is the sentence in which somebody asks.
 
-The key is ``rsi-arena/<topic>/<run>/``, exactly what ``loop.yml`` uploads: the
-topic as the loop names it, the run directory's basename, no runs-directory
-prefix. A run's local home is its topic's runs directory
-(``runs/crypto-horizon-1m/gen8``), which is what ``--dest`` defaults to - except
-for the first topic's original lineage, which lives flat in ``runs/`` and needs
-``--dest runs/gen12`` said out loud.
+The key is ``rsi-arena/<topic>/[<lineage>/]<run>/``, exactly what ``loop.yml``
+uploads. The lineage appears only when it is not the topic's own name, which
+means one topic: Kalshi has two, ``runs/gen1..12`` from the Opus months and
+``runs/kalshi-jev/gen1..16`` since, and ten pairs of those share a number. Under
+the basename alone both lineages synced into one prefix, so uploading the backlog
+would have mixed two generations' trajectories under one name and a fetch would
+have brought back a blend. Nothing had collided yet only because none of the
+colliding pairs had been uploaded at all; the reader's run ids have carried the
+same distinction all along (``rsi_arena.loop.generation.qualified``), and this
+was the one place still keyed by the bare name.
+
+So ``runs/kalshi-jev/gen10`` is ``kalshi-horizon-5m/kalshi-jev/gen10/`` and the
+Opus-era ``runs/gen10`` stays ``kalshi-horizon-5m/gen10/``; crypto and news,
+whose runs directory is named after the topic, do not move. The kalshi-jev
+generations uploaded before 30 September sit under the bare name, so a fetch
+tries the lineage prefix and falls back to it. A run's local home is its topic's runs
+directory (``runs/crypto-horizon-1m/gen8``), which is what ``--dest`` defaults to
+- except for the first topic's original lineage, which lives flat in ``runs/``
+and needs ``--dest runs/gen12`` said out loud.
 """
 
 from __future__ import annotations
@@ -63,8 +76,31 @@ def bucket_of(explicit: str = "") -> str:
     return bucket
 
 
+def within(topic: str, run_id: str) -> str:
+    """``<lineage>/<run>`` when the lineage needs saying, else just ``<run>``.
+
+    A reader id may arrive qualified, ``gen10@kalshi-jev`` - that is how the
+    overview and the database spell it - and means the same lineage. A bare id
+    means the lineage the loop runs now, which is the topic's runs directory.
+    ``runs/gen10``, the Opus lineage, is bare by construction and stays bare.
+    """
+    run, _, said = run_id.partition("@")
+    if said:
+        lineage = said
+    else:
+        # An unknown topic keys by the run alone rather than raising. This is a
+        # path builder: it is called to print a key and to compare one, and a
+        # caller that has already been told its topic is unknown should not be
+        # told again by a KeyError from inside a string.
+        try:
+            lineage = Path(spec_of(topic).runs_dir).name
+        except KeyError:
+            lineage = topic
+    return run if lineage in (topic, "runs", "") else f"{lineage}/{run}"
+
+
 def key_for(topic: str, run_id: str, what: str = "all") -> str:
-    """``rsi-arena/<topic>/<run>/``, narrowed to one subtree when asked.
+    """``rsi-arena/<topic>/<run id>/``, narrowed to one subtree when asked.
 
     Always ends in a slash. ``aws s3 sync`` treats a prefix as a directory and a
     missing trailing slash makes it sync siblings whose names merely start the
@@ -72,7 +108,19 @@ def key_for(topic: str, run_id: str, what: str = "all") -> str:
     """
     if what not in WHAT:
         raise ValueError(f"what must be one of {', '.join(WHAT)}, not {what!r}")
-    key = f"{PREFIX}/{topic}/{run_id}/"
+    key = f"{PREFIX}/{topic}/{within(topic, run_id)}/"
+    return key if what == "all" else f"{key}{what}/"
+
+
+def legacy_key_for(topic: str, run_id: str, what: str = "all") -> str:
+    """Where a generation uploaded before 30 September sits: the bare run name.
+
+    Returned even when it equals ``key_for`` - the caller compares the two and
+    only falls back when they differ, so there is no second pointless sync.
+    """
+    if what not in WHAT:
+        raise ValueError(f"what must be one of {', '.join(WHAT)}, not {what!r}")
+    key = f"{PREFIX}/{topic}/{run_id.split('@', 1)[0]}/"
     return key if what == "all" else f"{key}{what}/"
 
 
@@ -94,11 +142,16 @@ def dest_for(topic: str, run_id: str, what: str = "all", dest: str = "") -> Path
 
 def plan(topic: str, run_id: str, *, what: str = "all", bucket: str = "",
          dest: str = "") -> list[tuple[str, Path]]:
-    """The (uri, directory) pairs a fetch would sync. One pair; a list so the
-    caller can print it, and so ``all`` could be split later without moving the
-    seam."""
-    return [(uri_for(bucket_of(bucket), topic, run_id, what),
-             dest_for(topic, run_id, what, dest))]
+    """The (uri, directory) pairs a fetch would sync, in the order to try them.
+
+    Two when the qualified key and the pre-30-September one differ: the second is
+    only reached if the first synced nothing, which is what ``fetch`` does with
+    this list. One otherwise.
+    """
+    b, into = bucket_of(bucket), dest_for(topic, run_id, what, dest)
+    first = uri_for(b, topic, run_id, what)
+    legacy = f"s3://{b}/{legacy_key_for(topic, run_id, what)}"
+    return [(first, into)] if legacy == first else [(first, into), (legacy, into)]
 
 
 def sync(uri: str, into: Path, *, runner=subprocess.run, dry_run: bool = False,
@@ -123,14 +176,27 @@ def fetch(topic: str, run_id: str, *, what: str = "all", bucket: str = "",
 
     Raises ``SystemExit`` on a failed sync, because every caller wants the same
     answer: a fetch that did not fetch is not a thing to carry on from.
+
+    ``plan`` may offer a second prefix - where generations uploaded before
+    30 September sit - and it is tried only when the first brought nothing back.
+    ``aws s3 sync`` from a prefix that does not exist exits zero and writes no
+    files, so "brought nothing back" is the question to ask, not the status.
     """
     written: list[Path] = []
-    for uri, into in plan(topic, run_id, what=what, bucket=bucket, dest=dest):
+    candidates = plan(topic, run_id, what=what, bucket=bucket, dest=dest)
+    for n, (uri, into) in enumerate(candidates):
+        before = {p for p in into.rglob("*") if p.is_file()} if into.exists() else set()
         status = sync(uri, into, runner=runner, dry_run=dry_run, log=log)
         if status:
             raise SystemExit(f"aws s3 sync {uri} failed (exit {status}); "
                              "check the credentials and that the run reached S3")
         written.append(into)
+        if dry_run:
+            continue
+        got = {p for p in into.rglob("*") if p.is_file()} if into.exists() else set()
+        if got - before or n == len(candidates) - 1:
+            break
+        log(f"  nothing under {uri}; trying where it sat before 30 September")
     return written
 
 

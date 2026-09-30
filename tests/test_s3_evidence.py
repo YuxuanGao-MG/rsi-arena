@@ -195,8 +195,70 @@ def test_the_key_is_the_one_the_loop_uploads_to():
     assert fetch_run.key_for("crypto-horizon-1m", "gen8") == "rsi-arena/crypto-horizon-1m/gen8/"
     assert (fetch_run.key_for("crypto-horizon-1m", "gen8", "rollouts")
             == "rsi-arena/crypto-horizon-1m/gen8/rollouts/")
+
+
+def test_kalshis_two_lineages_do_not_share_a_prefix():
+    """`runs/gen12` and `runs/kalshi-jev/gen12` are different generations.
+
+    Ten pairs of them share a number. Keyed by the basename alone both synced
+    into one prefix, so uploading the backlog would have mixed two generations'
+    trajectories under one name and a fetch would have brought back a blend.
+    Nothing had collided only because none of the colliding pairs had uploaded.
+    """
     assert fetch_run.key_for("kalshi-horizon-5m", "gen12", "gepa") == \
-        "rsi-arena/kalshi-horizon-5m/gen12/gepa/"
+        "rsi-arena/kalshi-horizon-5m/kalshi-jev/gen12/gepa/"
+    assert fetch_run.key_for("kalshi-horizon-5m", "gen12@kalshi-jev") != \
+        fetch_run.legacy_key_for("kalshi-horizon-5m", "gen12")
+
+
+def test_a_topic_whose_runs_directory_is_its_own_name_gains_no_level():
+    """Only the ambiguous topic pays for the disambiguation."""
+    for topic in ("crypto-horizon-1m", "news-equity-5m"):
+        assert fetch_run.key_for(topic, "gen8") == f"rsi-arena/{topic}/gen8/"
+        assert fetch_run.key_for(topic, f"gen8@{topic}") == f"rsi-arena/{topic}/gen8/"
+        # and so there is nothing to fall back to, and no second sync
+        assert len(fetch_run.plan(topic, "gen8", bucket="b")) == 1
+
+
+def test_a_reader_id_means_the_lineage_it_names():
+    """`gen10@kalshi-jev` is how the overview and the database spell it."""
+    assert (fetch_run.key_for("kalshi-horizon-5m", "gen10@kalshi-jev")
+            == fetch_run.key_for("kalshi-horizon-5m", "gen10"))
+
+
+def test_the_old_location_is_tried_second_and_only_second():
+    """The kalshi-jev generations uploaded before 30 September sit bare."""
+    steps = fetch_run.plan("kalshi-horizon-5m", "gen15", bucket="b")
+    assert [uri for uri, _ in steps] == [
+        "s3://b/rsi-arena/kalshi-horizon-5m/kalshi-jev/gen15/",
+        "s3://b/rsi-arena/kalshi-horizon-5m/gen15/"]
+    assert len({into for _, into in steps}) == 1, "both land in the same directory"
+
+
+def test_the_fallback_is_skipped_when_the_first_prefix_delivered(tmp_path):
+    """One sync, not two, when the run is where it should be."""
+    class Delivers:
+        def __init__(self): self.calls = []
+        def __call__(self, cmd, **kw):
+            self.calls.append(cmd)
+            Path(cmd[4]).mkdir(parents=True, exist_ok=True)
+            (Path(cmd[4]) / "baseline.holdout.json").write_text("[]")
+            return type("R", (), {"returncode": 0})()
+    runner = Delivers()
+    fetch_run.fetch("kalshi-horizon-5m", "gen15", what="rollouts", bucket="b",
+                    dest=str(tmp_path / "gen15"), runner=runner, log=lambda *a: None)
+    assert len(runner.calls) == 1
+    assert "kalshi-jev/gen15" in runner.calls[0][3]
+
+
+def test_an_empty_first_prefix_falls_back(tmp_path):
+    """A sync from a prefix that does not exist exits zero and writes nothing."""
+    runner = FakeRun()
+    fetch_run.fetch("kalshi-horizon-5m", "gen15", what="rollouts", bucket="b",
+                    dest=str(tmp_path / "gen15"), runner=runner, log=lambda *a: None)
+    assert len(runner.calls) == 2, "the old location was never tried"
+    assert "kalshi-jev/gen15" in runner.calls[0][3]
+    assert "kalshi-jev" not in runner.calls[1][3]
 
 
 def test_every_key_ends_in_a_slash():
