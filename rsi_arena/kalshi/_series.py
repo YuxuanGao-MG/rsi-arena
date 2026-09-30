@@ -134,6 +134,11 @@ SERIES_BY_LEAGUE: dict[str, str] = {
     "USL_CUP": "KXUSLCUPGAME",                      # usa.usl.l1.cup: 2/2 linked at up to 0.7
     "US_OPEN_CUP": "KXUSOPENCUPGAME",               # usa.open: 2/2 linked at up to 0.875
     "NCAA_SOCCER": "KXNCAAMSOCCERGAME",             # usa.ncaa.m.1: 2/2 linked at up to 1.0
+    # Promoted 2026-09-30 by the monthly check, and re-verified by hand the same
+    # day. It was unmapped because its outcomes read "Reg Time: <team>" rather
+    # than a bare club name, which the linker now handles. One fixture a year, so
+    # "1 of 1" is the most evidence this competition can ever offer.
+    "MLS_ALLSTAR": "KXMLSASTGAME",                  # usa.1: 1/1 linked, the only fixture
 }
 
 #: Series that are real per-match moneylines but cannot be forecast here, and why.
@@ -200,7 +205,6 @@ UNMAPPED: dict[str, tuple[str, str]] = {
     # BVB against the same, and neither clears the 0.6 threshold. One fixture a
     # year each, so the linker is not worth changing for them.
     "GER_SUPERCUP": ("KXGERSCGAME", 'outcomes are labelled "Reg Time: <club>"'),
-    "MLS_ALLSTAR": ("KXMLSASTGAME", 'outcomes are labelled "Reg Time: <team>"'),
 }
 
 #: Series whose ticker ends in GAME but which are not a match winner, or are not

@@ -71,7 +71,7 @@ jobs:
           echo "drifted=$drifted" >> "$GITHUB_OUTPUT"
           set -e
           # A run that checked nothing prints the same zeros as a run that
-          # found nothing wrong. The table has 73 entries; if far fewer were
+          # found nothing wrong. The table has 74 entries; if far fewer were
           # looked at, the check did not happen and saying "no drift" would be
           # a lie told once a month.
           python - <<'PY'
