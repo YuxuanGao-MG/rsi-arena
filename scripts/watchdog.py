@@ -397,6 +397,32 @@ def check_reader(rep: Report) -> None:
             rep.ok(name, ", ".join(notes))
 
 
+def backlog_of(path: Path = None) -> set[str]:
+    """The generations `s3_backlog.txt` accounts for. Comments and blanks out."""
+    path = path or S3_BACKLOG
+    if not path.exists():
+        return set()
+    listed = {line.split("#", 1)[0].strip() for line in path.read_text().splitlines()}
+    listed.discard("")
+    return listed
+
+
+def unseen(runs, holds: set[str], known: set[str], *, layout) -> tuple[list[str], list[str]]:
+    """Which recorded generations have no trajectories, split old from new.
+
+    ``runs`` are ``(topic, run_id)`` pairs, ``holds`` the prefixes the bucket
+    actually has, ``known`` the backlog, and ``layout`` the key builder - passed
+    in rather than imported so this can be read and tested without a bucket.
+
+    A generation present under its pre-30-September key counts as present: that
+    is where `fetch_run.fetch` looks second, so a fetch of it works.
+    """
+    missing = sorted({f"{t}/{i}" for t, i in runs
+                      if layout(t, i) not in holds
+                      and f"{S3_PREFIX}/{t}/{i.split('@', 1)[0]}/" not in holds})
+    return [m for m in missing if m not in known], [m for m in missing if m in known]
+
+
 def check_evidence(rep: Report) -> None:
     """Every recorded generation's trajectories, in the bucket.
 
@@ -450,19 +476,10 @@ def check_evidence(rep: Report) -> None:
                   for line in out.stdout.splitlines() if "PRE" in line}
     rep.note("prefixes_in_s3", sorted(holds))
 
-    # A kalshi-jev generation uploaded before 30 September sits under the bare
-    # name, which `fetch_run.fetch` falls back to; present there is present.
-    missing = sorted({f"{t}/{i}" for t, i, _ in runs
-                      if f"{PREFIX}/{t}/{within(t, i)}/" not in holds
-                      and f"{PREFIX}/{t}/{i.split('@', 1)[0]}/" not in holds})
-    known = set()
-    if S3_BACKLOG.exists():
-        known = {line.split("#", 1)[0].strip() for line in S3_BACKLOG.read_text().splitlines()}
-        known.discard("")
-    fresh = [m for m in missing if m not in known]
-    stale = [m for m in missing if m in known]
-    if missing:
-        rep.note("missing_from_s3", missing)
+    fresh, stale = unseen([(t, i) for t, i, _ in runs], holds, backlog_of(),
+                          layout=lambda t, i: f"{PREFIX}/{t}/{within(t, i)}/")
+    if fresh or stale:
+        rep.note("missing_from_s3", sorted(fresh + stale))
     if stale:
         # Said every hour, as a fact rather than a fault: these have one copy
         # each, on one machine, and that is worth seeing until it is not true.
@@ -491,15 +508,25 @@ def main() -> int:
     ap.add_argument("--skip-s3", action="store_true", help="do not list the trace bucket")
     args = ap.parse_args()
 
+    # Each check inside a guard. One of them raising used to end the run with a
+    # traceback and no verdict: the workflow read the non-zero exit as "a fault
+    # was found", opened an issue containing the traceback, and the seventeen
+    # answers the other checks would have given were simply absent. A watchdog
+    # that goes blind on one bad check is worse than one check fewer, so an
+    # exception becomes that check's own fault and the rest still report.
     rep = Report()
-    check_workflows(rep, args.repo)
-    if not args.skip_git:
-        check_repo(rep)
-    check_database(rep)
-    if not args.skip_reader:
-        check_reader(rep)
-    if not args.skip_s3:
-        check_evidence(rep)
+    for name, run in (("workflows", lambda: check_workflows(rep, args.repo)),
+                      ("repository", None if args.skip_git else lambda: check_repo(rep)),
+                      ("database", lambda: check_database(rep)),
+                      ("reader", None if args.skip_reader else lambda: check_reader(rep)),
+                      ("evidence", None if args.skip_s3 else lambda: check_evidence(rep))):
+        if run is None:
+            continue
+        try:
+            run()
+        except Exception as exc:                          # noqa: BLE001 - deliberate
+            rep.bad(f"the {name} check itself ran",
+                    f"{type(exc).__name__}: {str(exc)[:120]}")
 
     print(rep.render())
     if args.json:
