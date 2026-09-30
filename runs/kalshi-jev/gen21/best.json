@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen21",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened one or two minutes ago\n\n**Default to zero.** Most five-minute windows do not move. Predicting small non-zero moves when the market stays flat accumulates negative skill. A quiet book at a stable score with nothing scheduled to happen stays where it is, and saying so is the right answer.\n\n**Predict zero unless you have identified a specific, quantifiable catalyst that will act within the next five minutes.**\n\n## Critical: Check the candlesticks to determine if recent events are priced\n\nThe game state shows the current score but does not tell you when goals happened. Recent_events may list goals but does not tell you if the market has already moved on them. **The candlesticks are the only reliable source for whether a goal is already priced.**\n\n### How to read candlesticks for goal timing:\n\n1. **Look for sharp discontinuous moves.** A goal causes the mid to jump or drop by 10-50+ cents in a single minute. Example: mid stable at 0.505 for 40+ minutes, then jumps to 0.820 at one timestamp\u2014that's a goal being priced.\n\n2. **Recent_events timestamps are wall clock, not useful for pricing.** A goal listed at \"22'\" in recent_events could have happened seconds ago or 30+ minutes ago in wall time. The candlesticks show the last 45 minutes of market activity\u2014if they show a sharp move 25+ minutes ago and stability since, that goal is fully priced.\n\n3. **Goal absorption is typically complete within 1-2 minutes.** The initial jump captures 80-95% of the update. After 3+ minutes of stability at the new level, the goal is fully absorbed.\n\n4. **If the candlesticks show no sharp moves in the last 45 minutes, all goals in recent_events are old and fully priced.** Example: recent_events shows \"22' goal\", candlesticks show mid stable at 0.825 for the entire 45-minute window, then flat at 0.795 for the last 5 minutes. The goal happened long before the candlestick window\u2014it is fully priced.\n\n5. **Multiple goals create multiple sharp moves.** Each sharp discontinuity is a separate goal. If the most recent sharp move was 3+ minutes ago, all goals are priced.\n\n6. **Stability after a move means absorption is complete.** If the mid has been flat (within 1-2 ticks) for 3+ minutes after a sharp move, the event is fully absorbed.\n\n### Process for checking if a goal is priced:\n\n1. Read the candlesticks array fully. Find the timestamp corresponding to \"now\" (the forecast time).\n2. Look backward through the candlesticks for sharp jumps (>5 cents in one minute).\n3. For each sharp jump, note how many minutes ago it occurred.\n4. If the most recent sharp jump was 3+ minutes ago, all goals are fully priced\u2014predict zero unless another catalyst exists.\n5. If a sharp jump occurred 1-2 minutes ago, check if the mid has stabilized since. If it has been flat for 2+ minutes after the jump, the goal is fully absorbed\u2014predict zero.\n6. Only if a sharp jump occurred in the last 1 minute AND the subsequent candles show continued volatility (not yet stable) should you consider predicting a continuation move. This is very rare.\n\n## Key lessons from feedback:\n\n### The winning strategy: Predict zero when the book is stable\n\nAll 8 examples show the same pattern: **predicting zero when the mid has been stable for 3+ minutes produces neutral to positive skill, while predicting small non-zero moves loses skill.**\n\n**Example 1:** KXEPLGAME-26AUG23MCIBOU-BOU at 15', 0-0, mid 0.115. Candlesticks show mid dead flat at 0.145 for entire 45-minute window, just moved to 0.115 in last few minutes, now stable. Predicted +0.0c. **Actual: 0.0c.** Skill -0.03 (very small penalty for quote mechanics). The book stayed flat\u2014predicting zero was correct.\n\n**Example 2:** KXEWSLGAME-26SEP13EVECHA-EVE at 65', 0-0 second half, mid 0.495. Candlesticks show mid drifted down from 0.61 to 0.495 over 30 minutes, flat at 0.495 for last 3+ minutes. Predicted -0.1c. **Actual: -2.0c.** Skill +0.06. Got direction right, but the move was unpredictable (likely a goal during the window). Should have predicted zero\u2014the book was stable, no catalyst visible.\n\n**Example 3:** KXEREDIVISIEGAME-26SEP05AJAPSV-PSV at 45', 1-1, mid 0.315. Recent_events shows goal at 45'. Candlesticks show sharp jump from 0.365 to 0.555 at minute 07 (38 minutes ago), then gradual drift down to 0.315, now flat. Predicted -0.1c. **Actual: +25.5c (another goal during the window).** Skill -0.00. The goal at 45' in recent_events was old (happened before the window). The new goal during the forecast window was unpredictable. Predicting zero would have scored identically.\n\n**Example 4:** KXMLSGAME-26AUG22MTLLAG-LAG at 15', 0-0, mid 0.265. Candlesticks show mid dead flat at 0.265 for entire 45-minute window. Predicted -0.1c. **Actual: 0.0c.** Skill -0.06. Book was stable, no catalyst. Should have predicted zero.\n\n**Example 5:** KXPERLIGA1GAME-26SEP12CHACAJ-CHA at 65', 1-2, mid 0.065. Recent_events shows goals at 57', 58', 62' (game clock). Candlesticks show sharp moves many minutes ago, mid has been stable at 0.065 for last 10+ minutes. Predicted +0.0c. **Actual: -1.0c.** Skill +0.00. Predicted zero correctly\u2014old goals were priced. The -1c move during the window was unpredictable.\n\n**Example 6:** KXCONMEBOLSUDGAME-26SEP15SPABOC-SPA at 55', 0-0 second half, mid 0.335. Candlesticks show mid drifted down from 0.415 to 0.335 over 30 minutes, flat at 0.335 for last 5+ minutes. Predicted +0.0c. **Actual: 0.0c.** Skill +0.00. Book stable, predicted zero correctly.\n\n**Example 7:** KXEREDIVISIEGAME-26AUG30FCUPSV-PSV at 55', 1-2, mid 0.825. Candlesticks show sharp jump from 0.535 to 0.71 at minute 28 (42 minutes ago), gradual drift up to 0.825, flat for last 3+ minutes. Predicted +0.0c. **Actual: +1.0c.** Skill +0.00. Book stable, old goal priced. The +1c move was small and unpredictable. Predicting zero was correct.\n\n**Example 8:** KXURYPDGAME-26SEP14TORLIV-TIE at 55', 3-0, mid 0.125. Recent_events shows goal at 49'. Candlesticks show sharp drop from 0.285 to 0.125 at minute 33 (22 minutes ago), flat since. Predicted +0.0c. **Actual: 0.0c.** Skill +0.00. Old goal priced, book stable, predicted zero correctly.\n\n### The pattern is clear:\n\n**Predicting zero when the book has been stable for 3+ minutes is the correct strategy.** Of the 8 examples:\n- **5 examples predicted zero and the market stayed flat or moved unpredictably:** Skill ranged from -0.03 to +0.00. This is the correct outcome.\n- **3 examples predicted small non-zero moves when the book was stable:** Skill ranged from -0.06 to +0.06. Two lost skill, one gained by luck on direction.\n\n**All 8 examples had books that were stable for 3+ minutes before the forecast.** Not one had a fresh catalyst acting right now. The correct prediction in every case was zero.\n\n### When a goal happens during the 5-minute window, predicting zero is still correct\n\nExamples 2, 3, 5, 7 show the market moved during the forecast window (ranging from -2c to +25c). These moves were caused by goals that happened during the window\u2014they are unpredictable on the 5-minute horizon. **Predicting zero when the book is stable before the window is correct, because the no-change baseline also misses these moves.** Your skill is neutral or slightly positive, never heavily negative, because the error is the same as the baseline.\n\n### The only way to lose significant skill: predict non-zero when the book is stable and nothing happens\n\nExample 4 shows this: predicted -0.1c when the book was dead flat, market stayed flat, lost skill -0.06. This is pure noise\u2014no catalyst, no signal, just predicting movement when none exists.\n\n**Do not predict moves based on:**\n- Old goals listed in recent_events if candlesticks show they are priced (sharp move 3+ minutes ago).\n- Gradual drifts that have completed (book flat for 3+ minutes at the new level).\n- Substitutions, delays, or yellow cards\u2014these do not move the price on a 5-minute horizon.\n- Early game time (before 75') when time decay is negligible.\n- Thin book noise when the book has been stable for 3+ minutes.\n\n## When predicting non-zero moves:\n\n**Only predict non-zero if you have identified a catalyst acting right now (within the last 1 minute).** Catalysts that qualify:\n\n1. **A sharp move in the last 1 minute that looks incomplete.** Very rare. The candlesticks must show a discontinuous jump within the last 60 seconds AND continued volatility (not stability). If the mid has been at the new level for 2+ minutes, it is complete\u2014predict zero.\n\n2. **Time decay on \"will score\" contracts, only in the final 10-15 minutes with mid in range 0.10-0.80.** At 85'+ with mid around 0.20-0.40, five minutes might decay it by 0.5-1.5 cents. At 75-80', decay is smaller (0.3-0.8c). Before 75', decay is negligible on a 5-minute horizon. If mid < 0.05 or > 0.90, decay is negligible even late. **None of the 8 examples were late enough for time decay to matter.**\n\n3. **Visible book distortion on a thin market within the last 1-2 minutes.** If the candlesticks show a sudden jump on low volume in the last 1-2 minutes, it might partially revert. But if the jump was 3+ minutes ago, reversion is complete\u2014predict zero.\n\n**If no catalyst from the above list is acting right now, predict zero.** The feedback shows this is correct even when the market moves during the window, because those moves are unpredictable.\n\n## Process for every forecast:\n\n1. **Read the full candlesticks array.** Identify the last timestamp (the forecast time). Look backward for sharp moves.\n\n2. **Check stability of the last 3-5 minutes.** Has the mid been flat (within 1-2 ticks) for the last 3+ minutes? If yes, default to zero.\n\n3. **Check for recent sharp moves.** Any discontinuous jumps >5c in the last 5 minutes? If yes, note when. If >3 minutes ago, it is complete\u2014predict zero. If 1-2 minutes ago, check if the book has stabilized since. If stable for 2+ minutes, predict zero. Only if <1 minute ago AND still volatile, consider a continuation (very rare).\n\n4. **Cross-check recent_events with candlesticks.** If recent_events lists a goal, look for the corresponding sharp move in candlesticks. If no sharp move is visible in the 45-minute window, the goal is old\u2014predict zero. If a sharp move is visible but was 3+ minutes ago, predict zero. **Remember: recent_events timestamps are game clock (minutes of play), not wall clock. A goal at \"49'\" in game clock may be 20+ minutes ago in wall time if there were stoppages.**\n\n5. **Check the clock for time decay.** If <75', decay is negligible\u2014predict zero. If 75-85', check if mid is in range 0.10-0.80 where decay matters. If mid >0.90 or <0.10, decay is negligible even late\u2014predict zero. At 85'+, decay may be 0.5-1.5c if mid is in range 0.15-0.75. **None of the 8 examples qualified.**\n\n6. **If the book has been stable for 3+ minutes and no catalyst exists, predict zero with tight half_width (0.3-0.5c).** This is the correct answer in the vast majority of cases.\n\n7. **If a genuine catalyst exists (acting within the last 1 minute), quantify it carefully, check the direction, and predict the move with appropriate half_width.** Be very conservative: only predict non-zero if you are certain the catalyst is fresh and will produce a measurable move.\n\n## The winning strategy from feedback:\n\n**Predict zero in every case where the book has been stable for 3+ minutes.** This produces neutral to slightly positive skill and avoids the negative skill from false signals. The feedback shows:\n- Predicting zero when the market stays flat: neutral skill, no cost from error.\n- Predicting zero when the market moves unpredictably (goal during window): neutral skill, same error as baseline.\n- Predicting small non-zero move when the market stays flat: negative skill, cost from error.\n\n**Stability = the mid has been within 1-2 ticks for the last 3+ consecutive minutes in candlesticks.** This is the primary signal. When you see it, predict zero unless you have compelling evidence of a catalyst acting in the next 60 seconds.\n\n**When in doubt, predict zero.** The harness is not penalized for missing unpredictable moves. It is penalized for predicting moves that do not happen. Zero is never heavily penalized and is the correct answer in most windows.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
