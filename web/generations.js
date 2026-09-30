@@ -6,7 +6,7 @@
  * copies of that arithmetic is how the two pages would eventually disagree.
  */
 
-import { qAll, qs, topicFilter } from "./data.js";
+import { qAll, topicFilter } from "./data.js";
 import { groupBy, recompute, metricGap, runStatus } from "./stats.js";
 import { DEFAULT } from "./topics.js";
 
@@ -32,8 +32,14 @@ export async function loadGenerations({ signal, topic = DEFAULT }) {
   let windows = [];
   if (runs.length <= 24) {
     windows = await qAll(
+      // By topic, not by a list of twenty run ids: `rsi.rollouts` is indexed on
+      // (topic, run_id, side, split), and the id list could not use it - the
+      // same query took 2.1s as an IN list and 0.25s by topic, on either side
+      // of a three-second timeout. Every rollout carries its run's topic
+      // (migration 008 backfilled it and publish_runs has written it since),
+      // so this is the same set of rows by a route the index can serve.
       `rollouts?select=run_id,side,skill,err,naive_error,unmeasurable,ok,scored` +
-      `&split=eq.holdout&run_id=${qs.inList(runs.map(r => r.id))}`,
+      `&split=eq.holdout${topicFilter(topic)}`,
       { signal, max: 24_000 });
     // The tick each window is floored at is its topic's. Stamped from the run
     // rather than selected: the runs were filtered by topic already, and a

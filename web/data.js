@@ -162,7 +162,15 @@ export async function qAll(path, { signal, ttl = TTL_MS, fresh = false,
   for (;;) {
     const to = from + pageSize - 1;
     const { rows, range } = await request(`${base()}/rest/v1/rsi_${path}`, {
-      signal, headers: { "Range-Unit": "items", Range: `${from}-${to}`, Prefer: "count=exact" },
+      // `count=planned`, not `count=exact`: an exact count makes Postgres walk
+      // every matching row before it returns the first page, and on 29
+      // September that walk crossed Supabase's three-second statement timeout
+      // on the rollouts table - the overview answered 500 for two topics and
+      // 206 for the third, flickering between them as the table grew. The
+      // planner's estimate is what `total` and `truncated` are for: a caption
+      // saying roughly how much there is. Paging still stops on a short page,
+      // which is exact.
+      signal, headers: { "Range-Unit": "items", Range: `${from}-${to}`, Prefer: "count=planned" },
     });
     out.push(...(rows || []));
     const slash = (range || "").split("/")[1];
