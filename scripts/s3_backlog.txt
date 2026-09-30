@@ -1,0 +1,22 @@
+# Generations whose trajectories are not in S3, and why.
+#
+# `runs/**/rollouts/` and `runs/**/gepa/` are not committed - they are what
+# pushed three runs past GitHub's 100 MB file limit - so S3 is meant to be where
+# they live. For about a week it was not: the IAM user that `loop.yml` uses had
+# no policy allowing `s3:PutObject`, and the sync step of the time swallowed the
+# AccessDenied behind a `||` and went green. Every generation in that window
+# reached a verdict whose evidence went only into a run artifact, and those
+# expire after fourteen days.
+#
+# So for these the only copy is on the author's machine, under `runs/`. They are
+# listed here rather than excused by a cutoff date, because a date would also
+# excuse the next genuine sync failure that happened to fall before it.
+# `scripts/watchdog.py` reports the count of this file every hour and fails only
+# on a generation that is missing and *not* listed here.
+#
+# To clear a line: `aws s3 sync runs/<family>/<gen> \
+#   s3://rsi-arena-traces/rsi-arena/<topic>/<gen>/` with credentials that have
+# PutObject on the bucket, then delete the line. The file being empty is the
+# goal; deleting a line whose upload did not happen puts the gap back to silent.
+#
+# One `<topic>/<run>` per line.

@@ -111,6 +111,16 @@ CONFIRM = 2
 #: of that promise.
 S3_PREFIX = "rsi-arena"
 
+#: Generations whose trajectories were never uploaded because the bucket did not
+#: work yet: the IAM user had no policy for a week and the old sync step
+#: swallowed the AccessDenied. They are listed rather than forgiven by a date,
+#: because a date would also forgive the next real failure that happened to fall
+#: on the wrong side of it. Each line is `<topic>/<run>`; `#` comments.
+#:
+#: The local copies are the only ones, so this file shrinks as they are uploaded.
+#: It is not a suppression list: the count is printed every hour.
+S3_BACKLOG = Path(__file__).resolve().parent / "s3_backlog.txt"
+
 #: How long after a generation is recorded its evidence may still be missing.
 #: The upload happens in the same job, so this is slack for a retried sync and a
 #: clock skew, not for a person to get round to it.
@@ -124,12 +134,20 @@ HEAVY = re.compile(r"runs/.*/(rollouts|gepa)/|runs/.*\.rollouts\.json$")
 @dataclass
 class Report:
     checks: list[tuple[str, bool, str]] = field(default_factory=list)
+    #: Anything a check found that is too long to print but worth keeping - the
+    #: full list behind a "46 generations" summary, say. Goes to the JSON
+    #: verdict, which is uploaded as an artifact, so acting on a finding does
+    #: not mean re-running the check to see the rest of it.
+    data: dict = field(default_factory=dict)
 
     def ok(self, name: str, detail: str = "") -> None:
         self.checks.append((name, True, detail))
 
     def bad(self, name: str, detail: str) -> None:
         self.checks.append((name, False, detail))
+
+    def note(self, key: str, value) -> None:
+        self.data[key] = value
 
     @property
     def faults(self) -> list[tuple[str, bool, str]]:
@@ -144,9 +162,12 @@ class Report:
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
-        return {"at": datetime.now(UTC).isoformat(timespec="seconds"),
-                "faults": len(self.faults),
-                "checks": [{"name": n, "ok": g, "detail": d} for n, g, d in self.checks]}
+        out = {"at": datetime.now(UTC).isoformat(timespec="seconds"),
+               "faults": len(self.faults),
+               "checks": [{"name": n, "ok": g, "detail": d} for n, g, d in self.checks]}
+        if self.data:
+            out["found"] = self.data
+        return out
 
 
 def gh(args: list[str]) -> str:
@@ -422,14 +443,35 @@ def check_evidence(rep: Report) -> None:
 
     # A run_id is qualified as `gen1@crypto-horizon-1m` in the database and
     # stored under its bare directory name, which is what the loop uploaded.
-    missing = [(t, i) for t, i, _ in runs
+    missing = [f"{t}/{i.split('@', 1)[0]}" for t, i, _ in runs
                if i.split("@", 1)[0] not in seen.get(t, set())]
+    known = set()
+    if S3_BACKLOG.exists():
+        known = {line.split("#", 1)[0].strip() for line in S3_BACKLOG.read_text().splitlines()}
+        known.discard("")
+    fresh = [m for m in missing if m not in known]
+    stale = [m for m in missing if m in known]
     if missing:
-        listed = ", ".join(f"{t}/{i}" for t, i in missing[:4])
-        rep.bad("evidence reaches S3", f"{len(missing)} generation(s) have no trajectories "
-                                       f"in the bucket: {listed}")
+        rep.note("missing_from_s3", sorted(missing))
+    if stale:
+        # Said every hour, as a fact rather than a fault: these have one copy
+        # each, on one machine, and that is worth seeing until it is not true.
+        rep.ok("evidence backlog", f"{len(stale)} generation(s) predate the working "
+                                   f"bucket and are local-only; see {S3_BACKLOG.name}")
+    if fresh:
+        # What it did see, per topic, so the next reader can tell a genuinely
+        # empty bucket from a layout this check has guessed wrong. The full list
+        # is in the JSON verdict rather than truncated into a sentence.
+        held = ", ".join(f"{t}: {len(p)}" for t, p in sorted(seen.items()))
+        rep.bad("evidence reaches S3",
+                f"{len(fresh)} generation(s) have no trajectories in "
+                f"s3://{bucket}/{S3_PREFIX}/<topic>/: {', '.join(fresh[:4])}"
+                + (" ..." if len(fresh) > 4 else "")
+                + f" (prefixes present - {held})")
     else:
-        rep.ok("evidence reaches S3", f"{len(runs)} generation(s) all present")
+        rep.ok("evidence reaches S3",
+               f"{len(runs) - len(stale)} of {len(runs)} generation(s) present"
+               if stale else f"{len(runs)} generation(s) all present")
 
 
 def main() -> int:
