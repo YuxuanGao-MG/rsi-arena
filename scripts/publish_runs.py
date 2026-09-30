@@ -459,6 +459,45 @@ def publish_rollouts(cur, run_id: str, run_dir: Path, topic: str) -> tuple[int, 
     return len(rows), len(traces)
 
 
+#: The pooled statistic the overview reads, kept current here.
+#:
+#: ``rsi.run_side_stats`` is materialised because computing it per request meant
+#: reading every rollout of a topic - 87,380 of them for kalshi - inside a
+#: three-second statement timeout, which the overview started losing on
+#: 29 September. A materialised view is only true if somebody refreshes it, and
+#: the moment it stops being true is the moment rollouts are written, so it is
+#: refreshed here, by the writer, rather than on a schedule that could lag a
+#: generation behind.
+#:
+#: Concurrently, so a refresh never blocks a reader mid-page, which is why the
+#: migration puts a unique index on the view. Concurrent refresh cannot run
+#: inside a transaction, so this happens after the commit, on its own
+#: connection-level autocommit.
+def refresh_stats(conn) -> str:
+    """Refresh ``rsi.run_side_stats``; return what happened, for printing.
+
+    A failure here is worth saying out loud but not worth losing a publish
+    over: the rollouts are already committed, and a stale overview is a smaller
+    problem than a run whose evidence never reached the database. The watchdog
+    checks the view's freshness hourly, so a silent failure does not stay
+    silent.
+    """
+    was = conn.autocommit
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("select 1 from pg_matviews where schemaname = 'rsi' "
+                        "and matviewname = 'run_side_stats'")
+            if not cur.fetchone():
+                return "run_side_stats not present; migration 011 is not applied"
+            cur.execute("refresh materialized view concurrently rsi.run_side_stats")
+        return "run_side_stats refreshed"
+    except Exception as exc:                                    # pragma: no cover - database
+        return f"run_side_stats NOT refreshed ({type(exc).__name__}: {str(exc)[:90]})"
+    finally:
+        conn.autocommit = was
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("run_dirs", nargs="+")
@@ -488,9 +527,13 @@ def main() -> int:
             cands_total += cands
             print(f"  ok    {path.name:18} {rollouts:>5} rollouts, {traced:>5} traced, "
                   f"{books:>2} books, {cands:>3} candidates")
+    # After the commit: the view must see the rows it is summing, and a
+    # concurrent refresh cannot be part of the transaction that wrote them.
+    note = refresh_stats(conn) if total else "no rollouts written; no refresh needed"
     conn.close()
     print(f"\n{total} rollouts, {books_total} paper books, "
           f"{cands_total} candidates published")
+    print(f"  {note}")
     return 0
 
 

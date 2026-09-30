@@ -18,7 +18,17 @@ not keep:
 * has each topic produced a generation recently, and did the newest one chain
   from the one before it;
 * are live forecasts still arriving, and are they being scored;
-* is the reader's database still reachable and still being written to.
+* is the reader's database still reachable and still being written to;
+* and does the reader's own overview still load, for every topic, inside the
+  time the database allows a statement.
+
+That last one was added after a failure the rest of this file could not see. On
+29 September the overview began answering 500 for two of the three topics: the
+query behind it had grown past Supabase's three-second statement timeout as the
+rollout table grew, and nothing about the loops, the repository or the database
+looked wrong. A person noticed, from a screenshot. So the watchdog now asks the
+question a person asks - does the page come up - by issuing the request the
+browser issues, with the credentials the page itself is served with.
 
 It writes a verdict and exits non-zero when something is wrong, so the workflow
 around it can open one issue rather than a person reading dashboards. Nothing
@@ -34,6 +44,9 @@ import os
 import re
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -57,6 +70,37 @@ QUIET_HOURS = {
 #: A topic that has not finished a generation in this long has stopped
 #: evolving, whatever the workflow's own status says.
 GENERATION_HOURS = 20
+
+#: The deployed reader. The check reads its served HTML for the Supabase URL and
+#: anon key, so the watchdog needs no credentials of its own and tests exactly
+#: the pair the browser is given.
+READER = os.environ.get("RSI_READER_URL", "https://rsi.up.railway.app")
+
+#: Topics whose overview must load. Not derived from the database: a topic that
+#: has stopped publishing should still have a page, and reading the list from the
+#: rows would make it vanish from the check at the same moment it broke.
+READER_TOPICS = ("kalshi-horizon-5m", "crypto-horizon-1m", "news-equity-5m")
+
+#: The columns the overview actually selects, from `web/generations.js`. Asking
+#: for fewer would make the check pass on a query the page does not issue: these
+#: carry the jsonb records and are most of the half-megabyte a topic's overview
+#: downloads.
+RUN_COLUMNS = ("id,topic,created,parent,accepted,reasons,incumbent_fp,candidate_fp,"
+               "baseline,candidate,decision,search,llm,split")
+
+#: Supabase cancels a statement at three seconds, so a query approaching that is
+#: worth saying out loud before it crosses. How close is measured only where the
+#: measurement means something: an aggregate returning five kilobytes spends its
+#: time in the database, while the runs query ships half a megabyte of jsonb and
+#: its wall clock is mostly transfer. Warning on the latter would mean an issue
+#: every hour a runner had a slow link, so it is only required to work.
+SLOW_SECONDS = {"pooled skill": 2.0}
+
+#: A single slow reading is weather. This was learnt the other way round on
+#: 29 September, when a warm cache made a fix look like it had worked; a lone
+#: measurement is not evidence in either direction, so slowness is confirmed by
+#: a second attempt before it becomes a fault.
+CONFIRM = 2
 
 #: Paths that must never be tracked: they are the ones that grow past what
 #: GitHub will accept, and every time they have come back a push has died.
@@ -197,10 +241,119 @@ def check_database(rep: Report) -> None:
                 rep.bad(f"{topic} is forecasting", f"{n} forecasts in 12h, none scored")
             else:
                 rep.ok(f"{topic} is forecasting", f"{n} in 12h, {s} scored")
+        # The overview reads a materialised view, so it is only as true as its
+        # last refresh. `publish_runs.py` refreshes it after writing rollouts;
+        # if that ever silently fails, the reader shows a stale generation and
+        # looks perfectly healthy doing it. A run with held-out rollouts and no
+        # row in the view is exactly that failure.
+        cur.execute("""select 1 from pg_matviews
+                        where schemaname = 'rsi' and matviewname = 'run_side_stats'""")
+        if not cur.fetchone():
+            rep.ok("pooled statistic is current", "run_side_stats not present; skipped")
+        else:
+            cur.execute("""select count(distinct r.topic || ':' || r.run_id)
+                             from rsi.rollouts r
+                             left join rsi.run_side_stats s
+                               on s.topic = r.topic and s.run_id = r.run_id
+                              and s.side = r.side and s.split = r.split
+                            where s.run_id is null""")
+            missing = cur.fetchone()[0]
+            if missing:
+                rep.bad("pooled statistic is current",
+                        f"{missing} run(s) have rollouts the overview cannot see; "
+                        f"refresh materialized view concurrently rsi.run_side_stats")
+            else:
+                rep.ok("pooled statistic is current", "every run is summed")
     except Exception as exc:
         rep.bad("database queries", f"{type(exc).__name__}: {str(exc)[:80]}")
     finally:
         conn.close()
+
+
+def reader_credentials(rep: Report) -> tuple[str, str] | None:
+    """The Supabase URL and anon key the deployed page is served with.
+
+    Read from the page rather than from the watchdog's own environment, because
+    the failure being checked for is the page's: a reader pointed at the wrong
+    project, or served without a key, would pass a check that used secrets from
+    somewhere else.
+    """
+    try:
+        with urllib.request.urlopen(f"{READER}/", timeout=30) as resp:
+            html = resp.read().decode("utf-8", "replace")
+            code = resp.status
+    except Exception as exc:
+        rep.bad("reader serves its page", f"{type(exc).__name__}: {str(exc)[:80]}")
+        return None
+    if code != 200:
+        rep.bad("reader serves its page", f"HTTP {code}")
+        return None
+    url = re.search(r'url:\s*"([^"]+)"', html)
+    key = re.search(r'key:\s*"([^"]+)"', html)
+    if not url or not key or "__SUPA" in url.group(1) or "__SUPA" in key.group(1):
+        rep.bad("reader is configured", "the served page has no Supabase URL or anon key")
+        return None
+    rep.ok("reader serves its page", f"{len(html) // 1024} KB")
+    return url.group(1).rstrip("/"), key.group(1)
+
+
+def check_reader(rep: Report) -> None:
+    """Issue the overview's own queries, as the page's anon role, and time them.
+
+    The two requests every topic's overview makes: the runs, and the pooled
+    statistic per run and side. Both are read with the page's key through
+    PostgREST, so a 500 here is the 500 a visitor sees, and a slow 200 is the
+    warning that the next month of rows will turn it into one.
+    """
+    creds = reader_credentials(rep)
+    if not creds:
+        return
+    base, key = creds
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Accept": "application/json"}
+
+    def fetch(query: str) -> tuple[float, int, str]:
+        """Seconds, bytes, and what went wrong - empty when nothing did."""
+        # `rsi_`, as the reader prefixes it: the schema is private and every
+        # table reaches the browser through a public view of that name.
+        req = urllib.request.Request(f"{base}/rest/v1/rsi_{query}", headers=headers)
+        started = time.monotonic()
+        try:
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                size = len(resp.read())
+            return time.monotonic() - started, size, ""
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")[:120]
+            return time.monotonic() - started, 0, f"HTTP {exc.code}: {body}"
+        except Exception as exc:
+            return time.monotonic() - started, 0, f"{type(exc).__name__}: {str(exc)[:70]}"
+
+    for topic in READER_TOPICS:
+        notes, faults = [], []
+        for what, query in (
+            ("runs", f"runs?select={RUN_COLUMNS}&topic=eq.{topic}"
+                     f"&order=created.desc&limit=200"),
+            ("pooled skill", f"run_side_stats?select=run_id,side,removed,benchmark"
+                             f"&split=eq.holdout&topic=eq.{topic}&limit=1000"),
+        ):
+            took, size, broke = fetch(query)
+            budget = SLOW_SECONDS.get(what)
+            if not broke and budget and took > budget:
+                # Confirmed, not assumed: re-read before calling it slow.
+                for _ in range(CONFIRM - 1):
+                    took, size, broke = fetch(query)
+                    if broke or took <= budget:
+                        break
+            if broke:
+                faults.append(f"{what} {broke} after {took:.1f}s")
+                break
+            if budget and took > budget:
+                faults.append(f"{what} took {took:.1f}s of the 3s a statement gets, twice over")
+            notes.append(f"{what} {took:.2f}s/{size / 1024:.0f}KB")
+        name = f"{topic} overview loads"
+        if faults:
+            rep.bad(name, "; ".join(faults))
+        else:
+            rep.ok(name, ", ".join(notes))
 
 
 def main() -> int:
@@ -209,6 +362,7 @@ def main() -> int:
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "YuxuanGao-MG/rsi-arena"))
     ap.add_argument("--json", default="", help="also write the verdict here")
     ap.add_argument("--skip-git", action="store_true", help="do not read the remote branch")
+    ap.add_argument("--skip-reader", action="store_true", help="do not fetch the deployed page")
     args = ap.parse_args()
 
     rep = Report()
@@ -216,6 +370,8 @@ def main() -> int:
     if not args.skip_git:
         check_repo(rep)
     check_database(rep)
+    if not args.skip_reader:
+        check_reader(rep)
 
     print(rep.render())
     if args.json:
