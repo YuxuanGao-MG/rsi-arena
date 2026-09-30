@@ -33,6 +33,12 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      # To list the trace bucket. Read-only here: the watchdog checks that each
+      # generation's trajectories arrived and never uploads anything itself.
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
+      TRACE_BUCKET: ${{ secrets.TRACE_BUCKET }}
     steps:
       - uses: actions/checkout@v4
         with:

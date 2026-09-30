@@ -19,6 +19,7 @@ not keep:
   from the one before it;
 * are live forecasts still arriving, and are they being scored;
 * is the reader's database still reachable and still being written to;
+* is each generation's evidence actually in S3, now that it is not in git;
 * and does the reader's own overview still load, for every topic, inside the
   time the database allows a statement.
 
@@ -101,6 +102,19 @@ SLOW_SECONDS = {"pooled skill": 2.0}
 #: measurement is not evidence in either direction, so slowness is confirmed by
 #: a second attempt before it becomes a fault.
 CONFIRM = 2
+
+#: Where the trajectories live, and what each topic is called there. A run's
+#: rollouts and GEPA state are no longer committed - they are what pushed three
+#: runs past GitHub's file limit - so S3 is the only copy after the run artifact
+#: expires in fourteen days. "Not in git" is only safe if "in S3" is true, and
+#: `loop.yml` uploads on a best effort of three attempts. This is the other half
+#: of that promise.
+S3_PREFIX = "rsi-arena"
+
+#: How long after a generation is recorded its evidence may still be missing.
+#: The upload happens in the same job, so this is slack for a retried sync and a
+#: clock skew, not for a person to get round to it.
+S3_GRACE_HOURS = 6
 
 #: Paths that must never be tracked: they are the ones that grow past what
 #: GitHub will accept, and every time they have come back a push has died.
@@ -356,6 +370,68 @@ def check_reader(rep: Report) -> None:
             rep.ok(name, ", ".join(notes))
 
 
+def check_evidence(rep: Report) -> None:
+    """Every recorded generation's trajectories, in the bucket.
+
+    Read from the database rather than from a local checkout: the runs that
+    matter are the ones the loop produced on a runner, which this machine has
+    never seen. A generation younger than the grace period is not yet a fault,
+    because the sync retries and the clocks differ.
+
+    Skipped, not failed, without credentials or a bucket: the repository has run
+    without them and must keep being able to.
+    """
+    bucket = os.environ.get("TRACE_BUCKET", "")
+    if not bucket or not os.environ.get("AWS_ACCESS_KEY_ID"):
+        rep.ok("evidence reaches S3", "no bucket or credentials here; skipped")
+        return
+    url = os.environ.get("SUPABASE_DB_URL", "")
+    if not url:
+        rep.ok("evidence reaches S3", "no SUPABASE_DB_URL to list generations; skipped")
+        return
+    try:
+        import psycopg2
+        conn = psycopg2.connect(url, connect_timeout=20)
+        with conn, conn.cursor() as cur:
+            cur.execute("""select topic, id, created from rsi.runs
+                            where created < now() - interval '%s hours'
+                              and created > now() - interval '60 days'
+                            order by created desc""", (S3_GRACE_HOURS,))
+            runs = cur.fetchall()
+        conn.close()
+    except Exception as exc:
+        rep.bad("evidence reaches S3", f"could not list generations: {type(exc).__name__}: {str(exc)[:70]}")
+        return
+    if not runs:
+        rep.ok("evidence reaches S3", "no generation old enough to have been uploaded")
+        return
+
+    # One listing per topic rather than one per run: the bucket is laid out
+    # `rsi-arena/<topic>/<run>/`, and forty runs would otherwise be forty calls.
+    seen: dict[str, set[str]] = {}
+    for topic in {t for t, _, _ in runs}:
+        out = subprocess.run(["aws", "s3", "ls", f"s3://{bucket}/{S3_PREFIX}/{topic}/"],
+                             capture_output=True, text=True, timeout=120)
+        if out.returncode != 0:
+            rep.bad("evidence reaches S3",
+                    f"cannot list s3://{bucket}/{S3_PREFIX}/{topic}/: "
+                    f"{(out.stderr or '').strip()[:100]}")
+            return
+        seen[topic] = {line.split("PRE", 1)[1].strip().rstrip("/")
+                       for line in out.stdout.splitlines() if "PRE" in line}
+
+    # A run_id is qualified as `gen1@crypto-horizon-1m` in the database and
+    # stored under its bare directory name, which is what the loop uploaded.
+    missing = [(t, i) for t, i, _ in runs
+               if i.split("@", 1)[0] not in seen.get(t, set())]
+    if missing:
+        listed = ", ".join(f"{t}/{i}" for t, i in missing[:4])
+        rep.bad("evidence reaches S3", f"{len(missing)} generation(s) have no trajectories "
+                                       f"in the bucket: {listed}")
+    else:
+        rep.ok("evidence reaches S3", f"{len(runs)} generation(s) all present")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -363,6 +439,7 @@ def main() -> int:
     ap.add_argument("--json", default="", help="also write the verdict here")
     ap.add_argument("--skip-git", action="store_true", help="do not read the remote branch")
     ap.add_argument("--skip-reader", action="store_true", help="do not fetch the deployed page")
+    ap.add_argument("--skip-s3", action="store_true", help="do not list the trace bucket")
     args = ap.parse_args()
 
     rep = Report()
@@ -372,6 +449,8 @@ def main() -> int:
     check_database(rep)
     if not args.skip_reader:
         check_reader(rep)
+    if not args.skip_s3:
+        check_evidence(rep)
 
     print(rep.render())
     if args.json:
