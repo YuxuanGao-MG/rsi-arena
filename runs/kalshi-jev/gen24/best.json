@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen24",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n**The default prediction is zero.** Most five-minute windows do not move. The feedback shows the harness loses skill by predicting small non-zero moves when the market stays flat.\n\n**Critical insight from the feedback:**\n- **Example 1**: Goal at 34', checked at 35' (1 minute old). Price jumped from 0.815 to near current 0.555 but candlesticks show stability for last 5+ minutes. Market moved +18.0c over next 5 minutes to 0.735. **The goal was NOT absorbed - it was still moving the price.**\n- **Example 8**: Injury delays at 19'-21', checked at 25' (4+ minutes after delay ended). Price stable at 0.515. Predicted -0.4c, actual 0.0c, skill -0.36. **Price stability correctly indicated complete absorption.**\n\n**The key error pattern**: The harness is misreading candlestick data and confusing \"price has been stable since before the most recent event\" with \"price has been stable after absorbing the most recent event.\"\n\n**Process for every forecast:**\n\n1. **Identify the most recent catalyst**\n   - Check recent_events for goals, red cards, major events\n   - Note the timestamp of the most recent significant event\n   - If no events in last 10 minutes, proceed to step 4\n\n2. **Check candlesticks RELATIVE TO THE EVENT**\n   - **Critical**: Look at price behavior AFTER the event timestamp, not just recent stability\n   - If a goal happened at 34' and you're checking at 35':\n     - Look at candlesticks from 34' onward\n     - Has price moved significantly (>5 cents) since 34'? \n     - Is price still drifting in the expected direction in the most recent 1-2 minutes?\n   - A goal typically causes an immediate jump, then continued drift for 2-5 minutes\n   - **Example 1 teaches us**: Even if price was stable before 34', a goal at 34' checked at 35' can still be in the middle of its price discovery\n\n3. **Distinguish between \"no new catalyst\" and \"catalyst still absorbing\"**\n   - **No new catalyst (predict zero)**: Price stable for 5+ minutes AND no significant events in that period\n   - **Catalyst fully absorbed (predict zero)**: Event happened 5+ minutes ago AND price stable for last 3+ minutes\n   - **Catalyst still absorbing (predict directional)**: Event within last 3 minutes AND price still showing directional movement in last 1-2 minutes\n   - **The timing matters**: A goal 1 minute old is likely still moving. A goal 6 minutes old with 3 minutes of stable price is done.\n\n4. **When to predict zero (default stance)**\n   - No significant events in last 5 minutes AND price stable\n   - Event older than 5 minutes with price stable for last 3+ minutes\n   - Match time between 10' and 75' with no recent catalysts (time decay negligible)\n   - Clear stable price pattern: multiple consecutive candlesticks within 1 cent\n\n5. **When to predict a directional move**\n   - **Fresh catalyst (0-2 minutes old)**: \n     - Goal scored in last 2 minutes AND candlesticks show initial jump plus continued drift\n     - Red card in last 2 minutes AND price moving in expected direction\n     - Predict magnitude based on visible momentum: 0.5-2.0 cents\n   - **Absorbing catalyst (2-4 minutes old)**:\n     - Check if price is STILL drifting in candlesticks\n     - If yes: predict continuation of 0.2-0.8 cents\n     - If price has stabilized: predict zero\n   - **Book imbalance mean reversion**:\n     - Sharp spike (2+ cents) in last 1-2 minutes on thin volume\n     - Wide spread (>2 cents)\n     - Predict reversion of 0.3-1.0 cents\n\n6. **Understanding contract mechanics**\n   - Ticker format: KXSERIEAGAME-26SEP14INTUDI-INT means \"Will Internazionale score?\"\n   - When INT (trailing or tied) scores \u2192 probability UP sharply\n   - When INT gets a red card \u2192 probability DOWN (harder to score)\n   - When opponent gets a red card \u2192 INT probability UP (easier to score)\n   - The contract is about whether the named team will score, not who wins\n\n7. **Reading the candlesticks correctly**\n   - Each candlestick has a timestamp - match it to game events\n   - Look for: volume spikes (indicating actual trades), mid price changes, spread width\n   - A goal at 34' with you checking at 35' means:\n     - Look at 34' minute candlestick for the initial reaction\n     - Look at 35' candlestick (most recent) for whether drift continues\n     - If 35' shows continued price movement, the event is NOT fully absorbed\n\n8. **Time decay**\n   - Negligible until final 10 minutes of match\n   - Only predict time decay at 80'+ with <10 minutes remaining\n   - Examples 1-7 show no meaningful time decay at match times 5'-75'\n\n9. **Half-width selection**\n   - Standard: 0.5 cents (one-half of one cent)\n   - Reflects magnitude uncertainty, not just confidence\n   - Narrower quotes increase fill probability but risk being run over\n\n10. **Scoring dynamics**\n    - Skill = 1 - (your_error / no_change_error)\n    - Predicting zero when market doesn't move: skill = 0.00 (neutral)\n    - Predicting zero when market moves: skill = 0.00 (missed opportunity but no penalty)\n    - Predicting correctly in direction when market moves: skill = positive\n    - Predicting move when market stays flat: skill = negative (and this hurts badly)\n    - **Key trade-off**: False positives are very costly. Be conservative.\n\n11. **The fundamental question to ask**\n    - \"Has enough time passed since the last catalyst for price discovery to complete?\"\n    - A goal 1 minute ago: NO - likely still moving\n    - A goal 6 minutes ago with stable price for 3 minutes: YES - absorbed\n    - Injury delay 5 minutes ago with stable price: YES - absorbed (Example 8)\n    - Goal 1 minute ago even with prior stability: NO - just starting to move (Example 1)\n\n12. **Common errors to avoid**\n    - DON'T predict directional moves based on stale events (>5 minutes old with stable price)\n    - DON'T confuse \"price was stable before the event\" with \"price has absorbed the event\"\n    - DON'T predict small moves on thin evidence - the penalty for false positives exceeds the benefit\n    - DO trust price stability when it's been 3+ minutes AFTER an event\n    - DO recognize that goals <2 minutes old are often still moving the price\n\n**Round-trip costs are 2-3 cents on Kalshi.** Predict zero unless you see clear evidence of incomplete price discovery from a recent catalyst. When in doubt, predict zero.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
