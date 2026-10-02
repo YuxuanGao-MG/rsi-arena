@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen30",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n## Core Pattern from Recent Feedback\n\n**The 2 basis point width trap is destroying performance.** Eight examples show the harness consistently using 2.0 bps half-width for near-zero predictions. This is catastrophically too narrow:\n\n**Examples of the failure mode:**\n\n1. **BKNG in multi-stock earnings preview (9 symbols):** Predicted -1.9 bps / 2.0 width, actual -4.4 bps, skill +0.38. Quote was 192.1/192.3, realized price outside.\n\n2. **SPY on U.S.-Canada trade deal (2 symbols):** Predicted +0.3 bps / 2.0 width, actual -2.6 bps, skill -0.07 (negative skill). Quote unhit but wrong direction.\n\n3. **WFC on McConnell stock purchase filing (1 symbol, immaterial):** Predicted -0.8 bps / 2.0 width, actual -14.1 bps, skill +0.05. Quote was 85.34/85.43, bid hit, barely positive skill on a 13.3 bps miss.\n\n4. **NVDA on \"Bill Baruch bought more\" (1 symbol, noise):** Predicted -0.3 bps / 2.0 width, actual +8.4 bps, skill -0.04 (negative skill). Quote was 225.4/225.6, ask hit.\n\n5. **NVDA in IONQ quantum story (11 symbols):** Predicted -0.7 bps / 2.0 width, actual -3.3 bps, skill +0.14. Quote was 224.5/224.7, ask hit.\n\n**What the 2 bps width means in practice:**\n- A 2 bps half-width creates a 4 bps wide market\n- Large-cap natural spread is 1-5 bps, so you're quoting at-market or inside\n- Normal 5-minute volatility is 5-15 bps even without news\n- You get run over by routine noise, not just news reactions\n- When actual move is 4-14 bps and you quoted \u00b12 bps, skill is zero to negative\n\n**The two examples that worked:**\n\n6. **CAT on RBC price target raise to $897 (1 symbol, analyst call):** Predicted -2.3 bps / 5.7 width, actual +10.0 bps, skill -0.23. Both sides hit, earned $22 on the round trip. Width was better but still too narrow; directionally wrong on the analyst upgrade.\n\n7. **INTC on Google Cloud collaboration (3 symbols):** Predicted -1.2 bps / 6.8 width, actual -3.1 bps, skill +0.24, price stayed inside the quote. Both sides hit, earned $27. **This is the only example with appropriate width and positive skill.**\n\n8. **MSFT \"where is the bottom\" technical story (1 symbol):** Predicted -2.8 bps / 5.2 width, actual -8.8 bps, skill +0.32. Both sides hit, earned $20. Got direction right, width still a bit narrow but workable.\n\n## The Core Problem\n\n**When predicting near-zero moves, the harness uses 2 bps width.** This fails because:\n\n1. **Five-minute noise is larger than 2 bps.** Stocks drift 5-10 bps in five minutes without any news catalyst. Algo activity, bid-ask bounce, and normal volatility create this baseline motion.\n\n2. **Multi-stock stories still move individual names 3-8 bps.** When your symbol is mentioned among 5-10 others, algorithms reading the headline create correlated moves of 3-8 bps even if the story isn't about you.\n\n3. **Single-stock noise stories move 8-14 bps.** \"Senator bought $1K-15K\" or \"analyst bought more on CNBC\" are pure noise, but they still generate 8-14 bps moves because someone is trading the headline.\n\n4. **2 bps width gets you run over, costing skill.** When you predict 0 \u00b1 2 bps and actual is -14 bps (WFC case), you miss by 13.3 bps and earn +0.05 skill. If you'd predicted 0 \u00b1 7 bps, you'd miss by 7 bps and earn better skill.\n\n## Decision Framework\n\n**Minimum half-width by story type:**\n\n1. **Single-stock material catalyst (upgrade/downgrade, deal, guidance, FDA):**\n   - Width: 10-15 bps for analyst calls, 12-20 bps for M&A/earnings\n   - Example: CAT price target (should have used 12 bps, not 5.7)\n\n2. **Single-stock noise (senator filing, TV pundit bought, technical analysis piece):**\n   - Width: 8-10 bps minimum\n   - These are immaterial but still generate algo-driven moves of 8-14 bps\n   - Examples: WFC McConnell filing (-14 bps actual), NVDA Baruch bought (+8.4 bps actual)\n   - Predict: 0 \u00b1 8 bps (you don't know direction, but you know noise magnitude)\n\n3. **Multi-stock thematic story (your symbol is subject or key peer):**\n   - Width: 10-12 bps\n   - Example: INTC in Google Cloud collaboration (used 6.8 bps, worked, could go to 10)\n\n4. **Multi-stock story (your symbol mentioned in passing, 2-11 symbols):**\n   - Width: 6-8 bps minimum\n   - Stocks mentioned among several others still move 3-8 bps via correlation/algos\n   - Examples: BKNG in earnings preview, NVDA in IONQ quantum story\n   - Predict: 0-2 bps with 6-8 bps width\n\n5. **Macro/market story (SPY, QQQ, trade deals, Fed):**\n   - Width: 6-10 bps\n   - Market-wide news has uncertain individual-stock impact\n   - Example: SPY on U.S.-Canada trade deal (should have used 6 bps, not 2)\n\n**Never use 2 bps half-width. Never.** The minimum viable width is:\n- 6 bps for tangential mentions in multi-stock stories\n- 8 bps for single-stock noise (immaterial filings, TV pundit mentions)\n- 10 bps for material single-stock catalysts\n- 12-15 bps for major catalysts (deals, guidance, significant analyst moves)\n\n## Why Wider Width Works\n\nThe INTC example proves the strategy:\n- Predicted -1.2 bps (near-zero, no clear direction)\n- Used 6.8 bps width (not 2 bps)\n- Actual was -3.1 bps\n- Missed by only 1.9 bps, skill +0.24\n- Both sides hit, earned $27 on the round trip\n- **The quote was wide enough to stay inside and narrow enough to get filled**\n\nThe alternative (2 bps width) would have been:\n- Quote at 97.79/97.83 instead of 97.73/97.86\n- Ask gets hit, bid doesn't\n- No round trip, no $27\n- Same 1.9 bps miss but different P&L profile\n\n**Width is insurance and opportunity:**\n- Wide enough: you don't get run over by noise, you stay inside the quote, you earn skill\n- Narrow enough: both sides get hit when there's a small move, you earn the round trip\n- The 6-10 bps range is the sweet spot for near-zero predictions\n\n## Corrected Predictions for the Examples\n\n1. **BKNG multi-stock earnings preview:** Should predict 0 bps / 6.5 width (not -1.9 / 2.0)\n2. **SPY trade deal:** Should predict 0 bps / 7.0 width (not +0.3 / 2.0)\n3. **WFC McConnell filing:** Should predict 0 bps / 8.5 width (not -0.8 / 2.0)\n4. **NVDA Baruch bought:** Should predict 0 bps / 8.5 width (not -0.3 / 2.0)\n5. **CAT RBC price target:** Should predict +3 bps / 12.0 width (not -2.3 / 5.7) \u2014 got direction wrong\n6. **NVDA IONQ quantum:** Should predict 0 bps / 7.0 width (not -0.7 / 2.0)\n7. **INTC Google Cloud:** Current 6.8 width is good, could go to 8-10 for safety\n8. **MSFT bottom piece:** Current 5.2 width workable, could go to 7-8 for more safety\n\n## Key Principles\n\n1. **Five-minute noise floor is 5-10 bps.** Your width must cover this baseline volatility.\n\n2. **Multi-stock stories still move individual names 3-8 bps.** Predict near-zero but use 6-8 bps width.\n\n3. **Single-stock noise (immaterial filings, TV mentions) moves 8-14 bps.** Use 8-10 bps width.\n\n4. **Material catalysts need 10-15 bps width** depending on catalyst type and market conditions.\n\n5. **When you can't determine direction, predict 0 bps with wide width.** This is correct for noise, tangential mentions, and late-breaking stories where tape reaction is unclear. The width protects you and lets you capture the round trip if both sides fill.\n\n6. **Skill comes from appropriate width, not tight width.** A 0 \u00b1 7 bps prediction that keeps you inside the quote when actual is -3 bps earns more skill than a 0 \u00b1 2 bps prediction that gets run over.\n\n7. **The round trip pays the spread.** When both sides fill, you earn (ask - bid) per contract. A 6-8 bps half-width (12-16 bps wide market) is narrow enough to get filled on small moves and wide enough not to get run over.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
