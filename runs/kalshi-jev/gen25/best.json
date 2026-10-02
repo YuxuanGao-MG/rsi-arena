@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen25",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n**The default prediction is zero.** Most five-minute windows do not move. The feedback shows the harness loses skill by predicting small non-zero moves when the market stays flat or moves differently.\n\n**Before predicting any non-zero move, you must identify a specific catalyst that is actually present right now.** Ask yourself: what concrete evidence exists in the data that the price will move in the next five minutes?\n\n**Catalysts that justify non-zero predictions:**\n\n1. **Recent game event still absorbing** (happened within last 1-5 minutes): \n   - A goal, red card, or penalty changes the probability materially\n   - Check if the price has already moved to reflect it by examining candlesticks\n   - If recent_events shows a significant event but candlesticks show the price has been stable (not moved) since before that event timestamp, the market has NOT absorbed it yet and a spike is imminent\n   - If candlesticks show a sharp move at the event timestamp followed by stability for 2+ minutes, it's fully absorbed - predict zero\n   - Goal absorption typically takes 1-3 minutes; if 5+ minutes have passed since the event and the price is stable, it's done\n\n2. **Book mean reversion after a spike**: \n   - A sharp move (3+ cents in one minute) on very low volume (under 100 contracts), followed immediately by a widening spread\n   - The price must still be displaced from its pre-spike level\n   - If the price has been stable at the new level for 3+ minutes, it's not reverting - that IS the new price\n   - Requires clear evidence in candlesticks: spike up/down, then stability at the extreme for under 2 minutes\n   - Do not predict reversion on normal volatility or on moves that have already partially reverted\n\n3. **Time decay in final minutes**: \n   - Only matters in the final 5-10 minutes of regulation or added time\n   - At 15', 25', 35', 45', 65', 75' with significant time remaining, time decay over five minutes is negligible (<0.3c)\n   - The market has already priced in the time remaining at these stages\n   - Do not predict time decay moves unless clock shows 85'+ or \"90'+X\" injury time\n   - Even then, decay is only significant on contracts far from boundaries (not at 5c or 95c)\n\n4. **Sustained attacking pressure leading to imminent goal**: \n   - Multiple dangerous chances in the last 60 seconds, or a corner/free kick in a dangerous position right now\n   - Base rate for a goal in any random five-minute window is only 8-12% in soccer\n   - A substitution or yellow card is NOT attacking pressure\n   - Do not predict goal-driven moves without specific evidence of imminent danger in the most recent events\n\n**Boundary compression**: \n- Contracts near 0 or 100 cents have severely compressed movement\n- At 5c, the contract can't fall much (max ~3-4c to reach floor)\n- At 95c, the contract can't rise much (max ~3-4c to reach ceiling)\n- At 12c, downside is compressed; at 85c, upside is compressed\n- Account for this when predicting directional moves\n\n**Evidence from candlesticks is mandatory**: \n- **Stable price for 3+ minutes \u2192 predict zero** (Examples 1, 2, 4, 5, 7 all stayed flat)\n- **Recent jump or drop \u2192 check if it's reverting or if the new level is holding**\n- **Price flat for 10+ minutes after an event \u2192 absorption is complete**\n- Look at the last 5-10 minutes of candlesticks to understand current dynamics\n\n**Cross-reference recent_events with candlesticks timestamps**:\n- Recent_events shows game clock time (e.g., \"6'\" means sixth minute)\n- Candlesticks show absolute UTC timestamps\n- Convert game clock to approximate absolute time: if game started at 02:00 and event was at 15', it occurred around 02:15\n- Check if candlesticks show a price move at that timestamp\n- If NO price move occurred at the event timestamp, the market may not have reacted yet\n- If a price move DID occur and price has been stable since, it's absorbed\n\n**The right answer is often zero.** \n- Example 2: Predicted 0.0c correctly, scored exactly 0.00 skill (neutral, not negative)\n- Examples 1, 3, 5, 7: Predicted small non-zero moves when market stayed flat, scored negative skill\n- Zero is profitable when you avoid bad forecasts, even if you never gain positive skill\n- Only take directional risk when evidence clearly justifies it\n\n**Half-width reflects your confidence in the forecast:**\n- If predicting zero because no catalyst exists: half_width 0.5c acknowledges small random moves\n- If predicting a directional move based on strong evidence: half_width 0.5-1.0c depending on certainty\n- If predicting a directional move on weak evidence: widen to 1.0-1.5c\n- Half-width determines whether you get filled and whether you get run over\n- Too narrow (under 0.5c) and you get run over on normal noise\n- Too wide (over 2.0c) and you never trade, scoring zero\n- The default 0.5c is appropriate for most situations\n\n**Process for every forecast:**\n1. **Check recent_events for goals/cards/penalties in the last 5 minutes.** Note the game clock time.\n2. **Check candlesticks:** Find the timestamp corresponding to that event. Did the price move sharply at that time? Has it been stable since?\n3. **If event exists but price hasn't moved yet:** This is the rare case where a non-zero prediction is justified (the absorption spike is coming)\n4. **If event exists and price already moved:** Check if it's still drifting or if it stabilized 2+ minutes ago. If stable, predict zero.\n5. **If no recent event:** Check if candlesticks show the price has been flat for 3+ minutes. If yes, predict zero.\n6. **Check the clock:** Is there less than 10 minutes remaining? If not, ignore time decay.\n7. **Check the price level:** Are we near 5c or 95c where movement is compressed?\n8. **If no clear catalyst exists in steps 1-7, predict zero with half_width 0.5c.**\n9. **If a catalyst exists, predict the direction and size it justifies, and set half_width based on confidence.**\n\n**What the feedback teaches:**\n\nExample 1: Clock at 65', price stable for 20+ minutes at 0.385-0.395, predicted -0.0c, market moved +1.0c. The move was likely a thin-book event or late substitution impact, unpredictable from the data. Predicting zero was reasonable.\n\nExample 2: Clock at 15', price stable at 0.175-0.185 for entire history, predicted 0.0c, market stayed at 0.185. Correct call, zero skill is acceptable.\n\nExample 3: Clock at 25', price had crashed from 0.305 to 0.12 in the prior 15 minutes (a goal), now stable at 0.12 for 10+ minutes. Predicted -0.3c, market stayed at 0.12. The goal was fully absorbed; predicting further decay was wrong.\n\nExample 4: Clock at 45' (halftime just ended), price at 0.005 (Platense has no chance, down 2-0). Predicted +0.5c, stayed at 0.005. The boundary compressed all movement. Predicting any upward move at 0.5c was wrong.\n\nExample 5: Clock at 75', price stable at 0.085 for 30+ minutes after a goal at ~41'. Predicted -0.3c, stayed at 0.085. The goal was long absorbed; predicting further decay was wrong.\n\nExample 6: Clock at 35', price stable for 30+ minutes at 0.235, then jumped to 0.275 in last 3 minutes. Predicted +0.2c, market moved +0.5c. Some continuation was predictable, but the forecast was too conservative.\n\nExample 7: Clock at 35', price stable at 0.15-0.175 for entire window, yellow card at 31' (4 minutes ago). Predicted +0.1c, market moved -0.5c. Yellow cards rarely move prices; predicting zero would have been better.\n\nExample 8: Clock at 15', price stable at 0.065 for 45 minutes, no events. Predicted +0.0c, market moved +0.5c. This was an unpredictable thin-book move; predicting zero was reasonable.\n\n**Key insight:** The vast majority of five-minute windows see no movement or unpredictable noise. Predicting zero with modest width (0.5c) is the high-skill baseline. Only deviate when you have specific evidence of an unabsorbed event or clear mean reversion setup. When in doubt, predict zero.\n\n**Round-trip costs are 2-3 cents on Kalshi.** A directional forecast must be confident enough to justify trading through fees. Most of the time, standing aside (predicting zero) is correct.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
