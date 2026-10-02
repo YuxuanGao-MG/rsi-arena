@@ -24,33 +24,12 @@
 # then delete the line. Deleting a line whose upload did not happen puts the gap
 # back to silent, which is the state this file exists to end.
 
-# -- still on the author's machine, and nowhere else (20 generations, 682 MB)
+# -- recovered
 #
-# These need credentials with PutObject on the bucket. The machine has none: its
-# ~/.aws/credentials holds an expired session token from April 2024, and the
-# working key exists only as a repository secret, which GitHub will not read
-# back. So this half of the backlog clears when that key is put in the
-# environment once - not by creating a new one.
-kalshi-horizon-5m/gen1-1k                  # 2026-09-14  runs/gen1-1k  gepa  74 KB
-kalshi-horizon-5m/gen1-floored             # 2026-09-14  runs/gen1-floored  gepa  75 KB
-kalshi-horizon-5m/gen5                     # 2026-09-16  runs/gen5  gepa  57 KB
-kalshi-horizon-5m/gen7@kalshi-jev          # 2026-09-25  runs/kalshi-jev/gen7  rollouts+gepa  97 MB
-kalshi-horizon-5m/gen8@kalshi-jev          # 2026-09-25  runs/kalshi-jev/gen8  rollouts+gepa  15 MB
-kalshi-horizon-5m/gen9@kalshi-jev          # 2026-09-25  runs/kalshi-jev/gen9  rollouts+gepa  101 MB
-kalshi-horizon-5m/gen10@kalshi-jev         # 2026-09-26  runs/kalshi-jev/gen10  rollouts+gepa  16 MB
-kalshi-horizon-5m/gen11@kalshi-jev         # 2026-09-26  runs/kalshi-jev/gen11  rollouts+gepa  15 MB
-kalshi-horizon-5m/gen12@kalshi-jev         # 2026-09-26  runs/kalshi-jev/gen12  rollouts+gepa  16 MB
-kalshi-horizon-5m/gen13@kalshi-jev         # 2026-09-27  runs/kalshi-jev/gen13  rollouts+gepa  40 MB
-kalshi-horizon-5m/gen14@kalshi-jev         # 2026-09-27  runs/kalshi-jev/gen14  rollouts+gepa  97 MB
-news-equity-5m/gen7@news-equity-5m         # 2026-09-25  runs/news-equity-5m/gen7  rollouts+gepa  37 MB
-news-equity-5m/gen8@news-equity-5m         # 2026-09-25  runs/news-equity-5m/gen8  rollouts+gepa  6 MB
-news-equity-5m/gen9@news-equity-5m         # 2026-09-25  runs/news-equity-5m/gen9  rollouts+gepa  58 MB
-news-equity-5m/gen10@news-equity-5m        # 2026-09-26  runs/news-equity-5m/gen10  rollouts+gepa  7 MB
-news-equity-5m/gen11@news-equity-5m        # 2026-09-26  runs/news-equity-5m/gen11  rollouts+gepa  33 MB
-news-equity-5m/gen12@news-equity-5m        # 2026-09-26  runs/news-equity-5m/gen12  rollouts+gepa  33 MB
-news-equity-5m/gen13@news-equity-5m        # 2026-09-27  runs/news-equity-5m/gen13  rollouts+gepa  52 MB
-news-equity-5m/gen14@news-equity-5m        # 2026-09-27  runs/news-equity-5m/gen14  rollouts+gepa  53 MB
-news-equity-5m/gen15@news-equity-5m        # 2026-09-27  runs/news-equity-5m/gen15  rollouts+gepa  6 MB
+# Twenty generations, 682 MB, were on the author's machine and nowhere else
+# until 2 October, when a new access key for the same IAM user put them in the
+# bucket. They are listed in the git history of this file rather than here,
+# because what belongs here is what is still missing.
 
 # -- gone (26 generations)
 #
