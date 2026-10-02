@@ -136,6 +136,13 @@ def test_the_default_limit_leaves_room_under_githubs():
 
 HEAVY = [
     "runs/gen1/rollouts/baseline.holdout.json",
+    # The memoisation caches, since 2 October: the crypto one reached 90.19 MB
+    # and the commit step refused it, GitHub's limit being 100. They are a cache
+    # of (harness, window) -> outcome, not evidence and not history, and they are
+    # restored from S3 at the start of every generation.
+    "runs/scoreboard.json",
+    "runs/scoreboard.crypto-horizon-1m.json",
+    "runs/scoreboard.kalshi-jev.json",
     "runs/gen12/gepa/candidates.json",
     "runs/crypto-horizon-1m/gen8/rollouts/candidate.holdout.json",
     "runs/crypto-horizon-1m/gen8/gepa/gepa_state.bin",
@@ -147,7 +154,6 @@ HEAVY = [
 KEPT = [
     "runs/archive.json",
     "runs/archive.crypto-horizon-1m.json",
-    "runs/scoreboard.crypto-horizon-1m.json",
     "runs/crypto-horizon-1m/gen8/manifest.json",
     "runs/crypto-horizon-1m/gen8/best.json",
     "runs/crypto-horizon-1m/gen8/valset.json",
@@ -178,6 +184,23 @@ def test_gitignore_excludes_the_heavy_parts(path):
 @pytest.mark.parametrize("path", KEPT)
 def test_gitignore_keeps_what_a_later_run_reads(path):
     assert path not in check_ignore(KEPT), f"{path} is ignored and a later run needs it"
+
+
+def test_a_scoreboard_that_is_not_committed_is_restored_instead():
+    """Ignoring the cache is only safe because the loop fetches it back.
+
+    Without the restore every generation would score from scratch, which is
+    nearly a third of the bill, and nothing would fail - it would simply cost
+    three times as much and look normal.
+    """
+    loop = (ROOT / ".github" / "workflows" / "loop.yml").read_text()
+    assert "Restore the scoreboard" in loop, "the cache is ignored and never fetched back"
+    assert "Keep the scoreboard in S3" in loop, "the cache is fetched but never kept"
+    assert "memory/scoreboard.json" in loop
+    # And the upload must refuse to shrink: `put` never removes an entry, so a
+    # smaller local file means the restore failed, and uploading it would make
+    # one cold run everyone else's bill.
+    assert "the scoreboard shrank" in loop
 
 
 def test_the_rule_is_written_for_every_depth():
