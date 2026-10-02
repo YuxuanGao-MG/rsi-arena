@@ -196,11 +196,14 @@ def test_a_scoreboard_that_is_not_committed_is_restored_instead():
     loop = (ROOT / ".github" / "workflows" / "loop.yml").read_text()
     assert "Restore the scoreboard" in loop, "the cache is ignored and never fetched back"
     assert "Keep the scoreboard in S3" in loop, "the cache is fetched but never kept"
-    assert "memory/scoreboard.json" in loop
-    # And the upload must refuse to shrink: `put` never removes an entry, so a
-    # smaller local file means the restore failed, and uploading it would make
-    # one cold run everyone else's bill.
-    assert "the scoreboard shrank" in loop
+    assert "memory/" in loop and 'basename "$board"' in loop, \
+        "the key must carry the board's filename: Kalshi has two lineages and two boards"
+    # And the upload must refuse when this run started cold, which would
+    # otherwise replace the bucket's memory with a few minutes of it. The test
+    # is the restore's own answer, not the file size: `save` evicts past 48 MB,
+    # so a smaller upload than download is normal and was briefly fatal.
+    assert "the scoreboard was not restored" in loop
+    assert "steps.memory.outputs.restored" in loop
 
 
 def test_the_rule_is_written_for_every_depth():

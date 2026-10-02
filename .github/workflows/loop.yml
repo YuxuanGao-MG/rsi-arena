@@ -267,13 +267,19 @@ jobs:
           print(scoreboard_path(sys.argv[1], sys.argv[2]))
           " "$RUNS_DIR" "$TOPIC")
           echo "board=$board" >> "$GITHUB_OUTPUT"
-          key="rsi-arena/$TOPIC/memory/scoreboard.json"
+          # The board's own filename, not just the topic: the Kalshi topic has
+          # two lineages with two boards - `scoreboard.json` for the Opus
+          # generations and `scoreboard.kalshi-jev.json` since - and keying by
+          # topic alone would have had them overwrite each other, which is the
+          # same mistake the trajectories made under `<topic>/<run>/`.
+          key="rsi-arena/$TOPIC/memory/$(basename "$board")"
           echo "key=$key" >> "$GITHUB_OUTPUT"
           if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$TRACE_BUCKET" ]; then
             echo "::warning title=no scoreboard::no bucket or credentials; this generation scores everything from scratch"
             exit 0
           fi
           if aws s3 cp "s3://$TRACE_BUCKET/$key" "$board" --only-show-errors; then
+            echo "restored=yes" >> "$GITHUB_OUTPUT"
             echo "restored $(du -h "$board" | cut -f1) of memory into $board"
           else
             # Not a failure: the first generation of a topic has none, and
@@ -672,8 +678,13 @@ jobs:
           theirs=$(aws s3 ls "s3://$TRACE_BUCKET/$key" 2>/dev/null | awk '{print $3}')
           theirs=${theirs:-0}
           echo "local $(( mine / 1000000 )) MB, in the bucket $(( theirs / 1000000 )) MB"
-          if [ "$mine" -lt "$theirs" ]; then
-            echo "::error title=the scoreboard shrank::local $mine bytes against $theirs in the bucket, so the restore at the start of this run did not work. Not uploading: that would delete memory every later generation has to pay for again."
+          # The question is whether this run started from the bucket's copy, not
+          # whether the file got smaller. Smaller is normal and intended: `save`
+          # evicts past 48 MB, so the first run after a large restore uploads
+          # less than it downloaded. Refusing on size alone would have refused
+          # every upload from then on, and warned about it hourly.
+          if [ "${{ steps.memory.outputs.restored }}" != "yes" ] && [ "$theirs" -gt 0 ]; then
+            echo "::error title=the scoreboard was not restored::this run started cold while s3://$TRACE_BUCKET/$key holds $theirs bytes. Not uploading: that would replace memory every later generation has to pay for again."
             exit 0
           fi
           for attempt in 1 2 3; do
