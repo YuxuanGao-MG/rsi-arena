@@ -18,12 +18,29 @@ answer cannot have changed. This memoises the thing that actually matters, the
 Deliberately not a general cache. It stores only what the gate and the archive
 read back — the score, and what it cost when it was genuinely paid for. Traces
 are two orders larger and are what ``runs/*/rollouts/`` is for.
+
+It is also no longer committed, and it is bounded. Both for the same reason,
+found on 2 October when the crypto loop stopped: the file had reached 90.19 MB
+and the commit step refused it, GitHub's hard limit being 100. Kalshi's was
+82.5 MB, days behind it. A cache with no eviction policy is a leak with a good
+excuse, and this one was also being rewritten whole three times a day per topic
+into git history — 489 MB of pack for four days of it, and the keys are hashes,
+so the deltas compress badly.
+
+So the scoreboards live in S3 (``loop.yml`` restores before the run and syncs
+after; the upload refuses to shrink what is already there, which is what makes a
+failed restore cost money rather than memory) and ``save`` evicts the oldest
+entries past ``MAX_BYTES``. Eviction is oldest-first and honest about it: the
+question set rolls forward, so the entries that age out are overwhelmingly for
+windows no longer asked about, but the ones that are not are a cost, and
+``summary()`` reports how many went.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +49,12 @@ from .task import Instance, Outcome, Rollout
 
 #: Where it lives, relative to the runs directory.
 SCOREBOARD = "scoreboard.json"
+
+#: How large the file may get before ``save`` starts forgetting. Chosen well
+#: under GitHub's 100 MB - the file is no longer committed, but a download
+#: happens at the start of every generation and an unbounded cache eventually
+#: costs more in transfer than it saves in model calls.
+MAX_BYTES = 48_000_000
 
 
 def scoreboard_path(runs_root: str | Path, topic: str = "") -> Path:
@@ -81,6 +104,7 @@ class Scoreboard:
         self.entries: dict[str, dict[str, Any]] = dict(entries or {})
         self.hits = 0
         self.added = 0
+        self.forgotten = 0
 
     # -- persistence --
 
@@ -96,10 +120,45 @@ class Scoreboard:
             # it costs money; refusing to run costs the generation.
             return cls()
 
-    def save(self, path: str | Path) -> None:
+    def save(self, path: str | Path, *, max_bytes: int = MAX_BYTES) -> None:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
+        self.forget_past(max_bytes)
         p.write_text(json.dumps({"entries": self.entries}, sort_keys=True))
+
+    def forget_past(self, max_bytes: int = MAX_BYTES) -> int:
+        """Evict oldest-first until the file would fit. Returns how many went.
+
+        Oldest by when the entry was first stored, which is also roughly when
+        its window was last asked about: the question set rolls forward, so an
+        old entry is usually for a window no longer in any benchmark and the
+        eviction is free. Usually, not always - an entry that would have been
+        hit is a real cost, which is why the count is reported rather than
+        quietly absorbed.
+
+        Entries stored before this was written carry no stamp and are treated as
+        the oldest, which is what they are.
+        """
+        if max_bytes <= 0:
+            return 0
+        sizes = {k: len(k) + len(json.dumps(v, sort_keys=True)) + 4
+                 for k, v in self.entries.items()}
+        if sum(sizes.values()) <= max_bytes:
+            return 0
+        # Newest first, and a stable tiebreak so two runs of this on the same
+        # data forget the same entries.
+        order = sorted(self.entries, key=lambda k: (-int(self.entries[k].get("at") or 0), k))
+        keep, used = set(), 0
+        for k in order:
+            if used + sizes[k] > max_bytes:
+                break
+            keep.add(k)
+            used += sizes[k]
+        gone = [k for k in self.entries if k not in keep]
+        for k in gone:
+            del self.entries[k]
+        self.forgotten += len(gone)
+        return len(gone)
 
     path_for = staticmethod(scoreboard_path)
 
@@ -124,7 +183,11 @@ class Scoreboard:
         self.added += 1
         self.entries[k] = {"value": outcome.value, "feedback": outcome.feedback,
                            "objectives": outcome.objectives, "details": outcome.details,
-                           "cost_usd": cost_usd}
+                           "cost_usd": cost_usd,
+                           # When it was first stored, so eviction can be
+                           # oldest-first. Seconds, not a timestamp string: this
+                           # field is written 60,000 times a file.
+                           "at": int(time.time())}
 
     def cost_of(self, fingerprint: str, instance: Instance) -> float:
         """What this answer cost the first time.
@@ -152,4 +215,5 @@ class Scoreboard:
         return self.added - before
 
     def summary(self) -> dict[str, Any]:
-        return {"remembered": len(self.entries), "hits": self.hits, "added": self.added}
+        return {"remembered": len(self.entries), "hits": self.hits,
+                "added": self.added, "forgotten": self.forgotten}

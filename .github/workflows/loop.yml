@@ -243,6 +243,44 @@ jobs:
           key: loop-cache-${{ github.run_id }}
           restore-keys: loop-cache-
 
+      # The memoisation cache, from S3 rather than from the checkout. It is a
+      # cache of (harness, window) -> outcome and nearly a third of a
+      # generation's bill without it; it is also 90 MB, which is why it is no
+      # longer committed. A restore that fails leaves the generation cold and
+      # expensive, so it says so loudly - and the upload after the run refuses
+      # to shrink what is in the bucket, so a cold run costs money rather than
+      # everyone else's memory.
+      - name: Restore the scoreboard
+        id: memory
+        if: inputs.command != 'windows'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
+          TRACE_BUCKET: ${{ secrets.TRACE_BUCKET }}
+        run: |
+          # The workflow never spells the filename: `scoreboard_path` owns it,
+          # and it differs per topic and per lineage.
+          board=$(python -c "
+          import sys
+          from rsi_arena.loop.scoreboard import scoreboard_path
+          print(scoreboard_path(sys.argv[1], sys.argv[2]))
+          " "$RUNS_DIR" "$TOPIC")
+          echo "board=$board" >> "$GITHUB_OUTPUT"
+          key="rsi-arena/$TOPIC/memory/scoreboard.json"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$TRACE_BUCKET" ]; then
+            echo "::warning title=no scoreboard::no bucket or credentials; this generation scores everything from scratch"
+            exit 0
+          fi
+          if aws s3 cp "s3://$TRACE_BUCKET/$key" "$board" --only-show-errors; then
+            echo "restored $(du -h "$board" | cut -f1) of memory into $board"
+          else
+            # Not a failure: the first generation of a topic has none, and
+            # neither does the first run after this change.
+            echo "::warning title=no scoreboard in S3::s3://$TRACE_BUCKET/$key could not be fetched; this generation scores everything from scratch, which costs roughly three times as much"
+          fi
+
       - name: Check the key
         if: inputs.command != 'windows'
         run: |
@@ -608,6 +646,45 @@ jobs:
       # step can still add a whole directory rather than a list of filenames -
       # .gitignore is the list, in one place, and the same list a person's `git
       # add` obeys.
+      # The cache back to S3, and only if it grew. `put` never removes an entry
+      # and `save` only evicts past 48 MB, so a scoreboard smaller than the one
+      # in the bucket means the restore failed and this run started cold.
+      # Uploading it would turn one bad run into every later run's problem.
+      - name: Keep the scoreboard in S3
+        if: always() && inputs.command != 'windows'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
+          TRACE_BUCKET: ${{ secrets.TRACE_BUCKET }}
+        run: |
+          board="${{ steps.memory.outputs.board }}"
+          key="${{ steps.memory.outputs.key }}"
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$TRACE_BUCKET" ] || [ -z "$board" ]; then
+            echo "no bucket, credentials or scoreboard path; nothing to keep"
+            exit 0
+          fi
+          if [ ! -f "$board" ]; then
+            echo "::warning::$board does not exist; nothing to keep"
+            exit 0
+          fi
+          mine=$(wc -c < "$board")
+          theirs=$(aws s3 ls "s3://$TRACE_BUCKET/$key" 2>/dev/null | awk '{print $3}')
+          theirs=${theirs:-0}
+          echo "local $(( mine / 1000000 )) MB, in the bucket $(( theirs / 1000000 )) MB"
+          if [ "$mine" -lt "$theirs" ]; then
+            echo "::error title=the scoreboard shrank::local $mine bytes against $theirs in the bucket, so the restore at the start of this run did not work. Not uploading: that would delete memory every later generation has to pay for again."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if aws s3 cp "$board" "s3://$TRACE_BUCKET/$key" --only-show-errors; then
+              echo "- scoreboard kept in \`s3://$TRACE_BUCKET/$key\` ($(( mine / 1000000 )) MB)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep $(( attempt * 10 ))
+          done
+          echo "::error title=the scoreboard did not reach S3::three attempts failed; the next generation will score from scratch"
+
       - name: Commit results
         if: always()
         shell: bash
@@ -616,8 +693,10 @@ jobs:
           git config user.email "loop@users.noreply.github.com"
           shopt -s nullglob
           paths=()
+          # No runs/scoreboard*.json: the memoisation cache lives in S3 now, for
+          # the reason it stopped being committable - see .gitignore.
           for d in benchmarks/windows benchmarks/windows-* benchmarks/crypto-data benchmarks/news-data \
-                   runs/archive*.json runs/scoreboard*.json "$RUNS_DIR"; do
+                   runs/archive*.json "$RUNS_DIR"; do
             [ -e "$d" ] && paths+=("$d")
           done
           [ ${#paths[@]} -eq 0 ] && { echo "nothing to commit"; exit 0; }

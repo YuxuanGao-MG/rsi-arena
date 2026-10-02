@@ -165,3 +165,65 @@ def test_a_successful_call_clears_the_starvation_clock():
     # _completion is reached only on a 200, and that is where the clock resets.
     c.starved_since = None
     assert c.over_budget is False
+
+
+# ---------------------------------------------------------------------------
+# It is bounded. On 2 October the crypto scoreboard reached 90.19 MB and the
+# commit step refused it, GitHub's hard limit being 100; a cache with no
+# eviction policy is a leak with a good excuse.
+
+def _stamped(n, at, payload=200):
+    return {f"k{i:04d}": {"value": 0.0, "at": at + i, "details": {"x": "y" * payload}}
+            for i in range(n)}
+
+
+def test_a_small_scoreboard_is_left_alone():
+    sb = Scoreboard(_stamped(10, 1000))
+    assert sb.forget_past(10_000_000) == 0 and len(sb) == 10
+
+
+def test_the_oldest_entries_go_first():
+    sb = Scoreboard(_stamped(100, 1000))
+    sb.forget_past(5_000)
+    kept = sorted(sb.entries)
+    assert kept, "everything was evicted"
+    assert kept[-1] == "k0099", "the newest entry was not kept"
+    assert "k0000" not in sb.entries, "the oldest entry survived"
+
+
+def test_eviction_brings_the_file_under_the_budget(tmp_path):
+    sb = Scoreboard(_stamped(400, 1000))
+    p = tmp_path / "scoreboard.json"
+    sb.save(p, max_bytes=20_000)
+    assert p.stat().st_size <= 20_000 + 64, f"{p.stat().st_size} bytes written"
+    assert len(sb) < 400 and sb.summary()["forgotten"] > 0
+
+
+def test_an_entry_without_a_stamp_is_treated_as_oldest():
+    """Everything written before 2 October carries no stamp, and is oldest."""
+    sb = Scoreboard({**{"legacy": {"value": 0.0, "details": {"x": "y" * 200}}},
+                     **_stamped(20, 1000)})
+    sb.forget_past(3_000)
+    assert "legacy" not in sb.entries
+
+
+def test_eviction_is_the_same_twice():
+    """Two runs over the same data must forget the same entries."""
+    a, b = Scoreboard(_stamped(80, 1000)), Scoreboard(_stamped(80, 1000))
+    a.forget_past(4_000)
+    b.forget_past(4_000)
+    assert set(a.entries) == set(b.entries)
+
+
+def test_a_put_is_stamped():
+    sb = Scoreboard()
+    sb.put("fp", W("i1"), outcome())
+    (entry,) = sb.entries.values()
+    assert isinstance(entry.get("at"), int) and entry["at"] > 1_700_000_000
+
+
+def test_how_many_were_forgotten_is_reported():
+    """Usually free - the question set rolls forward - but not always, so said."""
+    sb = Scoreboard(_stamped(100, 1000))
+    sb.forget_past(5_000)
+    assert sb.summary()["forgotten"] == 100 - len(sb)

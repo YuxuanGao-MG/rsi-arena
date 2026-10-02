@@ -36,3 +36,13 @@ runs/**/*.rollouts.json
 
 # Agent worktrees and local Claude state
 .claude/
+
+# The memoisation scoreboards. Not evidence and not history: a cache of
+# (harness, window) -> outcome, rewritten whole three times a day per topic. On
+# 2 October the crypto one reached 90.19 MB and the commit step refused it,
+# GitHub's hard limit being 100; kalshi's was 82.5 MB, days behind. Four days of
+# committing them was most of 489 MB of pack, and they delta badly because the
+# keys are hashes. They live in S3 now - loop.yml restores before the run and
+# syncs after - and `loop/scoreboard.py` evicts past 48 MB.
+runs/scoreboard.json
+runs/scoreboard.*.json
