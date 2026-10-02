@@ -420,6 +420,11 @@ ul.tree ul.tree { margin:0 0 0 var(--s4); padding-left:var(--s4); border-left:1p
 .panel.warnband { border-left:3px solid var(--warn); }
 .eyebrow.warn { color:var(--warn); }
 .legend i.wash { width:12px; height:12px; border-radius:3px; background:var(--c-cand); opacity:.35; }
+/* The two marks on the generations chart that are not dots. They were drawn and
+   never named, so the orange rules in particular read as stray ink. */
+.legend i.whisker { width:3px; height:14px; border-radius:2px; background:var(--c-cand); opacity:.55; }
+.legend i.whisker.under { background:repeating-linear-gradient(var(--warn) 0 3px, transparent 3px 6px); }
+.legend i.won { width:12px; height:12px; border-radius:3px; background:var(--up); opacity:.22; }
 .provenance { margin:0 0 var(--s3); }
 .provenance p { margin:0 0 var(--s2); font-size:var(--t-sm); }
 

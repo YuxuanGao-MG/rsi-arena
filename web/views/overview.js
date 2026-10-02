@@ -49,14 +49,21 @@ export async function overviewView({ signal, topic = DEFAULT }) {
       </div>
       <div class="panel-b">
         <div class="legend">
-          <span><i class="dot" style="background:var(--c-inc)"></i> incumbent</span>
+          <span><i class="dot" style="background:var(--c-inc)"></i> incumbent, carried forward</span>
           <span><i class="dot" style="background:var(--c-cand)"></i> candidate</span>
-          <span><i class="wash"></i> 95% interval</span>
+          <span><i class="whisker"></i> where the difference could be (95%)</span>
+          <span><i class="whisker under"></i> test too small to have resolved it</span>
+          <span><i class="won"></i> promoted</span>
         </div>
         <figure class="chart">
           <div id="gen-skill"></div>
-          <figcaption>Zero is silence — saying nothing. A band touching it cannot be promoted.
-            A gap measured nothing.</figcaption>
+          <figcaption>One column per generation, oldest at the left. The candidate is promoted
+            only when its whisker clears the incumbent's line entirely, which
+            ${g.points.filter(p => p.accepted).length} of ${g.points.length} have done.
+            Zero is silence — saying nothing at all. A dashed column measured nothing,
+            because that generation crashed or ran out of money.
+            ${g.points.length > 12 ? html`Every generation is named in the table below; the
+              chart labels every few to keep them readable.` : ""}</figcaption>
         </figure>
         <details class="table-view">
           <summary>The same numbers as a table</summary>

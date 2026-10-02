@@ -113,95 +113,209 @@ const pad = (lo, hi, frac = 0.12) => {
  */
 export function generationSkill(el, points) {
   host(el, width => {
-    const H = 330, m = { t: 30, r: 26, b: 58, l: 58 };
+    // Right margin wide enough for the zero line's own label. "silence" used to
+    // be printed inside the plot at the right edge, over the newest generation -
+    // the one a reader looks at first - and at the left it covered the oldest.
+    const H = 330, m = { t: 34, r: 54, b: 46, l: 66 };
     const plotW = width - m.l - m.r, plotH = H - m.t - m.b;
-    const vals = [0];
+    // The scale comes from the levels, and the whiskers are allowed off the top
+    // and bottom. On the real Kalshi record the first eleven generations were
+    // scored on a few dozen windows and carry intervals ten times anything
+    // since, so a min-to-max scale flattened the twenty-five generations that
+    // followed into a single line a pixel thick. A clipped whisker says it is
+    // clipped; a squashed chart says nothing at all.
+    const levels = [0];
+    const spans = [];
     for (const p of points) {
-      for (const v of [p.inc, p.cand]) if (v != null) vals.push(v);
-      if (p.inc != null && p.low != null) vals.push(p.inc + p.low, p.inc + p.high);
-      if (p.inc != null && p.detectable) vals.push(p.inc + p.detectable, p.inc - p.detectable);
+      for (const v of [p.inc, p.cand]) if (v != null) levels.push(v);
+      if (p.inc != null && p.low != null) spans.push(p.inc + p.low, p.inc + p.high);
     }
-    const [lo, hi] = pad(Math.min(...vals), Math.max(...vals), 0.18);
+    // A percentile of both, not the extremes of either. The Kalshi record holds
+    // two lineages: eleven Opus generations scored on a few dozen windows, whose
+    // levels reach -0.057 and whose intervals reach -0.11, and then twenty-five
+    // Jev ones that all sit between -0.015 and zero. Scaled to the extremes the
+    // live era - the one the page is asking about - was a line one pixel thick.
+    // Anything outside the frame is drawn as an arrow at the edge and carries
+    // its real number in the tooltip, so nothing is hidden, only moved.
+    const quantile = (xs, q) => {
+      const a = [...xs].sort((u, v) => u - v);
+      return a.length ? a[Math.min(a.length - 1, Math.max(0, Math.round(q * (a.length - 1))))] : 0;
+    };
+    const want = [0, quantile(levels, 0.05), quantile(levels, 0.95),
+                  quantile(spans, 0.10), quantile(spans, 0.90)];
+    const [lo, hi] = pad(Math.min(...want), Math.max(...want), 0.18);
     const y = v => m.t + plotH - ((v - lo) / (hi - lo)) * plotH;
+    const clamp = v => Math.min(m.t + plotH, Math.max(m.t, y(v)));
     const band = plotW / Math.max(1, points.length);
     const cx = i => m.l + band * (i + 0.5);
+    // How dense this has become. Thirty generations in a 1,700px panel leaves
+    // about fifty pixels each, and `gen12@kalshi-jev` needs ninety - which is
+    // how every label on this chart came to be printed on top of every other.
+    const crowded = band < 80;
+    const every = Math.max(1, Math.ceil(points.length / Math.max(2, Math.floor(plotW / 78))));
+
+    // Where the lineage changes. The Kalshi topic holds two - eleven Opus
+    // generations under `runs/`, then the Jev ones under `runs/kalshi-jev/` -
+    // and each numbers from one, so the axis read "gen1 ... gen11, gen1, gen3
+    // ...": two different generations with one name, eight columns apart. The
+    // lineage is said once, where it starts, instead of on every label.
+    const lineageOf = id => (String(id).split("@")[1] || "").replace(/-horizon.*|-equity.*/, "");
+    const breaks = points.map((p, i) => [i, lineageOf(p.id)])
+      .filter(([i, lg], n) => n > 0 && lg !== lineageOf(points[i - 1].id));
+    const eras = breaks.map(([i, lg]) => {
+      const x = m.l + band * i;
+      return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${m.t}" y2="${m.t + plotH}"
+          stroke="var(--line)" stroke-width="1" stroke-dasharray="1 4"/>
+        <text x="${(x + 5).toFixed(1)}" y="${(m.t + 11).toFixed(1)}" font-size="10"
+          fill="var(--faint)">${esc(lg || "original")}</text>`;
+    }).join("");
+
+    // Promotion is the one event this chart exists to show, and it happens
+    // twice in thirty-seven. A triangle under the axis was not enough: it is
+    // the same size and nearly the same green as a candidate clipped at the
+    // bottom edge. The whole column is washed instead, which nothing else does.
+    const promoted = points.map((p, i) => p.accepted
+      ? `<rect x="${(cx(i) - band / 2).toFixed(1)}" y="${m.t}" width="${band.toFixed(1)}"
+           height="${plotH}" fill="var(--up)" fill-opacity="0.09"/>`
+      : "").join("");
 
     const ticks = niceTicks(lo, hi, 5);
+    // Enough decimals for the ticks to differ. Two was right when a skill of
+    // 0.02 was a big number and wrong once the live era sat inside one
+    // hundredth: the axis read "0.00, -0.00, -0.01, -0.01", four labels naming
+    // two values. And -0.00 is not a number anybody writes.
+    const step = Math.abs((ticks[1] ?? 0) - (ticks[0] ?? 1)) || Math.abs(hi - lo) / 5;
+    const dp = Math.min(6, Math.max(2, Math.ceil(-Math.log10(step)) + 1));
+    const tickText = t => {
+      const out = t.toFixed(dp);
+      return /^-0\.0*$/.test(out) ? out.slice(1) : out;
+    };
     const grid = ticks.map(t => `
       <line x1="${m.l}" x2="${m.l + plotW}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"
             stroke="var(--c-grid)" stroke-width="1"/>
       <text x="${m.l - 10}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end"
-            font-size="11" fill="var(--faint)" class="tnum">${t.toFixed(2)}</text>`).join("");
+            font-size="11" fill="var(--faint)" class="tnum">${tickText(t)}</text>`).join("");
 
+    // "silence" sits at the left, against the axis. At the right it was printed
+    // over the newest generation - the one a reader looks at first.
     const zero = `
       <line x1="${m.l}" x2="${m.l + plotW}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"
             stroke="var(--c-zero)" stroke-width="1.5"/>
-      <text x="${m.l + plotW}" y="${(y(0) - 8).toFixed(1)}" text-anchor="end"
+      <text x="${m.l + plotW + 6}" y="${(y(0) + 4).toFixed(1)}" text-anchor="start"
             font-size="11" font-weight="600" fill="var(--soft)">silence</text>`;
+
+    // The incumbent is one harness carried forward, so it is a line, not thirty
+    // unrelated dots. Drawn in segments: a crashed generation measured nothing,
+    // and joining across it would draw a trend through a hole.
+    const inFrame = v => v != null && y(v) >= m.t && y(v) <= m.t + plotH;
+    const runsOf = [];
+    let current = [];
+    points.forEach((p, i) => {
+      // Broken at a hole and at a level off the chart alike: a line drawn to a
+      // clamped point is a flat stretch that never happened.
+      if (p.gap || !inFrame(p.inc)) { if (current.length) runsOf.push(current); current = []; return; }
+      current.push([cx(i), y(p.inc)]);
+    });
+    if (current.length) runsOf.push(current);
+    const incLine = runsOf.map(seg => seg.length === 1
+      ? `<circle cx="${seg[0][0].toFixed(1)}" cy="${seg[0][1].toFixed(1)}" r="2.5"
+           fill="var(--c-inc)"/>`
+      : `<polyline points="${seg.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(" ")}"
+           fill="none" stroke="var(--c-inc)" stroke-width="2" stroke-linejoin="round"/>`).join("");
 
     const marks = points.map((p, i) => {
       const x = cx(i);
       const parts = [];
+      const label = esc(p.id.replace(/@.*$/, ""));
+      const shown = i === points.length - 1 || i % every === 0;
       if (p.gap) {
-        // An exhausted or crashed generation is a hole in the record, and a
-        // hole drawn as a data point on the silence line reads as "the latest
-        // rewrite broke even". It gets a labelled gap instead: no dots, no
-        // band, the reason in the slot.
-        const mid = m.t + plotH / 2;
+        // A hole in the record, not a data point on the silence line: drawn as
+        // one it reads as "the latest rewrite broke even".
         parts.push(`<line x1="${x}" x2="${x}" y1="${m.t + 8}" y2="${m.t + plotH - 8}"
           stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="2 5" stroke-linecap="round"/>`);
-        parts.push(`<text x="${x}" y="${(mid - 4).toFixed(1)}" text-anchor="middle"
-          font-size="11" font-weight="600" fill="var(--warn)">no</text>`);
-        parts.push(`<text x="${x}" y="${(mid + 10).toFixed(1)}" text-anchor="middle"
-          font-size="11" font-weight="600" fill="var(--warn)">measurement</text>`);
-        const label = esc(p.id.length > 13 ? p.id.slice(0, 12) + "\u2026" : p.id);
-        parts.push(`<text x="${x}" y="${m.t + plotH + 22}" text-anchor="middle"
+        if (!crowded) {
+          const mid = m.t + plotH / 2;
+          parts.push(`<text x="${x}" y="${(mid - 4).toFixed(1)}" text-anchor="middle"
+            font-size="11" font-weight="600" fill="var(--warn)">no</text>`);
+          parts.push(`<text x="${x}" y="${(mid + 10).toFixed(1)}" text-anchor="middle"
+            font-size="11" font-weight="600" fill="var(--warn)">measurement</text>`);
+        }
+      } else {
+        if (p.inc != null && p.low != null && p.high != null) {
+          // The interval, as a whisker rather than a block. A block twenty-two
+          // pixels wide beside a fifty-pixel slot reads as a bar chart of
+          // something, and it is not a quantity - it is where the difference
+          // could be.
+          const rawTop = y(p.inc + p.high), rawBottom = y(p.inc + p.low);
+          const top = clamp(p.inc + p.high), bottom = clamp(p.inc + p.low);
+          const cutTop = rawTop < m.t + 0.5, cutBottom = rawBottom > m.t + plotH - 0.5;
+          const w = Math.min(7, Math.max(3, band * 0.16));
+          // Dashed when the test was too small to have resolved the difference
+          // it was looking for. That used to be two orange rules per column,
+          // drawn for all twenty-nine and sitting about where the whisker ends
+          // already were - the loudest ink on the chart, saying roughly what
+          // the whisker said. It is a property of the whisker, so it is drawn
+          // as one; the number it came from is in the tooltip and the table.
+          const dash = p.underpowered ? ' stroke-dasharray="3 3"' : "";
+          const colour = p.underpowered ? "--warn" : "--c-cand";
+          parts.push(`<line x1="${x}" x2="${x}" y1="${top.toFixed(1)}" y2="${bottom.toFixed(1)}"
+            stroke="var(${colour})" stroke-opacity="0.5" stroke-width="2"
+            stroke-linecap="round"${dash}/>`);
+          for (const [edge, cut, dir] of [[top, cutTop, -1], [bottom, cutBottom, 1]]) {
+            if (cut)
+              // An arrowhead rather than a cap: this whisker leaves the chart.
+              parts.push(`<path d="M ${x} ${(edge + dir * 1).toFixed(1)} l ${w} ${(dir * 6)} l ${-2 * w} 0 Z"
+                fill="var(${colour})" fill-opacity="0.5"/>`);
+            else
+              parts.push(`<line x1="${(x - w).toFixed(1)}" x2="${(x + w).toFixed(1)}"
+                y1="${edge.toFixed(1)}" y2="${edge.toFixed(1)}"
+                stroke="var(${colour})" stroke-opacity="0.5" stroke-width="1.5"/>`);
+          }
+        }
+        for (const [v, colour, r] of [[p.inc, "--c-inc", crowded ? 3 : 4],
+                                      [p.cand, "--c-cand", crowded ? 3.5 : 5]]) {
+          if (v == null) continue;
+          if (inFrame(v)) {
+            parts.push(`<circle cx="${x}" cy="${y(v).toFixed(1)}" r="${r}"
+              fill="var(${colour})" stroke="var(--panel)" stroke-width="1.5"/>`);
+          } else {
+            // Off the top or the bottom. One rule for every mark that leaves the
+            // frame, so a reader learns it once.
+            const dir = y(v) < m.t ? -1 : 1;
+            const edge = dir < 0 ? m.t + 1 : m.t + plotH - 1;
+            parts.push(`<path d="M ${x} ${(edge + dir * 2).toFixed(1)} l 5 ${-dir * 7} l -10 0 Z"
+              fill="var(${colour})" stroke="var(--panel)" stroke-width="1"/>`);
+          }
+        }
+        // Promotion is the event worth a mark. "dropped" under all twenty-nine
+        // of them was thirty words saying nothing happened; the caption says it
+        // once, with a number.
+        // The washed column and the triangle say it; a word over each said it
+        // twice and, on two consecutive promotions, printed itself.
+        if (p.accepted)
+          parts.push(`<path d="M ${x} ${m.t + plotH + 4} l 5.5 9 l -11 0 Z" fill="var(--up)"/>`);
+        if (points.length <= 6) {
+          if (p.cand != null)
+            parts.push(`<text x="${x}" y="${(y(p.cand) - 12).toFixed(1)}" text-anchor="middle"
+              font-size="11" font-weight="600" fill="var(--soft)" class="tnum">${n3(p.cand)}</text>`);
+          if (p.inc != null && Math.abs(y(p.inc) - y(p.cand ?? p.inc)) > 4)
+            parts.push(`<text x="${x}" y="${(y(p.inc) + 19).toFixed(1)}" text-anchor="middle"
+              font-size="11" fill="var(--faint)" class="tnum">${n3(p.inc)}</text>`);
+        }
+      }
+      // Every Nth, so a label is a label rather than a smear. The rest are in
+      // the tooltip and in the table under the chart, both of which name every
+      // generation.
+      if (shown)
+        parts.push(`<text x="${x}" y="${m.t + plotH + 26}" text-anchor="middle"
           font-size="11" fill="var(--soft)">${label}</text>`);
-        parts.push(`<text x="${x}" y="${m.t + plotH + 38}" text-anchor="middle" font-size="10"
-          fill="var(--warn)">${esc(p.gap)}</text>`);
-        const tip = `${p.id}: ${p.gap} — no held-out measurement exists for this generation`;
-        parts.push(`<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
-          <rect x="${(x - band / 2).toFixed(1)}" y="${m.t}" width="${band.toFixed(1)}"
-                height="${plotH}" fill="transparent"/></g>`);
-        return parts.join("");
-      }
-      if (p.inc != null && p.low != null && p.high != null) {
-        const top = y(p.inc + p.high), bottom = y(p.inc + p.low);
-        parts.push(`<rect x="${(x - 11).toFixed(1)}" y="${top.toFixed(1)}" width="22"
-          height="${Math.max(2, bottom - top).toFixed(1)}" rx="4"
-          fill="var(--c-cand)" fill-opacity="var(--c-wash)"/>`);
-      }
-      if (p.inc != null && p.detectable) {
-        for (const edge of [p.inc + p.detectable, p.inc - p.detectable])
-          parts.push(`<line x1="${(x - 16).toFixed(1)}" x2="${(x + 16).toFixed(1)}"
-            y1="${y(edge).toFixed(1)}" y2="${y(edge).toFixed(1)}"
-            stroke="var(--warn)" stroke-width="1"/>`);
-      }
-      if (p.inc != null && p.cand != null)
-        parts.push(`<line x1="${x}" x2="${x}" y1="${y(p.inc).toFixed(1)}" y2="${y(p.cand).toFixed(1)}"
-          stroke="var(--ghost)" stroke-width="2" stroke-linecap="round"/>`);
-      for (const [v, colour] of [[p.inc, "--c-inc"], [p.cand, "--c-cand"]]) {
-        if (v == null) continue;
-        parts.push(`<circle cx="${x}" cy="${y(v).toFixed(1)}" r="5" fill="var(${colour})"
-          stroke="var(--panel)" stroke-width="2"/>`);
-      }
-      if (points.length <= 6) {
-        if (p.cand != null)
-          parts.push(`<text x="${x}" y="${(y(p.cand) - 12).toFixed(1)}" text-anchor="middle"
-            font-size="11" font-weight="600" fill="var(--soft)" class="tnum">${n3(p.cand)}</text>`);
-        if (p.inc != null && Math.abs(y(p.inc) - y(p.cand ?? p.inc)) > 4)
-          parts.push(`<text x="${x}" y="${(y(p.inc) + 19).toFixed(1)}" text-anchor="middle"
-            font-size="11" fill="var(--faint)" class="tnum">${n3(p.inc)}</text>`);
-      }
-      const label = esc(p.id.length > 13 ? p.id.slice(0, 12) + "\u2026" : p.id);
-      parts.push(`<text x="${x}" y="${m.t + plotH + 22}" text-anchor="middle"
-        font-size="11" fill="var(--soft)">${label}</text>`);
-      parts.push(`<text x="${x}" y="${m.t + plotH + 38}" text-anchor="middle" font-size="10"
-        fill="var(${p.accepted ? "--up" : "--faint"})">${p.accepted ? "promoted" : "dropped"}</text>`);
 
-      const tip = `${p.id}: incumbent ${n3(p.inc)}, candidate ${n3(p.cand)}` +
-        (p.low != null ? `, difference ${n3(p.diff)} (${n3(p.low)} to ${n3(p.high)})` : "") +
-        (p.detectable ? `. This test could only resolve ${n3(p.detectable)}` : "");
+      const tip = p.gap
+        ? `${p.id}: ${p.gap} — no held-out measurement exists for this generation`
+        : `${p.id}: incumbent ${n3(p.inc)}, candidate ${n3(p.cand)}` +
+          (p.low != null ? `, difference ${n3(p.diff)} (${n3(p.low)} to ${n3(p.high)})` : "") +
+          (p.detectable ? `. This test could only resolve ${n3(p.detectable)}` : "") +
+          `. ${p.accepted ? "Promoted" : "Not promoted"}`;
       parts.push(`<g tabindex="0" data-tip="${esc(tip)}" role="img" aria-label="${esc(tip)}">
         <rect x="${(x - band / 2).toFixed(1)}" y="${m.t}" width="${band.toFixed(1)}"
               height="${plotH}" fill="transparent"/></g>`);
@@ -211,7 +325,7 @@ export function generationSkill(el, points) {
     return `<svg viewBox="0 0 ${width} ${H}" width="${width}" height="${H}" role="group"
       aria-label="Pooled held-out skill for each generation, incumbent against candidate">
       <text x="${m.l - 48}" y="18" font-size="11" fill="var(--faint)">pooled held-out skill</text>
-      ${grid}${zero}${marks}
+      ${grid}${promoted}${zero}${eras}${incLine}${marks}
       <line x1="${m.l}" x2="${m.l + plotW}" y1="${m.t + plotH}" y2="${m.t + plotH}"
             stroke="var(--line)" stroke-width="1"/>
     </svg>`;
