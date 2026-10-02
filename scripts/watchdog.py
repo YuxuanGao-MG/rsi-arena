@@ -455,9 +455,13 @@ def check_evidence(rep: Report) -> None:
     from fetch_run import PREFIX, within         # the layout, from its owner
 
     bucket = os.environ.get("TRACE_BUCKET", "")
-    if not bucket or not os.environ.get("AWS_ACCESS_KEY_ID"):
-        rep.ok("evidence reaches S3", "no bucket or credentials here; skipped")
+    if not bucket:
+        rep.ok("evidence reaches S3", "no TRACE_BUCKET here; skipped")
         return
+    # Not "is AWS_ACCESS_KEY_ID set": that is how Actions holds a credential and
+    # not how a laptop does, so the check skipped itself on every machine where
+    # `aws` was configured the ordinary way, and said "no credentials" while
+    # `aws s3 ls` worked in the next shell. Ask the CLI instead.
     url = os.environ.get("SUPABASE_DB_URL", "")
     if not url:
         rep.ok("evidence reaches S3", "no SUPABASE_DB_URL to list generations; skipped")
@@ -487,6 +491,12 @@ def check_evidence(rep: Report) -> None:
     for folder in sorted({key.rsplit("/", 2)[0] + "/" for _, key in want}):
         found, problem = prefixes_under(bucket, folder)
         if problem:
+            # No credential at all is a skip, not a fault: this repository has
+            # run without one and must keep being able to. A credential that
+            # exists and is refused is a fault.
+            if re.search(r"credential|security token|AccessKeyId|Unable to locate", problem, re.I):
+                rep.ok("evidence reaches S3", f"no usable AWS credential here; skipped ({problem[-60:]})")
+                return
             rep.bad("evidence reaches S3", problem)
             return
         listed[folder] = len(found)
@@ -504,8 +514,11 @@ def check_evidence(rep: Report) -> None:
     if stale:
         # Said every hour, as a fact rather than a fault: these have one copy
         # each, on one machine, and that is worth seeing until it is not true.
-        rep.ok("evidence backlog", f"{len(stale)} generation(s) predate the working "
-                                   f"bucket and are local-only; see {S3_BACKLOG.name}")
+        # What the file says they are, not what they were when it was written:
+        # twenty of these were on one machine until 2 October and are now in the
+        # bucket, and the rest have no copy at all.
+        rep.ok("evidence backlog", f"{len(stale)} generation(s) have no trajectories "
+                                   f"and are accounted for in {S3_BACKLOG.name}")
     if fresh:
         # The full list is in the JSON verdict rather than truncated into a
         # sentence, so acting on this does not mean re-running the check.
