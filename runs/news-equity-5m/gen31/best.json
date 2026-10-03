@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen31",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no change, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nThe harness systematically under-forecasts moves on fresh analyst ratings and multi-stock thematic stories. Review the recent outcomes:\n\n**Single-stock analyst ratings (fresh, tape hasn't moved yet):**\n- **CVX** \"Bernstein Maintains Market Perform, Raises PT to $209\": predicted +2.6 bps (2.6 width), actual -2.1 bps \u2014 **miss by 4.6 bps, skill -0.51**. Tape had drifted up 50+ bps in prior 45 minutes (194.11 \u2192 194.69), rating likely priced.\n- **AMD** \"Wedbush Reiterates Outperform, Maintains $600 PT\": predicted +0.7 bps (7.3 width), actual -51.3 bps \u2014 **miss by 52.0 bps, skill -0.01**. Tape spiked violently at open (+1500 bps in 6 minutes from 478 \u2192 494), rating published in aftermath, stock reversed hard.\n- **INTU** \"TD Cowen Reiterates Hold, Maintains $346 PT\": predicted -0.6 bps (2.0 width), actual -18.0 bps \u2014 **miss by 17.4 bps, skill +0.04**. Tape drifting down steadily (307.6 \u2192 306.6 over 45 min), Hold rating on drift = no new info, but 2 bps width far too tight.\n\n**Multi-stock thematic stories:**\n- **NVDA** \"What Is Going on With NVIDIA Stock on Tuesday?\" (4 symbols, descriptive of intraday move): predicted +2.3 bps (2.3 width), actual +6.2 bps \u2014 **miss by 3.9 bps, skill +0.37**. Headline describes move already underway (stock up 3% intraday per summary), but 2.3 bps width still too tight.\n- **ORCL** \"Microsoft's Worst Month Since 2000\" (9 symbols, mega-cap tech malaise): predicted +1.7 bps (6.3 width), actual -44.9 bps \u2014 **wrong direction, miss by 46.6 bps, skill -0.04**. Tape surged +200 bps in 10 minutes (151.4 \u2192 153.6) just before news, story about sector weakness published at local top, stock reversed.\n- **QQQ** \"Semiconductor Stocks' Worst Slump\" (7 symbols, sector selloff analysis): predicted +3.6 bps (4.4 width), actual +15.5 bps \u2014 **correct direction but magnitude 4x off, miss by 11.9 bps, skill +0.23**. Tape had bottomed and was bouncing (712 \u2192 709 \u2192 710), story about \"worst slump\" published at trough, continuation call was right but too small.\n- **META** \"Analyst Sees Google-Like AI Moment\" (5 symbols, analyst bullish on AI): predicted +4.8 bps (4.8 width), actual +31.3 bps \u2014 **correct direction but magnitude 6x off, miss by 26.5 bps, skill +0.15**. Tape had sold off hard (613 \u2192 609 over 45 min), bullish analyst story published near trough, bounce was 31 bps but forecast was 5 bps.\n- **WMT** \"FDA Calls Taylor Farms Sample False Positive\" (2 symbols, food safety update): predicted -1.4 bps (2.0 width), actual +0.9 bps \u2014 **wrong direction, miss by 2.3 bps, skill -0.28**. Tape flat (112.43 \u2192 112.35 over 45 min), minor tangential news (WMT mentioned but not central), 2 bps width still too tight for noise.\n\n---\n\n## **What These Reveal**\n\n1. **\"Reiterates\" and \"Maintains\" ratings have ZERO signal when the tape has already moved.** CVX up 50 bps before Bernstein raised PT, AMD spiked 1500 bps at open before Wedbush rating, INTU drifting down before Cowen Hold \u2014 these are backward-looking. The move happened, the analyst responds. Predict 0 with 4-6 bps width.\n\n2. **Descriptive headlines (\"What Is Going on With X?\", \"Why Is X Happening?\") are ALWAYS lagging the tape.** NVDA headline describes move underway, ORCL headline describes sector weakness as ORCL hits local peak. These are retrospective. Check tape: if move is done, predict 0-3 bps continuation with 6-10 bps width. Do not predict new 15-30 bps moves on descriptions of past moves.\n\n3. **Thematic multi-stock stories published at inflection points (trough after selloff, peak after rally) signal reversals, not continuations.** QQQ \"worst slump\" story at 709 trough \u2192 bounced 15 bps. META \"AI moment\" story after 400 bps selloff \u2192 bounced 31 bps. ORCL \"worst month\" story at 153.6 peak after 200 bps rally \u2192 reversed 45 bps. **When a negative story publishes after a steep selloff, or a positive story publishes after a steep rally, predict small REVERSAL (5-15 bps opposite), not continuation.**\n\n4. **2 bps width is NEVER appropriate on multi-stock stories or analyst ratings.** Minimum 6 bps for noise, 8-12 bps for ratings, 10-15 bps for thematic stories. The only examples with positive skill used width \u22654.4 bps.\n\n5. **Magnitude errors are 4-6x too small on fresh bullish analyst calls.** META predicted +4.8 bps, actual +31.3 bps. This is a pattern: analyst thematic stories move 15-35 bps, not 3-5 bps, when they're fresh and directionally aligned with tape recovery.\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 45 minutes, 1-minute bars\n   - **Compute the net move over last 30-45 minutes:** high - low, and direction from 45 min ago to now\n   - Has the stock spiked >100 bps, sold off >100 bps, or drifted <20 bps?\n   - Is the headline describing this move (\"What's Going On?\", \"Why Is This Happening?\") or predicting a new one?\n   - **Inflection check:** After a >150 bps move in one direction over 30-45 min, is this story's tone opposite (negative story after rally, positive story after selloff)? If yes, expect reversal.\n\n### **2. Classify the story's relevance and timing**\n\n   **A. \"Reiterates\" / \"Maintains\" analyst rating (single stock):**\n   - **If tape has already moved >30 bps in rating direction:** Rating is backward-looking. Predict 0 with 4-6 bps width.\n   - **If tape flat or drifting opposite:** Rating may have modest 5-12 bps impact. Predict 5-10 bps in rating direction with 8-12 bps width.\n   - **Never predict 15+ bps on a \"Reiterates/Maintains\" rating.** These are confirmations, not new calls.\n   \n   **B. Fresh analyst rating: \"Initiates,\" \"Upgrades,\" \"Downgrades,\" NEW price target (not \"maintains\"):**\n   - **If tape flat (<20 bps drift):** Predict 10-25 bps in rating direction with 12-18 bps width.\n   - **If tape already moved >50 bps in rating direction:** Rating may be lagging. Predict 3-8 bps continuation with 8-12 bps width.\n   - **If tape moved opposite to rating (upgrade after selloff, downgrade after rally):** Predict 8-15 bps in rating direction with 10-15 bps width (countertrend call).\n   \n   **C. Descriptive headline about ongoing move (\"What Is Going on?\", \"Why Is This Happening?\", \"Stock Slides/Surges\"):**\n   - The move is ALREADY DONE. The headline describes it.\n   - Check tape: is the stock still moving or stabilizing?\n   - **If stabilizing (last 5-10 min range <10 bps):** Predict 0-3 bps with 6-10 bps width.\n   - **If still drifting same direction (last 5-10 min continues trend):** Predict 3-8 bps continuation with 8-12 bps width.\n   - **Never predict 15+ bps on a descriptive headline.** The news is the description, not the cause.\n   \n   **D. Thematic multi-stock story (3-10 symbols, discusses sector trend, analyst view, policy shift):**\n   - **Check tape direction and magnitude over last 30-45 minutes.**\n   - **Inflection signal (story tone opposite to recent tape move):**\n     - Negative story (sector selloff, weakness, malaise) published after stock rallied >150 bps \u2192 predict 10-20 bps DOWN with 12-18 bps width (reversal)\n     - Positive story (analyst bullish, AI moment, sector strength) published after stock sold off >150 bps \u2192 predict 10-25 bps UP with 12-18 bps width (reversal)\n     - Examples: ORCL \"MSFT worst month\" at 153.6 peak after +200 bps \u2192 reversed -45 bps. META \"AI moment\" after -400 bps \u2192 bounced +31 bps. QQQ \"worst slump\" at 709 trough \u2192 bounced +15 bps.\n   - **Continuation signal (story tone aligned with recent tape move, <100 bps move so far):**\n     - Positive story, stock up <100 bps \u2192 predict 8-15 bps UP with 10-15 bps width\n     - Negative story, stock down <100 bps \u2192 predict 8-15 bps DOWN with 10-15 bps width\n   - **Tape flat (<20 bps over 45 min), story has clear thesis:** Predict 10-18 bps in thesis direction with 12-18 bps width.\n   \n   **E. Passing mention (retrospective listicle, 15+ symbols, tangential reference, minor update on unrelated company):**\n   - Predict 0 with 4-6 bps width.\n\n### **3. Match forecast to situation**\n\n   **If fresh analyst rating (Initiates/Upgrades/Downgrades/NEW PT) AND tape flat:**\n   - Upgrade/Outperform/raised PT \u2192 predict +10 to +25 bps, width 12-18 bps\n   - Downgrade/Underperform/lowered PT \u2192 predict -10 to -25 bps, width 12-18 bps\n   - Initiate at Neutral/Hold \u2192 predict 0 to +5 bps, width 6-10 bps\n   \n   **If \"Reiterates/Maintains\" rating AND tape already moved >30 bps in rating direction:**\n   - Predict 0 with 4-6 bps width (rating is lagging)\n   \n   **If descriptive headline AND tape shows move underway:**\n   - Check last 5-10 minutes: stabilizing or continuing?\n   - Stabilizing \u2192 predict 0-3 bps with 6-10 bps width\n   - Continuing \u2192 predict 3-8 bps same direction with 8-12 bps width\n   \n   **If thematic multi-stock story at inflection point (opposite tone to recent >150 bps move):**\n   - Negative story after rally \u2192 predict 10-20 bps DOWN with 12-18 bps width\n   - Positive story after selloff \u2192 predict 10-25 bps UP with 12-18 bps width\n   - **This is the highest-signal setup.** Inflection stories correctly timed earn +0.15 to +0.37 skill.\n   \n   **If thematic multi-stock story aligned with tape (continuation, <100 bps so far):**\n   - Predict 8-15 bps in thesis direction with 10-15 bps width\n   \n   **If passing mention or minor tangential update:**\n   - Predict 0 with 4-6 bps width\n\n### **4. Width is insurance against confident mistakes**\n\n   - **2 bps: NEVER USE.** Even on ratings that seem clean, 2 bps guarantees skill -0.20 to -0.51 when wrong.\n   - **4-6 bps: passing mention, \"Reiterates/Maintains\" after tape moved, minor updates**\n   - **6-10 bps: descriptive headlines, ratings on thin conviction**\n   - **8-12 bps: \"Reiterates\" ratings on flat tape, continuation thematic stories**\n   - **12-18 bps: fresh analyst ratings, inflection-point thematic stories, any forecast >10 bps magnitude**\n   \n   **When in doubt, go wider.** META +4.8 bps with 4.8 width missed by 26.5 bps; 15 bps width would have scored better.\n\n### **5. Magnitude calibration by story type**\n\n   - **Passing mention, tangential update:** 0 \u00b1 3 bps, width 4-6 bps\n   - **\"Reiterates/Maintains\" rating, tape already moved:** 0 \u00b1 3 bps, width 4-6 bps\n   - **Descriptive headline, move underway, stabilizing:** 0-3 bps continuation, width 6-10 bps\n   - **Descriptive headline, move underway, continuing:** 3-8 bps continuation, width 8-12 bps\n   - **\"Reiterates/Maintains\" rating, tape flat:** 5-10 bps in rating direction, width 8-12 bps\n   - **Thematic multi-stock, continuation (aligned with tape, <100 bps so far):** 8-15 bps in thesis direction, width 10-15 bps\n   - **Fresh analyst rating (Initiates/Upgrades/Downgrades), tape flat:** 10-25 bps in rating direction, width 12-18 bps\n   - **Thematic multi-stock, INFLECTION (opposite tone to >150 bps recent move):** 10-25 bps REVERSAL, width 12-18 bps\n\n### **6. Inflection detection: the highest-signal setup**\n\n   When a multi-stock story's tone is opposite to the tape's recent large move (>150 bps over 30-45 min), predict a reversal:\n   \n   1. **Measure the tape's net move over last 30-45 minutes:**\n      - ORCL: 151.4 \u2192 153.6 = +220 bps rally\n      - META: 613 \u2192 609 = -400 bps selloff\n      - QQQ: 712 \u2192 709 = -300 bps selloff\n   \n   2. **Check the story's tone:**\n      - ORCL: \"Microsoft's Worst Month Since 2000\" = negative tone\n      - META: \"Analyst Sees AI Moment Brewing\" = positive tone\n      - QQQ: \"Semiconductor Stocks' Worst Slump\" = negative tone\n   \n   3. **Tone opposite to recent move?**\n      - ORCL: negative story after +220 bps rally = YES \u2192 predict DOWN 10-20 bps\n      - META: positive story after -400 bps selloff = YES \u2192 predict UP 10-25 bps\n      - QQQ: negative story after -300 bps selloff = NO (aligned) \u2192 but story at trough suggests exhaustion \u2192 predict UP 8-15 bps\n   \n   4. **Forecast:**\n      - ORCL should have been: -15 bps with 15 bps width (not +1.7 bps)\n      - META should have been: +20 bps with 15 bps width (not +4.8 bps)\n      - QQQ should have been: +12 bps with 12 bps width (not +3.6 bps, but direction was correct)\n\n### **7. Special case: \"Reiterates\" / \"Maintains\" is NOT fresh news**\n\n   When an analyst \"Reiterates Outperform\" or \"Maintains $X Price Target,\" this is a NON-EVENT unless the tape is flat:\n   - **CVX:** Tape up 194.11 \u2192 194.69 (+58 bps) before \"Maintains Market Perform, Raises PT to $209.\" The raise is modest, tape already moved. Predict 0 with 4-6 bps width.\n   - **AMD:** Tape spiked 478 \u2192 494 (+1600 bps) at open before \"Reiterates Outperform, Maintains $600 PT.\" Rating is backward-looking. Predict 0 with 6-10 bps width (and note the spike will reverse).\n   - **INTU:** Tape drifting down 307.6 \u2192 306.6 before \"Reiterates Hold, Maintains $346 PT.\" Hold = no new view. Predict 0-5 bps continuation with 6-10 bps width.\n   \n   **Only \"Initiates,\" \"Upgrades,\" \"Downgrades,\" or NEW price targets (not \"maintains\") are fresh analyst signals.**\n\n### **8. Cross-check before finalizing**\n\n   - **Is this a \"Reiterates/Maintains\" rating?** If yes AND tape moved >30 bps, predict 0 with 4-6 bps width.\n   - **Is this a descriptive headline (\"What's Going On?\", \"Why Is This Happening?\")?** If yes, the move is done. Predict 0-8 bps continuation with 6-12 bps width.\n   - **Did I check the last 30-45 min tape move?** If >150 bps one direction and story tone is opposite, predict 10-25 bps reversal.\n   - **Is my width \u22656 bps?** If not, STOP. 2 bps width guarantees negative skill on any miss >7 bps.\n   - **Am I predicting >20 bps on a \"Reiterates\" or descriptive headline?** If yes, STOP. These are lagging, not leading.\n\n---\n\n## **The pattern is clear:**\n\nThe harness treats \"Reiterates/Maintains\" ratings as fresh analyst calls when they're confirmations of tape moves already done (CVX, AMD, INTU: skill -0.51, -0.01, +0.04). It predicts 2-5 bps on thematic multi-stock stories that move 15-45 bps, especially at inflection points where negative stories publish after rallies (ORCL -45 bps actual vs +1.7 predicted) or positive stories publish after selloffs (META +31 bps actual vs +4.8 predicted, QQQ +15.5 bps actual vs +3.6 predicted). It uses 2 bps width on stories that move 6-51 bps, guaranteeing quote run-throughs and negative skill. It does not distinguish descriptive headlines (NVDA \"What Is Going on?\") from predictive ones, missing that descriptions lag the tape.\n\n**Key fixes:**\n1. \"Reiterates/Maintains\" ratings after tape moved >30 bps \u2192 predict 0 with 4-6 bps width (lagging, not leading)\n2. Descriptive headlines (\"What's Going On?\", \"Why?\", \"Stock Slides\") \u2192 predict 0-8 bps continuation with 6-12 bps width (move is done)\n3. Thematic multi-stock stories at inflection points (tone opposite to >150 bps recent move) \u2192 predict 10-25 bps REVERSAL with 12-18 bps width (highest signal)\n4. Never use 2 bps width (minimum 4 bps on noise, 6 bps on lagging ratings, 8 bps on any forecast with uncertainty)\n5. Magnitude on fresh analyst calls and inflection thematic stories: 10-25 bps, not 2-5 bps",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
