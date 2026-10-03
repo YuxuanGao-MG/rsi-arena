@@ -78,6 +78,83 @@ def test_the_shipped_backlog_lists_real_looking_generations():
 
 
 # ---------------------------------------------------------------------------
+# How long silence is allowed, read from the workflow's own cron.
+#
+# It used to be a number per workflow and the number was wrong twice: nine hours
+# for a live sweep whose cron had since changed, and fourteen for live-news,
+# which runs weekdays only - so every Saturday the watchdog opened an issue
+# saying the news sweep had stopped. A check that cries wolf every weekend is
+# one people learn to close without reading.
+
+from datetime import datetime, timedelta, timezone                 # noqa: E402
+
+UTC = timezone.utc
+
+
+def test_a_plain_cron_is_read():
+    mins, hours, dom, month, dow = watchdog.cron_fields("17 3 * * *")
+    assert mins == {17} and hours == {3}
+    assert len(dom) == 31 and len(month) == 12 and len(dow) == 7
+
+
+def test_lists_ranges_and_steps():
+    mins, hours, _, _, dow = watchdog.cron_fields("5,35 */6 * * 1-5")
+    assert mins == {5, 35}
+    assert hours == {0, 6, 12, 18}
+    assert dow == {1, 2, 3, 4, 5}
+
+
+def test_syntax_beyond_us_is_declined_not_guessed():
+    """A wrong reading of a cron is worse than no reading: the caller falls
+    back on a flat day rather than inventing a schedule."""
+    assert watchdog.cron_fields("17 3 * *") is None            # four fields
+    assert watchdog.cron_fields("17 3 * * MON") is None        # names
+    assert watchdog.cron_fields("*/x 3 * * *") is None
+
+
+def test_the_last_firings_of_a_daily_cron():
+    now = datetime(2026, 10, 3, 20, 24, tzinfo=UTC)             # a Saturday
+    due = watchdog.firings_before([watchdog.cron_fields("5 */4 * * *")], now, 3)
+    assert [d.hour for d in due] == [20, 16, 12]
+    assert all(d.date() == now.date() for d in due)
+
+
+def test_a_weekday_only_cron_does_not_fire_at_the_weekend():
+    """live-news: weekdays 13:35 to 20:05 UTC. On a Saturday evening its last
+    due firing is Friday, so eighteen hours of silence is not a fault."""
+    now = datetime(2026, 10, 3, 20, 24, tzinfo=UTC)             # Saturday
+    crons = [watchdog.cron_fields(c) for c in
+             ("35 13 * * 1-5", "5 16 * * 1-5", "5 18 * * 1-5", "5 20 * * 1-5")]
+    due = watchdog.firings_before(crons, now, 2)
+    assert all(d.isoweekday() == 5 for d in due), f"fired at the weekend: {due}"
+    assert due[0] == datetime(2026, 10, 2, 20, 5, tzinfo=UTC)
+
+
+def test_a_monthly_cron_reaches_back_a_month():
+    """The league check runs 06:20 on the first; a three-week horizon must not
+    report it as never scheduled."""
+    now = datetime(2026, 10, 3, 20, 24, tzinfo=UTC)
+    due = watchdog.firings_before([watchdog.cron_fields("20 6 1 * *")], now, 1)
+    assert due and due[0] == datetime(2026, 10, 1, 6, 20, tzinfo=UTC)
+
+
+def test_the_repositorys_own_workflows_all_parse():
+    """An unreadable cron silently drops that workflow back to a flat day."""
+    for wf in watchdog.WATCHED:
+        assert watchdog.crons_of(wf), f"{wf}: no cron could be read"
+
+
+def test_live_news_is_not_overdue_on_a_saturday():
+    """The whole point, end to end, against the real workflow file."""
+    now = datetime(2026, 10, 3, 20, 24, tzinfo=UTC)
+    due = watchdog.firings_before(watchdog.crons_of("live-news.yml"), now,
+                                  watchdog.MISSES_ALLOWED)
+    assert due[-1] < now - timedelta(hours=14), \
+        "this is the case the old fourteen-hour rule failed; it must still be a Friday"
+    assert due[-1].isoweekday() <= 5
+
+
+# ---------------------------------------------------------------------------
 # Listing the bucket.
 
 class Aws:

@@ -57,17 +57,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 UTC = timezone.utc
 
-#: How long a workflow may go without a successful run before that is a fault.
-#: Generous on purpose: GitHub's scheduler is best-effort and a single missed
-#: firing is normal, while a day of silence is not. The live sweeps run every
-#: four hours and last nearly four, so a gap beyond nine hours means two
-#: consecutive firings were dropped.
-QUIET_HOURS = {
-    "loop.yml": 14,
-    "live.yml": 9,
-    "live-crypto.yml": 9,
-    "live-news.yml": 14,
-}
+#: The workflows whose silence is a fault. How long they may be silent is not
+#: written here any more: it is read from each workflow's own cron.
+#:
+#: It used to be a number per workflow, and the number was wrong twice. Nine
+#: hours for a live sweep assumed a four-hourly cron that had been changed. And
+#: fourteen hours for live-news assumed it ran every day, when its cron is
+#: weekdays 13:35 to 20:05 UTC - so every Saturday, by about lunchtime, the
+#: watchdog opened an issue saying the news sweep had stopped. A check that
+#: cries wolf every weekend is a check people learn to close without reading.
+WATCHED = ("loop.yml", "live.yml", "live-crypto.yml", "live-news.yml")
+
+#: How many scheduled firings may be dropped before that is a fault. GitHub's
+#: scheduler is best-effort and drops single firings routinely; two in a row is
+#: not weather. The count is of *scheduled* firings, so a weekend costs a
+#: weekday-only workflow nothing.
+MISSES_ALLOWED = 2
 
 #: A topic that has not finished a generation in this long has stopped
 #: evolving, whatever the workflow's own status says.
@@ -190,29 +195,127 @@ def gh(args: list[str]) -> str:
         return ""
 
 
+def cron_fields(spec: str) -> list[set[int]] | None:
+    """A cron line as five sets of allowed values, or None if it is beyond us.
+
+    Enough of the syntax for the crons this repository writes: ``*``, lists,
+    ranges, and ``*/n``. Anything else returns None and the caller falls back to
+    asking only that the workflow ran recently at all, rather than guessing.
+    """
+    bounds = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)]
+    parts = spec.split()
+    if len(parts) != 5:
+        return None
+    out = []
+    for part, (lo, hi) in zip(parts, bounds):
+        allowed: set[int] = set()
+        for piece in part.split(","):
+            step = 1
+            if "/" in piece:
+                piece, _, raw = piece.partition("/")
+                if not raw.isdigit():
+                    return None
+                step = int(raw)
+            if piece == "*":
+                a, b = lo, hi
+            elif "-" in piece:
+                x, _, z = piece.partition("-")
+                if not (x.isdigit() and z.isdigit()):
+                    return None
+                a, b = int(x), int(z)
+            elif piece.isdigit():
+                a = b = int(piece)
+            else:
+                return None
+            allowed |= set(range(a, b + 1, step))
+        if not allowed:
+            return None
+        out.append(allowed)
+    return out
+
+
+def crons_of(workflow: str) -> list[list[set[int]]]:
+    """Every schedule in a workflow file, parsed. Empty when there is none."""
+    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        hit = re.search(r"-\s*cron:\s*[\"']([^\"']+)[\"']", line)
+        if hit:
+            fields = cron_fields(hit.group(1).strip())
+            if fields is None:
+                return []            # one unparsed line and the set is not trustworthy
+            out.append(fields)
+    return out
+
+
+def firings_before(crons: list[list[set[int]]], when: datetime, count: int,
+                   horizon_days: int = 21) -> list[datetime]:
+    """The last ``count`` times any of these crons should have fired before ``when``.
+
+    Walked minute by minute, which is thirty thousand cheap comparisons for a
+    three-week horizon and needs no dependency. GitHub reads cron in UTC, and a
+    day-of-month and day-of-week that are both restricted mean *either*, as in
+    POSIX; none of this repository's crons do that, and the rule is applied
+    anyway so that one added later is not silently misread.
+    """
+    found: list[datetime] = []
+    t = when.replace(second=0, microsecond=0)
+    for _ in range(horizon_days * 24 * 60):
+        t -= timedelta(minutes=1)
+        for mins, hours, dom, month, dow in crons:
+            if t.minute not in mins or t.hour not in hours or t.month not in month:
+                continue
+            day_ok = (t.day in dom) if len(dom) == 31 or len(dow) == 7 else \
+                     (t.day in dom or t.isoweekday() % 7 in dow)
+            if len(dom) == 31 and len(dow) < 7:
+                day_ok = t.isoweekday() % 7 in dow
+            elif len(dow) == 7:
+                day_ok = t.day in dom
+            if day_ok:
+                found.append(t)
+                break
+        if len(found) >= count:
+            break
+    return found
+
+
 def check_workflows(rep: Report, repo: str) -> None:
-    for wf, hours in QUIET_HOURS.items():
-        raw = gh(["run", "list", "--workflow", wf, "--repo", repo, "--limit", "20",
+    for wf in WATCHED:
+        raw = gh(["run", "list", "--workflow", wf, "--repo", repo, "--limit", "30",
                   "--json", "conclusion,createdAt,status,databaseId"])
         if not raw:
             rep.bad(f"{wf} reachable", "could not list runs")
             continue
         runs = json.loads(raw)
-        cutoff = datetime.now(UTC) - timedelta(hours=hours)
-        recent = [r for r in runs if datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00")) > cutoff]
+        when = lambda r: datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))
+        crons = crons_of(wf)
+        now = datetime.now(UTC)
+        due = firings_before(crons, now, MISSES_ALLOWED) if crons else []
+        if due:
+            # The oldest of the last few scheduled firings. Anything green or
+            # still going since then means the schedule is being honoured.
+            cutoff, said = due[-1], f"since {due[-1]:%d %b %H:%M}Z ({len(due)} due)"
+        else:
+            # No cron, or one this cannot read: fall back on a flat day.
+            cutoff, said = now - timedelta(hours=24), "in 24h"
+        recent = [r for r in runs if when(r) > cutoff]
         good = [r for r in recent if r["conclusion"] == "success"]
         running = [r for r in recent if r["status"] in ("in_progress", "queued")]
         if good or running:
-            rep.ok(f"{wf} ran", f"{len(good)} green, {len(running)} running in the last {hours}h")
+            rep.ok(f"{wf} ran", f"{len(good)} green, {len(running)} running {said}")
         else:
             last = runs[0] if runs else None
-            when = last["createdAt"][:16].replace("T", " ") if last else "never"
-            rep.bad(f"{wf} ran", f"nothing green in {hours}h; newest run {when} "
-                                 f"({last['conclusion'] if last else 'none'})")
-        failed = [r for r in recent if r["conclusion"] == "failure"]
+            seen = f"{when(last):%d %b %H:%M}Z ({last['conclusion']})" if last else "never"
+            rep.bad(f"{wf} ran", f"{MISSES_ALLOWED} scheduled firings {said} produced "
+                                 f"nothing green; newest run {seen}")
+        # A failure is a failure whenever it happened recently, on its own clock.
+        failed = [r for r in runs if r["conclusion"] == "failure"
+                  and when(r) > now - timedelta(hours=14)]
         if failed:
             ids = ", ".join(str(r["databaseId"]) for r in failed[:3])
-            rep.bad(f"{wf} failures", f"{len(failed)} failed in the last {hours}h: {ids}")
+            rep.bad(f"{wf} failures", f"{len(failed)} failed in the last 14h: {ids}")
         else:
             rep.ok(f"{wf} failures", "none")
 
