@@ -23,6 +23,26 @@ import { topicOf, DEFAULT, wordsOf } from "../topics.js";
 
 const PHASES = ["baseline", "search", "cascade", "holdout", "audit", "done"];
 
+/**
+ * How long the incumbent has been the same harness, said in a sentence, or "".
+ *
+ * The incumbent changes only when something is promoted, so between promotions
+ * its line moves because the questions moved. The news topic's line went from
+ * -0.0011 to +0.0073 in a day with a byte-identical harness at both ends: that
+ * week's windows were easier. Drawn as a line it reads as a learning curve, and
+ * a reader who takes it for one is reading the question set.
+ */
+export function sameHarness(points) {
+  const measured = (points || []).filter(p => p && !p.gap && p.incumbentFp);
+  if (measured.length < 3) return "";
+  const newest = measured[measured.length - 1].incumbentFp;
+  let n = 0;
+  for (let i = measured.length - 1; i >= 0 && measured[i].incumbentFp === newest; i--) n += 1;
+  if (n < 3) return "";
+  return `The incumbent has been the same harness for the last ${n} generations, ` +
+    `so its line moves with the questions rather than with the harness.`;
+}
+
 export async function overviewView({ signal, topic = DEFAULT }) {
   const t = topicOf(topic);
   const w = wordsOf(t.id);
@@ -62,6 +82,7 @@ export async function overviewView({ signal, topic = DEFAULT }) {
             ${g.points.filter(p => p.accepted).length} of ${g.points.length} have done.
             Zero is silence — saying nothing at all. A dashed column measured nothing,
             because that generation crashed or ran out of money.
+            ${raw(sameHarness(g.points))}
             ${g.points.length > 12 ? html`Every generation is named in the table below; the
               chart labels every few to keep them readable.` : ""}</figcaption>
         </figure>

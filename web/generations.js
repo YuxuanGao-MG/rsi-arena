@@ -74,6 +74,12 @@ export async function loadGenerations({ signal, topic = DEFAULT, withWindows = f
       high: hold.usable === false ? null : hold.high ?? null,
       usable: hold.usable !== false,
       detectable: hold.detectable ?? null, underpowered: !!hold.underpowered,
+      // Which harness was being defended. The incumbent only changes when
+      // something is promoted, so a stretch with one fingerprint is a stretch
+      // in which every move of its line is the question set rolling forward
+      // rather than anything learning. The overview says so, because the line
+      // looks exactly like a learning curve and is not one.
+      incumbentFp: r.incumbent_fp || null,
     };
   });
 
