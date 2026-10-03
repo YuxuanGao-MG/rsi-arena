@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen30",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened in the last few minutes\n\n## CRITICAL: Always Check recent_events First\n\n**Your first step MUST be to check recent_events for goals in the last 7 minutes.** This is not optional. Goals in the last 3-5 minutes are the strongest predictor of continued price movement.\n\nIf you find a goal in recent_events within the last 7 minutes, immediately check candlesticks to see if the price jumped. If it did, you are in a goal absorption scenario.\n\n## Goal Absorption: The Most Important Pattern\n\nWhen a goal is scored, the price does NOT instantly reach its new fair value. Markets absorb goals gradually over 3-5 minutes in a predictable pattern:\n\n1. **Initial jump (0-1 minutes after goal):** Sharp move of 10-30+ cents in the expected direction\n2. **Continuation phase (1-4 minutes after goal):** Price continues drifting +2 to +4 cents further in the same direction\n3. **Completion (4-7 minutes after goal):** Price stabilizes at new level\n\n**Example 1 shows the critical failure pattern:** At 45' in the second half (Ajax 2, Willem II 0), the ticker is \"Will it be a TIE?\" The candlesticks show the market dropping from 0.085 to 0.035 between minutes 14-16 (absorbing Ajax's goals), then stable at 0.075 for many minutes, then dropping again from 0.075 to 0.035 between minutes 44-45. The market at forecast time was 0.035, and moved to 0.015 over the next 5 minutes (-2.0c continuation). The harness predicted -0.7c \u00b1 0.7c and got run over. **When the candlesticks show a fresh drop of 4+ cents in the last 1-2 minutes, predict continuation of -2 to -4 cents with 1.5-2.5c half-width.**\n\n**When you detect recent sharp price movement (5+ cents in last 2 minutes) in candlesticks:**\n- Predict continuation: +2 to +4 cents in the direction of the recent jump\n- Use wide half-width: 1.5 to 2.5 cents minimum\n- NEVER predict near-zero movement\n\n**After 4-7 minutes since the last major move,** absorption is usually complete and the market stabilizes. Predicting near-zero movement is then correct.\n\n## Understanding the Ticker\n\nThe ticker tells you what outcome you're forecasting:\n- `TEAM1TEAM2-TEAM1`: \"Will TEAM1 win?\" (resolves to 100 if TEAM1 wins, 0 otherwise)\n- `TEAM1TEAM2-TEAM2`: \"Will TEAM2 win?\" (resolves to 100 if TEAM2 wins, 0 otherwise)  \n- `TEAM1TEAM2-TIE`: \"Will the match end in a draw?\" (resolves to 100 only if draw)\n\n**You must verify which team's outcome you're forecasting before interpreting a goal.**\n\nExample: If the ticker is \"Will it be a TIE?\" and one team is winning 2-0, the TIE contract should be LOW (far from a tie). If recent candlesticks show a drop from 0.085 to 0.035, that's the market correctly pricing out the tie. If the price drops further from 0.075 to 0.035 in the last minute, that's continued absorption.\n\n## Half-Width Must Match Real Uncertainty\n\nHalf-width is NOT a measure of confidence. It's the radius of genuine uncertainty about where the price will be.\n\n**Critical rules from the examples:**\n\n1. **Recent sharp move in candlesticks (5+ cents in last 1-2 minutes): 1.5-2.5c minimum** - Example 1 failed with 0.7c; the market continued moving -2c. Example 7 also showed a -2c move that exceeded narrow quotes.\n\n2. **No recent sharp moves, stable flat book (< 1c variation for 10+ min): 0.5-1.0c** - Examples 2, 8 were stable situations where 0.5c was appropriate and the market didn't move.\n\n3. **Volatile but no clear direction (swings of 2-5c in last 15 min): 1.0-1.5c** - Examples 4, 5, 6 showed markets that moved 0.5-1c; wider quotes would have been safer.\n\n4. **Wide spread in market quote (3+ cents): match or exceed it** - Example 7 had a 3c spread and the market moved -2c; the harness used 0.5c and got run over.\n\nThe examples show that 0.5c is too narrow whenever:\n- Candlesticks show any move > 2c in the last 5 minutes\n- The market's own spread is > 2c\n- There's been recent volatility even without an obvious goal\n\nBetter to quote wide and not trade than quote narrow and get run over.\n\n## Time Decay Is Minimal Before 70'\n\nA \"will X happen\" contract decays toward zero as time runs out without X occurring. But:\n- Time decay is typically 0.5-2c per 5 minutes only in the final 20 minutes\n- Before 70', time decay is negligible (< 0.5c per 5 minutes)\n- Example 8: at 55' with Le\u00f3n leading 1-0, the TIE market was at 0.175 and stayed at 0.175. At 55', with 35 minutes left, there is essentially no time decay.\n- **NEVER predict time decay when candlesticks show recent sharp movement** - absorption dominates completely\n\n## Most Windows Are Stable (But Check Candlesticks)\n\nWhen candlesticks show a flat market (< 1c variation for 10+ minutes), predicting 0 to \u00b10.5c is often correct:\n- Example 2: Market at 0.345, candlesticks flat around 0.27-0.345 for 30+ minutes, moved to 0.355 (+1.0c). Small move but the market was actually somewhat volatile.\n- Example 8: Market at 0.175, candlesticks showed stability around 0.17-0.24 range (some volatility earlier), stayed at 0.175 (0c). Correctly predicted near-zero.\n\n**The key is examining candlesticks for recent trends, not just looking at recent_events.**\n\n## Physical Bounds at Price Extremes\n\nRespect the physical limits:\n- Contract at 3.5c can only fall to 0c (max -3.5c), but could rise 10-20c on score change\n- Contract at 17.5c can only fall to 0c (max -17.5c), but could rise significantly\n- Contract at 98c can only rise to 100c (max +2c)\n\nExample 1: Contract at 3.5c fell to 1.5c (-2c). It could have fallen to 0c (another -1.5c) but not much more.\n\n## Candlesticks Show the Story\n\nUse candlesticks to:\n1. **Detect recent sharp moves** (5c+ move in last 2 minutes) - PRIMARY USE for detecting ongoing absorption\n2. Assess volatility (frequent 2c+ moves \u2192 use wider half-width)  \n3. Confirm stable market (flat within 1c for 10+ minutes)\n4. Identify thin book (single large jumps followed by drifts)\n\n**You must look at the most recent 5 minutes of candlesticks to see if a sharp move just happened, regardless of what recent_events shows.**\n\nHigh volume (> 1000 in one minute) with sharp price move (> 5c) indicates a major event.\n\n## Mandatory Workflow\n\n1. **Check recent_events** - Any goals in last 7 minutes?\n2. **Check candlesticks for the last 5 minutes** - Did price jump sharply (5+ cents) in the last 1-2 minutes? This is MORE important than recent_events because it shows what's happening NOW.\n3. **Identify scenario:**\n   - **Sharp price jump (5+ cents) in last 1-2 minutes in candlesticks:** Predict continuation +2 to +4c in jump direction, half-width 1.5-2.5c. Don't assume absorption is complete.\n   - **Sharp price jump 3-5 minutes ago, now stable:** Absorption likely complete, predict near-zero with 0.5-1.0c half-width\n   - **No sharp moves, flat candlesticks (< 1c variation for 10+ min):** Predict 0 to \u00b10.5c, half-width 0.5-1.0c\n   - **Recent volatility (2-5c swings) but no clear jump:** Predict cautiously, half-width 1.0-1.5c\n   - **Wide market spread (3+ cents):** Use at least that width\n4. **Verify direction makes sense** - Does the predicted move align with the ticker's question and recent price action?\n5. **Respect bounds** - Don't predict moves beyond physical limits\n\n## Key Failure Patterns to Avoid\n\n1. **Not checking the last 2 minutes of candlesticks for sharp moves** (Example 1) - A 4c drop from 0.075 to 0.035 in the minute before your forecast means absorption is ongoing\n2. **Using 0.5-0.7c half-width when candlesticks show recent sharp movement** (Example 1) - Always use 1.5-2.5c minimum\n3. **Assuming absorption is complete just because a goal was 1-2 minutes ago** - Check if candlesticks show the move JUST happened\n4. **Using narrow quotes when the market's own spread is wide** (Example 7: 3c spread, used 0.5c half-width) - Match or exceed the market's spread\n5. **Predicting time decay before 70'** (Example 8) - It's negligible until late in the match\n6. **Over-predicting moves in genuinely stable situations** - When candlesticks are flat for 10+ minutes and no recent events, near-zero is correct\n\n## Summary\n\n- **Check the last 2 minutes of candlesticks FIRST to see if a sharp move just happened**\n- **Sharp move (5+ cents) in last 1-2 minutes = predict continuation +2 to +4c with 1.5-2.5c half-width**\n- **Use 0.5c half-width ONLY when candlesticks show genuine stability (< 1c variation for 10+ minutes) AND no recent goals**\n- **Match or exceed the market's own spread in your half-width**\n- **Time decay is negligible before 70'**\n- **Most 5-minute windows without recent sharp moves don't move much**\n- **Respect physical price bounds**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
