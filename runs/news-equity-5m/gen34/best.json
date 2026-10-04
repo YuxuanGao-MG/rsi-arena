@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen34",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n## Core patterns from recent feedback\n\n### 1. Symbol count is the primary filter\n\n**7+ symbols:** Almost always noise. These are thematic roundups, listicles, or market commentary naming stocks as examples. Predict 0 bps, width 2-3 bps, confidence 0.94-0.97.\n- Example: \"10 Information Technology Stocks With Whale Alerts\" - 10 symbols (AAPL -1.8 bps actual, predicted -0.6 \u00b1 2.0, skill +0.11). Correct noise call.\n- Example: \"Autonomous Vehicles In The Fast Lane: 3 Stocks To Watch\" - 3 symbols (TSLA +1.5 bps actual, predicted -3.3 \u00b1 3.3, skill -0.67). This should have been treated as noise (0 bps \u00b1 2-3 bps), not a directional call.\n\n**5-6 symbols:** Usually thematic sector commentary. Default to 0 bps with 2-3 bp width unless there's a specific M&A or regulatory catalyst naming one of the symbols as the target/subject.\n- Example: \"'Silver Lake in talks to buy Workday, sources say'\" - 6 symbols (NOW -42.6 bps actual, predicted +1.7 \u00b1 9.7, skill -0.04). This story named Workday as the M&A target, not ServiceNow. NOW should have been treated as a peer mention (noise), not a catalyst. The wide width (9.7 bps) was appropriate given uncertainty, but the directional call was wrong because NOW was not the target.\n- Example: \"SpaceX Stock Rockets 32% in August\" - 5 symbols including AMD (AMD -15.3 bps actual, predicted -0.4 \u00b1 2.0, skill +0.02). Correct noise call; AMD was mentioned in passing about chip gains.\n\n**4 symbols:** Check the story carefully. If it describes sector-wide themes or macro factors affecting multiple names, treat as noise. If one symbol is clearly the subject of a catalyst (Fed policy implication, M&A target), that name deserves a directional call.\n- Example: \"CPI Inflation Came Hot: Watch These Stocks If Kevin Warsh Hikes\" - 4 symbols (BAC -4.8 bps actual, predicted -3.5 \u00b1 3.5, skill +0.70). Correct directional call; the story explicitly said BAC and SCHW would benefit from a hike.\n\n**3 or fewer symbols:** More likely stock-specific, but still check the tape and story content. Many 3-symbol stories are still thematic noise.\n- Example: \"Autonomous Vehicles In The Fast Lane: 3 Stocks To Watch\" (TSLA) was a listicle, not a catalyst. Should have been 0 bps \u00b1 2-3 bps.\n\n### 2. M&A stories require careful symbol identification\n\nWhen a story mentions M&A or talks about acquisition, identify which symbol is the **target** and which are peers/comparables.\n\n**Only the target moves on M&A rumors.** Peers and competitors mentioned as context or comparables do not move materially unless the story explicitly discusses how the deal affects them.\n\nExample: \"'Silver Lake in talks to buy Workday, sources say'\" - The target is WDAY. Other enterprise software names (NOW, CRM, ORCL, DOCU, BILL) are mentioned as sector context. For NOW, this story is noise, not a catalyst. Predict 0 bps with 2-3 bp width.\n\n**Key principle:** If the story says \"Company X in talks to buy Company Y\" and you're forecasting a symbol that is neither X nor Y, treat it as sector noise (0 bps, 2-3 bp width), even if the story names it.\n\n### 3. Width must match recent volatility, not just story classification\n\nThe recent feedback shows **2 bp width works well for pure noise but fails catastrophically when normal market volatility is higher**:\n\n- Example: \"SpaceX Stock Rockets 32% in August\" (AMD -15.3 bps actual, predicted -0.4 \u00b1 2.0, skill +0.02). AMD was moving in a \u00b150-75 bp range over the prior 45 minutes. Width should have been 4-5 bps to account for normal intraday volatility, even though the story was noise.\n\n- Example: \"Nasdaq 100 Rallies as Oil Slides, Yields Retreat\" (IWM -4.5 bps actual, predicted -0.3 \u00b1 2.0, skill +0.07). IWM had a 45 bp range over the prior 45 minutes. Width should have been 3-4 bps.\n\n- Example: \"10 Information Technology Stocks With Whale Alerts\" (NOW +11.6 bps actual, predicted -0.6 \u00b1 2.0, skill -0.06). NOW had a very tight range (0.2 bp over the prior minute), but the stock moved 115 bps in the prior 45 minutes. Width should have been 4-5 bps to account for intraday volatility.\n\n**New width framework:**\n1. Pull candlesticks for the last 45 minutes\n2. Calculate the 45-minute high-low range\n3. If the range is < 20 bps (large cap) or < 50 bps (smaller name): Use 2-3 bp width for noise stories\n4. If the range is 20-50 bps (large cap) or 50-100 bps (smaller name): Use 3-5 bp width even for noise stories\n5. If the range is > 50 bps (large cap) or > 100 bps (smaller name): Use 5-8 bp width for noise, the stock is moving\n\n**For material news (M&A target, upgrade, earnings):** Use max(10 bps, 0.3 \u00d7 45-minute range) as width.\n\n### 4. Directional calls require strong justification and tape confirmation\n\nThe recent feedback shows **most directional calls on noise stories are wrong and destroy skill**:\n\n- Example: \"Autonomous Vehicles In The Fast Lane: 3 Stocks To Watch\" (TSLA +1.5 bps actual, predicted -3.3 \u00b1 3.3, skill -0.67). This was a listicle. The directional call was unjustified and the skill score was terrible. Should have been 0 bps \u00b1 3 bps (or 4-5 bps given TSLA's volatility).\n\n**When to make a directional call:**\n- The story names 1-2 symbols and describes a stock-specific catalyst (upgrade, downgrade, earnings, M&A target, guidance)\n- The story names 3-4 symbols but explicitly discusses how one symbol will be affected differently from others (e.g., \"BAC and SCHW could benefit from a Fed hike\")\n- The tape shows no prior move in the catalyst direction (>30 bps in the last 30-45 minutes)\n\n**When NOT to make a directional call:**\n- 5+ symbols, even if the headline sounds stock-specific\n- The story describes a thematic sector trend (AI, autonomous vehicles, semiconductor sector)\n- The story is a listicle, roundup, or \"stocks to watch\" article\n- The symbol is mentioned as a peer or comparable, not the subject\n- The tape already shows a move matching the story's description\n\n### 5. Confidence should reflect symbol count and uncertainty\n\nThe feedback shows high confidence (0.94-0.97) works well for pure noise stories with 7+ symbols, but **confidence should be lower for everything else**:\n\n- 7+ symbols, obvious listicle: confidence 0.94-0.97\n- 5-6 symbols, thematic story: confidence 0.85-0.92\n- 3-4 symbols, one symbol as clear subject: confidence 0.70-0.85\n- 1-2 symbols, material catalyst: confidence 0.60-0.75\n\n**Lower confidence when:**\n- The stock's 45-minute range is >50 bps (large cap) or >100 bps (smaller name)\n- The story mentions M&A or regulatory changes\n- You're making a directional call (confidence should be <0.85)\n- The story describes macro factors (Fed, yields, oil) that can cause rotation\n\n### 6. Descriptive headlines about market action are journalism, not catalysts\n\nWhen a story describes price action that already happened (\"Nasdaq 100 Rallies\", \"Oil Slides\"), check the tape:\n\n- Example: \"Nasdaq 100 Rallies as Oil Slides, Yields Retreat\" (IWM -4.5 bps actual, predicted -0.3 \u00b1 2.0, skill +0.07). This is a descriptive summary of the day's market action. The story does not cause the move; it reports what already happened. Predict 0 bps with width based on recent volatility.\n\n**Key principle:** If the headline is in past tense or describes what \"happened\" today, it's journalism about moves already in the tape. The story is not a catalyst.\n\n### 7. Thematic sector stories (4-6 symbols) are noise even when they sound bullish/bearish\n\nStories about AI, autonomous vehicles, semiconductor trends, or other sector themes that name 4-6 companies are **always noise** unless they describe a specific regulatory change, government contract, or other concrete catalyst.\n\n- Example: \"Big Tech's $1.2 Trillion Hyperscaler AI Bet Could Ignite the Next Semiconductor ETF Rally\" - 13 symbols including AVGO (AVGO -34.0 bps actual, predicted -2.6 \u00b1 2.6, skill +0.08). This was thematic sector commentary, not a catalyst. The directional call was unjustified, but skill was still positive because no-change missed by 34 bps. Should have been 0 bps with 5-6 bp width (AVGO had a 380 bp range in the prior 45 minutes).\n\n**Thematic stories do not move individual stocks.** Even when the story sounds bullish and names specific companies, if it's describing a long-term sector trend with 4+ symbols, predict 0 bps.\n\n### 8. ETF stories describing market-wide action are journalism\n\nWhen the question symbol is an ETF (IWM, XLK, SPY) and the story describes broad market action:\n\n- The ETF move is driven by its constituents and broader flows, not by the story itself\n- Descriptive headlines (\"Nasdaq 100 Rallies\") are journalism about moves already happening\n- Predict 0 bps with width based on recent volatility (usually 2-4 bps)\n\nExample: \"Nasdaq 100 Rallies as Oil Slides, Yields Retreat\" (IWM -4.5 bps actual, predicted -0.3 \u00b1 2.0, skill +0.07). Correct noise call; the 2 bp width was too tight given IWM's 45 bp range in the prior 45 minutes.\n\n### 9. \"Stocks with whale alerts\" and options activity stories are always noise\n\nStories about unusual options activity, whale alerts, or high options volume are **never catalysts**. These stories report derivative market activity, not fundamental news.\n\n- Example: \"10 Information Technology Stocks With Whale Alerts In Today's Session\" (AAPL, NOW). Both were correctly treated as noise and scored positive skill.\n\nPredict: 0 bps, width based on recent volatility (usually 2-4 bps), confidence 0.94-0.97.\n\n## Decision framework\n\n**Step 1: Count symbols and classify the story type**\n\n- **10+ symbols:** Pure noise, predict 0 bps, width 2-3 bps, confidence 0.94-0.97\n- **7-9 symbols:** Noise unless it's an M&A story naming the question symbol as target, predict 0 bps, width 2-3 bps, confidence 0.94-0.97\n- **5-6 symbols:** Likely noise, check for M&A or regulatory catalyst, default 0 bps, width 2-4 bps, confidence 0.85-0.92\n- **3-4 symbols:** Check if the question symbol is the clear subject of a catalyst, or just mentioned as context. If context/peer, treat as noise.\n- **1-2 symbols:** Stock-specific, check tape for prior moves and assess catalyst strength\n\n**Story type classification:**\n- \"Stocks to watch\", \"stocks with whale alerts\", listicles, thematic roundups \u2192 noise (0 bps)\n- Descriptive market summaries (\"Nasdaq rallies\", \"Oil slides\") \u2192 noise (0 bps)\n- M&A rumor \u2192 check if question symbol is the target (if yes, directional; if no, noise)\n- Sector trends (AI, autonomous vehicles, chips) with 4+ symbols \u2192 noise (0 bps)\n- Upgrade/downgrade, earnings, guidance, specific product launch with 1-2 symbols \u2192 potential directional call\n\n**Step 2: Pull candlesticks and assess recent volatility**\n\nPull last 45 minutes of 1-minute candlesticks:\n- Calculate high-low range over the full 45 minutes\n- Check for sustained directional moves (>30 bps large cap, >80 bps smaller name)\n- Note if the story describes a move that's already visible in the tape\n\n**Step 3: Set width based on volatility, not just story classification**\n\n**For large caps (AAPL, TSLA, AMD, NVDA, BAC, etc.):**\n- 45-min range < 20 bps, noise story: 2-3 bp width\n- 45-min range 20-50 bps, noise story: 3-5 bp width\n- 45-min range 50-100 bps, noise story: 5-7 bp width\n- 45-min range > 100 bps, noise story: 7-10 bp width\n\n**For smaller names (NOW, etc.):**\n- 45-min range < 50 bps, noise story: 2-3 bp width\n- 45-min range 50-100 bps, noise story: 4-6 bp width\n- 45-min range > 100 bps, noise story: 7-10 bp width\n\n**For material catalysts (M&A target, upgrade, earnings):**\n- Width = max(10 bps, 0.25 \u00d7 45-minute range)\n\n**For ETFs:**\n- Use large cap volatility bands above, typically 2-4 bp width for noise\n\n**Step 4: Decide on delta (directional call or zero)**\n\n**Predict 0 bps when:**\n- 5+ symbols, regardless of headline (unless M&A target)\n- 3-4 symbols and the question symbol is mentioned as peer/context, not the subject\n- The story describes thematic sector trends\n- The story is a listicle, roundup, or \"stocks to watch\" article\n- The headline describes price action in past tense (journalism)\n- The story is about options activity or whale alerts\n\n**Predict directionally when:**\n- 1-2 symbols, stock-specific catalyst (upgrade, earnings, M&A target), no prior move in tape\n- 3-4 symbols and the story explicitly says how the question symbol will be affected differently\n- The tape shows no prior move (>30 bps in the catalyst direction in the last 30-45 minutes)\n\n**Magnitude for directional calls:**\n- Modest catalyst (product launch, partnership): 2-5 bps\n- Material catalyst (upgrade, M&A target, earnings): 8-20 bps, width 10-15 bps\n- Fed policy implication (rate hike affecting banks): 3-8 bps, width 4-6 bps\n\n**Step 5: Set confidence**\n\n- 7+ symbols, pure noise: 0.94-0.97\n- 5-6 symbols, thematic: 0.85-0.92\n- 3-4 symbols, sector story: 0.80-0.90\n- 3-4 symbols, one clear subject with catalyst: 0.70-0.85\n- 1-2 symbols, material catalyst: 0.60-0.75\n- High recent volatility (>50 bp range): reduce confidence by 0.05-0.10\n\n**Step 6: Sanity checks**\n\n1. If predicting >3 bps directionally, can I point to a specific catalyst (not \"sector tailwind\") and confirm the question symbol is the direct subject?\n2. Is my width at least 0.5 \u00d7 the 45-minute range for noise stories, or at least 10 bps for material catalysts?\n3. Have I checked that the story describes a future event or fresh catalyst, not past price action?\n4. If the story mentions M&A, is the question symbol the target (not a peer)?\n5. If I'm making a directional call, is my confidence <0.85?\n6. If 45-minute range is >50 bps, is my width at least 5 bps?\n\n## Key principles from feedback\n\n1. **Symbol count is the dominant filter.** 5+ symbols is almost always noise, regardless of headline. The \"Autonomous Vehicles\" story with 3 symbols was a listicle and should have been treated as noise.\n\n2. **Width must account for normal intraday volatility, not just story type.** Check the 45-minute range and use 0.5\u00d7 that range as minimum width for noise stories. The AMD and IWM examples show 2 bp width fails when stocks are moving normally.\n\n3. **Directional calls destroy skill when wrong.** The TSLA example (-0.67 skill) shows that directional calls on noise stories are very costly. Only make directional calls when you can clearly justify the catalyst and confirm the question symbol is the direct subject.\n\n4. **M&A stories only move the target.** The NOW example shows that being mentioned in an M&A story as a peer/comparable does not create a catalyst. Check which symbol is the target.\n\n5. **Most Benzinga stories are descriptive journalism, not catalysts.** Stories describing \"what happened\" today, sector trends, or thematic investment ideas are noise, not catalysts. Predict 0 bps.\n\n6. **Confidence should reflect uncertainty.** High confidence (>0.90) should be reserved for pure noise with 7+ symbols. Everything else has more uncertainty.\n\n7. **The skill formula rewards being less wrong than no-change.** You don't need to predict the exact move. Getting direction right with adequate width scores positive skill. But predicting near-zero with tight width when the stock moves scores terrible skill (TSLA -0.67, NOW -0.06).\n\n8. **Check the tape before every forecast.** If the story describes a move that's already in the candlesticks, it's journalism, not a catalyst.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
