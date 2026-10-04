@@ -35,7 +35,7 @@ from rsi_arena.harness import Harness                             # noqa: E402
 from rsi_arena.loop.generation import fingerprint                 # noqa: E402
 from rsi_arena.topics import spec_of                              # noqa: E402
 from rsi_arena.trading import (Book, Position, Trade, TradingSpec, book_stats,   # noqa: E402
-                               load_state, rows_to_cycles, step_live)
+                               instance_key, load_state, rows_to_cycles, step_live)
 
 
 def trading_spec_for(topic: str) -> TradingSpec:
@@ -218,14 +218,15 @@ def run(args: argparse.Namespace, *, log=print) -> dict[str, Any]:
     fresh = [c for c in cycles if book.last_at is None or c.at > book.last_at]
     harness_name = harness_name_of(rows, harness)
     before = {k: p.opened_at for k, p in book.positions.items()}
-    trades, marks = step_live(book, cycles, harness_fp=harness_fp, harness_name=harness_name,
-                              tick=spec.tick)
+    trades, marks, records = step_live(book, cycles, harness_fp=harness_fp,
+                                       harness_name=harness_name, tick=spec.tick)
     opened = [p for k, p in book.positions.items() if before.get(k) != p.opened_at]
 
     trade_lines = [trade_line(topic, book, t) for t in trades] + [open_line(topic, book, p) for p in opened]
     mark_lines = [mark_line(topic, book, m) for m in marks]
     stats = book_stats(book, spec.cycles_per_year)
     summary = {"topic": topic, "rows": len(rows), "cycles": len(cycles), "applied": len(fresh),
+               "annotated": 0,
                "trades_closed": len(trades), "opened": len(opened), "marks": len(marks),
                "equity": stats["end_equity"], "total_return": stats["total_return"],
                "open_positions": len(book.positions), "last_at": book.last_at.isoformat() if book.last_at else None,
@@ -234,14 +235,62 @@ def run(args: argparse.Namespace, *, log=print) -> dict[str, Any]:
         log(f"dry run: {summary['applied']} of {summary['cycles']} cycles would be applied; "
             f"{len(trade_lines)} trade lines, {len(mark_lines)} marks; nothing written")
         return summary
+    # The record back onto the forecasts, before anything publishes them. The
+    # three columns `rsi.live_forecasts` keeps for the book - the quote posted,
+    # the fills that crossed it, what the path did - are filled from
+    # `row["trade"]`, and nothing had ever put it there, so they were null on
+    # every live row from the day migration 010 created them. A reader asking
+    # "what did it quote on this window" got nothing, on a contract that says
+    # every window must quote.
+    summary["annotated"] = annotate(forecasts, records)
     append(out_dir / f"{topic}-trades.jsonl", trade_lines)
     append(out_dir / f"{topic}-marks.jsonl", mark_lines)
     save(state_path, book, spec, started_at)
     log(f"live:{topic}: {summary['applied']} cycles applied of {summary['cycles']} "
+        f"({summary['annotated']} rows annotated) "
         f"({summary['rows']} rows), {len(trades)} closed, {len(opened)} opened, "
         f"{len(marks)} marks; equity ${stats['end_equity']:,.2f} ({stats['total_return']:+.2%}), "
         f"{len(book.positions)} open -> {state_path}")
     return summary
+
+
+def annotate(forecasts: Path, records: dict[str, dict]) -> int:
+    """Write each cycle's record onto its forecast row. Returns how many landed.
+
+    Rewritten whole through a temporary file: the sweep that wrote it has
+    finished, the publisher has not started, and a half-written forecasts file
+    would lose a day of grading to save a few milliseconds.
+
+    A row the book did not step - already seen, or never a cycle - is left
+    exactly as it was, so re-running this is safe and changes nothing.
+    """
+    if not records or not forecasts.exists():
+        return 0
+    lines, hit = [], 0
+    with forecasts.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                lines.append(line)              # not ours to repair
+                continue
+            try:
+                key = instance_key(row)
+            except (KeyError, TypeError, ValueError):
+                lines.append(json.dumps(row, default=str))
+                continue
+            record = records.get(key)
+            if record is not None:
+                row["trade"] = record
+                hit += 1
+            lines.append(json.dumps(row, default=str))
+    tmp = forecasts.with_suffix(forecasts.suffix + ".tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    tmp.replace(forecasts)
+    return hit
 
 
 def build_parser() -> argparse.ArgumentParser:

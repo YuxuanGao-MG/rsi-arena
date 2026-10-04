@@ -23,7 +23,7 @@ from rsi_arena.trading import (MAX_GROSS, MAX_POSITION, MIN_SIZE, START_EQUITY, 
                                EquityCosts, KalshiCosts, Mark, PerpCosts, Quote, Trade, TradingSpec,
                                cycles_of, decide, default_decision, delta_from_details, equity_stats,
                                load_state, read_decision, replay_book, rows_to_cycles, save_state,
-                               step_live, walk_book)
+                               step_live, walk_book, instance_key)
 from rsi_arena.trading.costs import SEC_FEE_PER_DOLLAR, TAF_MAX, TAF_PER_SHARE
 from rsi_arena.trading.policy import GRAMMAR_NOTE, TRADING_CONTRACT
 
@@ -485,11 +485,11 @@ def crypto_cycle(minute, mid, delta=60.0):
 
 def test_step_live_skips_what_the_book_has_seen_and_carries_to_the_deadline():
     b = Book("live", "crypto", "fp", PerpCosts())
-    trades, marks = step_live(b, [crypto_cycle(0, 100.0), crypto_cycle(1, 100.5)], harness_fp="fp",
+    trades, marks, records = step_live(b, [crypto_cycle(0, 100.0), crypto_cycle(1, 100.5)], harness_fp="fp",
                               harness_name="h1")
     assert b.last_at == at(1) and b.processed == 2 and len(marks) == 2
     assert "BTCUSDT" in b.positions and not trades, "no lookahead: it carries"
-    again, _ = step_live(b, [crypto_cycle(0, 100.0), crypto_cycle(1, 100.5)], harness_fp="fp",
+    again, _, _ = step_live(b, [crypto_cycle(0, 100.0), crypto_cycle(1, 100.5)], harness_fp="fp",
                          harness_name="h1")
     assert b.processed == 2 and not again, "nothing new"
     step_live(b, [crypto_cycle(31, 101.0, delta=0.0)], harness_fp="fp", harness_name="h1")
@@ -529,3 +529,90 @@ def test_the_package_stays_out_of_the_loop_and_the_topics():
             "'rsi_arena.alpaca', 'rsi_arena.crypto'))]; print(bad)")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "[]", out.stdout
+
+
+# ---------------------------------------------------------------------------
+# The live record reaches the row, and the row reaches the database.
+#
+# Three columns - the quote posted, the fills that crossed it, what the path
+# did - were null on every live row from the day migration 010 created them
+# until 4 October. Two independent reasons, either of which was enough: nothing
+# wrote the record onto the row, and the publisher ran before the trader
+# anyway. A third made a trade impossible regardless: live rows carried no
+# price path, and `Book.post` fills a quote by walking bars and by nothing else.
+
+import re as _re
+import subprocess as _sub
+from pathlib import Path as _Path
+
+_ROOT = _Path(__file__).resolve().parent.parent
+
+
+def test_step_live_hands_back_a_record_per_cycle():
+    b = Book("live:t", "crypto-horizon-1m", "fp", PerpCosts())
+    cycles = [crypto_cycle(0, 100.0), crypto_cycle(1, 100.5)]
+    _, _, records = step_live(b, cycles, harness_fp="fp", harness_name="h1")
+    assert set(records) == {c.instance_id for c in cycles}
+    one = next(iter(records.values()))
+    for key in ("action", "size", "quote", "fills", "path_summary"):
+        assert key in one, f"the publisher reads {key} and it is absent"
+
+
+def test_the_record_key_is_the_one_the_cycle_was_built_with():
+    """Re-deriving it looked identical and was not: the collector writes `...Z`
+    and `datetime.isoformat` produces `...+00:00`, so every lookup would miss
+    and the columns would stay null for a second reason."""
+    row = {"at": "2026-10-04T12:00:00Z", "symbol": "ETHUSDT", "mid_now": 100.0,
+           "realised": 100.1, "output": {}}
+    assert instance_key(row) == instance_key({**row, "at": "2026-10-04T12:00:00+00:00"})
+    assert instance_key({**row, "id": "given"}) == "given"
+
+
+def test_annotate_writes_the_record_onto_the_matching_row(tmp_path):
+    import json as _json
+    import sys as _sys
+    _sys.path.insert(0, str(_ROOT / "scripts"))
+    from paper_trade import annotate
+    rows = [{"at": "2026-10-04T12:00:00Z", "symbol": "ETHUSDT", "mid_now": 100.0},
+            {"at": "2026-10-04T12:01:00Z", "symbol": "ETHUSDT", "mid_now": 100.1}]
+    f = tmp_path / "forecasts.jsonl"
+    f.write_text("\n".join(_json.dumps(r) for r in rows) + "\n")
+    record = {"action": "hold", "quote": {"bid": 1.0, "ask": 2.0}, "fills": []}
+    n = annotate(f, {instance_key(rows[0]): record})
+    back = [_json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    assert n == 1
+    assert back[0]["trade"] == record
+    assert "trade" not in back[1], "a row the book did not step was altered"
+    assert len(back) == 2, "annotating lost a row"
+
+
+def test_annotate_leaves_a_file_it_cannot_parse_alone(tmp_path):
+    f = tmp_path / "forecasts.jsonl"
+    f.write_text("not json\n")
+    import sys as _sys
+    _sys.path.insert(0, str(_ROOT / "scripts"))
+    from paper_trade import annotate
+    assert annotate(f, {"x": {}}) == 0
+    assert f.read_text().strip() == "not json"
+
+
+@pytest.mark.parametrize("workflow", ["live.yml", "live-crypto.yml", "live-news.yml"])
+def test_the_sweep_trades_before_it_publishes(workflow):
+    """The ordering that made the record unreachable. Asserted per workflow
+    because it was wrong in all three and would be wrong again one at a time."""
+    text = (_ROOT / ".github" / "workflows" / workflow).read_text()
+    names = _re.findall(r"^      - name: (.+)$", text, _re.M)
+    assert "Paper-trade the sweep" in names and "Publish to the reader" in names
+    assert names.index("Paper-trade the sweep") < names.index("Publish to the reader"), \
+        f"{workflow}: the publisher runs before the trader, so quote/fills/path are null"
+    assert names.index("Restore the paper book") < names.index("Paper-trade the sweep")
+    assert names.index("Collect") < names.index("Paper-trade the sweep")
+
+
+@pytest.mark.parametrize("collector", ["collect_live.py", "collect_live_crypto.py",
+                                       "collect_live_news.py"])
+def test_every_live_collector_records_a_price_path(collector):
+    """Without one a posted quote can never fill, so a live book cannot trade:
+    three of them stepped 29,000 cycles and recorded nothing."""
+    text = (_ROOT / "scripts" / collector).read_text()
+    assert "path_fn=" in text, f"{collector} resolves without a path"

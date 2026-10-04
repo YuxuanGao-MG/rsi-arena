@@ -198,6 +198,36 @@ def _quote_for(hist: History):
     return read
 
 
+def _path_for(hist: History):
+    """The candles the market printed between the forecast and its horizon.
+
+    The paper book can only fill a quote it posted by walking these bars, so a
+    live sweep without them posts quotes nobody can ever hit. Every live row
+    written before 4 October had none, which is why the live books stepped tens
+    of thousands of cycles and recorded no trade.
+
+    Minute candles, in YES price space, which is the space the book quotes in.
+    One-sided candles are kept: a bar's high and low still say where the price
+    went, and `Book.post` only needs that.
+    """
+    def read(ticker: str, at: datetime) -> list[dict] | None:
+        try:
+            candles = hist.candles(ticker, at, at + timedelta(minutes=HORIZON_MINUTES))
+        except Exception:  # noqa: BLE001 - a path is a bonus, never a lost grade
+            return None
+        out = []
+        for c in candles:
+            high = c.yes_ask_high if c.yes_ask_high is not None else c.mid
+            low = c.yes_bid_low if c.yes_bid_low is not None else c.mid
+            close = c.mid
+            if high is None or low is None or close is None:
+                continue
+            out.append({"ts": c.ts.isoformat(), "high": float(high),
+                        "low": float(low), "close": float(close)})
+        return out or None
+    return read
+
+
 def resolve(row: dict, hist: History) -> bool:
     """Score a forecast once the horizon has printed. False while it has not.
 
@@ -206,12 +236,14 @@ def resolve(row: dict, hist: History) -> bool:
     touch at the horizon for the paper book.
     """
     return _resolve(row, realised_fn=_realised_for(hist), score_fn=score_output,
-                    horizon_minutes=HORIZON_MINUTES, quote_fn=_quote_for(hist))
+                    horizon_minutes=HORIZON_MINUTES, quote_fn=_quote_for(hist),
+                    path_fn=_path_for(hist))
 
 
 def write_resolved(pending: list[dict], hist: History, out: Path) -> list[dict]:
     """Write every forecast whose horizon has printed; keep the rest waiting."""
-    return _write_resolved(pending, out, realised_fn=_realised_for(hist),
+    return _write_resolved(pending, out, path_fn=_path_for(hist),
+                           realised_fn=_realised_for(hist),
                            score_fn=score_output, horizon_minutes=HORIZON_MINUTES,
                            quote_fn=_quote_for(hist))
 

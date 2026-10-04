@@ -91,6 +91,35 @@ class Sources:
                 problems.append(f"onchain {name}: {type(exc).__name__}: {exc}")
         return problems
 
+    def path(self, ticker: str, at: datetime, horizon: int) -> list[dict] | None:
+        """What the price did between the forecast and its horizon, bar by bar.
+
+        The paper book fills a quote it posted only by walking these, so a live
+        sweep without them posts quotes nobody can hit. Every live row written
+        before 4 October had none, and the live books stepped 29,000 cycles and
+        recorded no trade.
+
+        Second bars, not minute ones: this topic's horizon *is* one minute, so a
+        minute bar is the whole window as a single candle and a quote either
+        fills on that one high and low or never. Sixty bars is the difference
+        between a fill model and a coin toss. Binance serves `1s` live; the
+        store only keeps minutes, so this asks the API and falls back to the
+        minute bar when it cannot.
+        """
+        symbol = ticker.split("@", 1)[0]
+        end = at + timedelta(minutes=horizon)
+        for interval in ("1s", "1m"):
+            try:
+                bars = self.spot.fetch_klines(symbol, at, end, interval)
+            except Exception:  # noqa: BLE001 - a path is a bonus, never a lost grade
+                continue
+            out = [{"ts": b.ts_open.isoformat(), "high": float(b.high),
+                    "low": float(b.low), "close": float(b.close)}
+                   for b in bars if at <= b.ts_open <= end]
+            if out:
+                return out
+        return None
+
     def realised(self, ticker: str, at: datetime, horizon: int) -> float | None:
         """The close the exchange printed ``horizon`` minutes after ``at``, fetched fresh."""
         symbol = ticker.split("@", 1)[0]
@@ -186,6 +215,7 @@ def _quote_from_snapshots(snapshots: list[dict] | None, horizon: int
 def resolve(row: dict, sources: Any, horizon: int, snapshots: list[dict] | None = None) -> bool:
     """Score a forecast once its minute has printed. False while it has not."""
     return _resolve(row, realised_fn=_realised_for(sources, horizon), score_fn=score_output,
+                    path_fn=lambda t, a: sources.path(t, a, horizon),
                     horizon_minutes=horizon, quote_fn=_quote_from_snapshots(snapshots, horizon))
 
 
@@ -193,7 +223,8 @@ def write_resolved(pending: list[dict], sources: Any, out: Path, horizon: int,
                    snapshots: list[dict] | None = None) -> list[dict]:
     """Write every forecast whose horizon has printed; keep the rest waiting.
     ``snapshots`` are this sweep's books, for the touch at the horizon."""
-    return _write_resolved(pending, out, realised_fn=_realised_for(sources, horizon),
+    return _write_resolved(pending, out, path_fn=lambda t, a: sources.path(t, a, horizon),
+                           realised_fn=_realised_for(sources, horizon),
                            score_fn=score_output, horizon_minutes=horizon,
                            quote_fn=_quote_from_snapshots(snapshots, horizon))
 

@@ -346,7 +346,13 @@ def test_the_live_workflow_trades_and_publishes_the_book(name):
     doc = yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
     steps = doc["jobs"]["collect"]["steps"]
     names = [s.get("name") for s in steps]
-    order = ["Publish to the reader", "Restore the paper book", "Paper-trade the sweep",
+    # The trader before the publisher. This test asserted the opposite until
+    # 4 October, which is how the ordering stayed wrong for three months: the
+    # trader writes each cycle's record onto the forecast row and the publisher
+    # reads it from there, so run the other way round the row reaches the
+    # database before the record exists and `rsi.live_forecasts.quote`, `fills`
+    # and `path` are null on every row ever written.
+    order = ["Restore the paper book", "Paper-trade the sweep", "Publish to the reader",
              "Save the paper book", "Publish the paper book", "Keep the forecasts as an artifact"]
     assert [n for n in names if n in order] == order
     by = {s.get("name"): s for s in steps}

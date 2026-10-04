@@ -109,6 +109,23 @@ SLOW_SECONDS = {"pooled skill": 2.0}
 #: a second attempt before it becomes a fault.
 CONFIRM = 2
 
+#: Columns a migration added for something to write, with how recent a row must
+#: be for its emptiness to count. A column that is null on every row is either a
+#: feature that never shipped or a pipeline step that silently stopped, and
+#: neither announces itself: `rsi.live_forecasts.quote`, `fills` and `path` were
+#: null on every row from the day migration 010 created them until 4 October,
+#: because the paper trader ran after the publisher and never wrote the record
+#: back. Three months, no error, and the contract says every window must post a
+#: two-sided quote.
+#:
+#: Only columns something is *supposed* to fill belong here. A column that is
+#: legitimately sparse would make this noise.
+WRITTEN_COLUMNS = {
+    ("live_forecasts", "quote"): 24,
+    ("live_forecasts", "fills"): 24,
+    ("live_forecasts", "path"): 24,
+}
+
 #: Where the trajectories live, and what each topic is called there.
 #:
 #: The layout is `fetch_run.py`'s, imported rather than restated so the check
@@ -385,6 +402,27 @@ def check_database(rep: Report) -> None:
                 rep.bad(f"{topic} is forecasting", f"{n} forecasts in 12h, none scored")
             else:
                 rep.ok(f"{topic} is forecasting", f"{n} in 12h, {s} scored")
+        # A column nothing writes. Checked on recent rows only: the three that
+        # prompted this were empty for three months and the backfill is not
+        # worth it, so what matters is that they are filled *now*.
+        for (table, column), hours in sorted(WRITTEN_COLUMNS.items()):
+            try:
+                cur.execute(f"""select count(*), count({column}) from rsi.{table}
+                                 where at > now() - interval '{int(hours)} hours'""")
+                total, filled = cur.fetchone()
+            except Exception as exc:                      # noqa: BLE001
+                conn.rollback()
+                rep.ok(f"{table}.{column} is written", f"could not check: {str(exc)[:60]}")
+                continue
+            where = f"{table}.{column} is written"
+            if not total:
+                rep.ok(where, f"no {table} rows in {hours}h to judge by")
+            elif filled:
+                rep.ok(where, f"{filled} of {total} rows in {hours}h")
+            else:
+                rep.bad(where, f"null on all {total} rows in the last {hours}h; "
+                               f"whatever fills it has stopped or never started")
+
         # The overview reads a materialised view, so it is only as true as its
         # last refresh. `publish_runs.py` refreshes it after writing rollouts;
         # if that ever silently fails, the reader shows a stale generation and

@@ -172,15 +172,38 @@ def realised_for(bars: Any):
     return lambda ticker, at: bars.realised_price(symbol_of(ticker), at, HORIZON_MINUTES)
 
 
+def path_for(bars: Any):
+    """The minute bars between the story and the horizon, for the paper book.
+
+    A quote the book posts is filled by walking these and by nothing else, so a
+    sweep without them posts quotes nobody can hit. Every live row written
+    before 4 October had none, and the live books recorded no trade at all.
+
+    Five bars, because the horizon is five minutes and IEX prints by the minute.
+    Coarse, and said so in the docs: a quote inside one minute's range either
+    fills on that bar's high and low or does not, and the book cannot see the
+    order within the minute.
+    """
+    def read(ticker: str, at: datetime) -> list[dict] | None:
+        try:
+            got = bars.bars(symbol_of(ticker), at, at + timedelta(minutes=HORIZON_MINUTES))
+        except Exception:  # noqa: BLE001 - a path is a bonus, never a lost grade
+            return None
+        out = [{"ts": b.ts_open.isoformat(), "high": float(b.h),
+                "low": float(b.l), "close": float(b.c)} for b in got]
+        return out or None
+    return read
+
+
 def resolve(row: dict, bars: Any, now: datetime | None = None) -> bool:
     return _resolve(row, realised_fn=realised_for(bars), score_fn=score_output,
-                    horizon_minutes=HORIZON_MINUTES, now=now)
+                    horizon_minutes=HORIZON_MINUTES, now=now, path_fn=path_for(bars))
 
 
 def write_resolved(pending: list[dict], bars: Any, out: Path,
                    now: datetime | None = None) -> list[dict]:
     return _write_resolved(pending, out, realised_fn=realised_for(bars), score_fn=score_output,
-                           horizon_minutes=HORIZON_MINUTES, now=now)
+                           horizon_minutes=HORIZON_MINUTES, now=now, path_fn=path_for(bars))
 
 
 async def main(argv: list[str] | None = None) -> int:

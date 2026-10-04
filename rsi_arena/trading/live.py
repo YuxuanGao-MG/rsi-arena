@@ -29,7 +29,7 @@ from typing import Any
 
 from .book import Book, Mark, PathBar, Trade
 from .costs import Quote, default_tick
-from .replay import Cycle, apply_cycle
+from .replay import Cycle, apply_cycle, _record
 
 _DELTA_KEYS = {"cents": ("delta_cents", "half_width_cents"), "bps": ("delta_bps", "half_width_bps")}
 
@@ -106,6 +106,22 @@ def _path(raw: Any) -> tuple[PathBar, ...]:
     return tuple(sorted(out, key=lambda b: b.ts))
 
 
+def instance_key(row: dict) -> str:
+    """The id a cycle is known by, from the collector's row.
+
+    One function, because two callers derive it and they must agree: the cycle
+    builder below, and `paper_trade.annotate`, which writes each cycle's record
+    back onto its row. Re-deriving it there from `row["at"]` as written looked
+    identical and was not - the collector writes `...Z` and `datetime.isoformat`
+    produces `...+00:00`, so every lookup would have missed and the columns
+    would have stayed null for a second reason.
+    """
+    if row.get("id"):
+        return str(row["id"])
+    instrument = row.get("symbol") or row.get("ticker") or ""
+    return f"{instrument}@{_at(row['at']).isoformat()}"
+
+
 def _settlement(raw: Any) -> float | None:
     """``row["settlement"]``: a number, or the ``yes``/``no`` a Kalshi market
     resolves to. None when the market has not resolved."""
@@ -140,7 +156,7 @@ def rows_to_cycles(rows: list[dict], spec_like: Any, books_by_key: dict | None =
         deadline = _at(row["deadline"]) if row.get("deadline") else horizon_at + (horizon_at - at)
         delta, half = _delta(row, mid, spec_like.unit)
         out.append(Cycle(at=at, instrument=instrument,
-                         instance_id=str(row.get("id") or f"{instrument}@{at.isoformat()}"),
+                         instance_id=instance_key(row),
                          run_id=str(row.get("run_id") or ""), output=row.get("output"),
                          delta=delta, half_width=half,
                          entry=_entry_quote(row, at, mid, spec_like.costs, ladder),
@@ -166,8 +182,16 @@ def save_state(path: str | Path, book: Book) -> None:
 
 
 def step_live(book: Book, cycles: list[Cycle], *, harness_fp: str, harness_name: str,
-              tick: float | None = None) -> tuple[list[Trade], list[Mark]]:
-    """Apply the cycles the book has not seen; what it traded and marked."""
+              tick: float | None = None) -> tuple[list[Trade], list[Mark], dict[str, dict]]:
+    """Apply the cycles the book has not seen; what it traded, marked and recorded.
+
+    The third return is the per-cycle record by instance id - what was quoted,
+    what the path did, what crossed - in the shape ``rsi.live_forecasts``
+    declares for its ``quote``, ``fills`` and ``path`` columns. It used to be
+    thrown away: ``apply_cycle`` built it, ``step_live`` dropped it, and those
+    three columns were null on every live row ever written, so a reader could
+    not see the two-sided quote the contract says every window must post.
+    """
     tick = default_tick(book.costs) if tick is None else tick
     trades0, marks0 = len(book.trades), len(book.marks)
     fresh = sorted((c for c in cycles if book.last_at is None or c.at > book.last_at),
@@ -178,9 +202,15 @@ def step_live(book: Book, cycles: list[Cycle], *, harness_fp: str, harness_name:
                                    "to": harness_name})
             book.mark(fresh[0].at, event="handover")
         book.harness_name, book.harness_fp = harness_name, harness_fp
+    records: dict[str, dict] = {}
     for c in fresh:
-        apply_cycle(book, c, tick)
-    return book.trades[trades0:], book.marks[marks0:]
+        before = len(book.trades)
+        res = apply_cycle(book, c, tick)
+        # Trades the cycle closed that `res` does not carry: `apply_cycle`
+        # expires and force-closes before it steps, exactly as replay does.
+        closed = [t for t in book.trades[before:] if t not in res.trades]
+        records[c.instance_id] = _record(res, closed, c, book.costs.unit)
+    return book.trades[trades0:], book.marks[marks0:], records
 
 
-__all__ = ["rows_to_cycles", "load_state", "save_state", "step_live"]
+__all__ = ["rows_to_cycles", "load_state", "save_state", "step_live", "instance_key"]

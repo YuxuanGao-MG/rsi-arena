@@ -97,27 +97,12 @@ jobs:
       # `always()`, because a cancelled job still leaves real forecasts on disk
       # that nothing else will ever publish. A missing database secret is a
       # warning rather than a failure: the work already happened.
-      - name: Publish to the reader
-        if: always() && env.SUPABASE_DB_URL != ''
-        shell: bash
-        run: |
-          pip install -q psycopg2-binary
-          python scripts/publish_live.py runs/live/crypto-forecasts.jsonl | tee -a live.txt \
-            || echo "::warning::publishing forecasts failed; they are in the run artifact"
-          python scripts/publish_books.py runs/live/crypto-books.jsonl | tee -a live.txt \
-            || echo "::warning::publishing books failed; they are in the run artifact"
-          if [ -s live.txt ]; then
-            { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      # The paper book: what this sweep's forecasts would have bought. The
-      # trader starts from the previous run's state, restored here by prefix -
-      # each run saves under its own run id and the newest match wins - so the
-      # book runs on across sweeps. `always()`, for the same reason the publish
-      # is: a cancelled sweep still left forecasts on disk. The cache is a
-      # convenience with a week's TTL, not the record. The database is the
-      # durable copy, and `paper_trade.py --restore-from-db --topic crypto-horizon-1m`
-      # rebuilds the state from it when the cache has been evicted.
+      # Before the publisher, not after. `paper_trade.py` writes each cycle's
+      # record - the quote posted, the fills that crossed it, what the path did -
+      # back onto the forecast row, and `publish_live.py` reads it from there into
+      # the three columns migration 010 created for it. Run the other way round,
+      # as this was until 4 October, the row reaches the database before the
+      # record exists and those columns are null on every live row ever written.
       - name: Restore the paper book
         if: always()
         uses: actions/cache/restore@v4
@@ -144,6 +129,27 @@ jobs:
 
       # Saved whenever there is a state to save, whether or not this run
       # traded, so the next sweep starts where this one stopped.
+      - name: Publish to the reader
+        if: always() && env.SUPABASE_DB_URL != ''
+        shell: bash
+        run: |
+          pip install -q psycopg2-binary
+          python scripts/publish_live.py runs/live/crypto-forecasts.jsonl | tee -a live.txt \
+            || echo "::warning::publishing forecasts failed; they are in the run artifact"
+          python scripts/publish_books.py runs/live/crypto-books.jsonl | tee -a live.txt \
+            || echo "::warning::publishing books failed; they are in the run artifact"
+          if [ -s live.txt ]; then
+            { echo '```'; tail -n 40 live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The paper book: what this sweep's forecasts would have bought. The
+      # trader starts from the previous run's state, restored here by prefix -
+      # each run saves under its own run id and the newest match wins - so the
+      # book runs on across sweeps. `always()`, for the same reason the publish
+      # is: a cancelled sweep still left forecasts on disk. The cache is a
+      # convenience with a week's TTL, not the record. The database is the
+      # durable copy, and `paper_trade.py --restore-from-db --topic crypto-horizon-1m`
+      # rebuilds the state from it when the cache has been evicted.
       - name: Save the paper book
         if: always() && hashFiles('runs/live/books/**') != ''
         uses: actions/cache/save@v4

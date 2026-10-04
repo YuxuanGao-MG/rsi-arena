@@ -23,10 +23,38 @@ RealisedFn = Callable[[str, datetime], "float | None"]
 #: ``score_fn(output, mid_now, realised) -> score | None``, where a score has
 #: ``skill``, ``value``, ``error`` and ``naive_error``.
 ScoreFn = Callable[[Any, float, float], Any]
+#: ``path_fn(ticker, at) -> [{"ts", "high", "low", "close"}, ...] | None``: what
+#: the price did between the instant and the horizon, for the paper book to
+#: cross a posted quote against. Without it a live book can post a quote and
+#: never fill one: ``Book.post`` walks these bars and nothing else, so a sweep
+#: with no path is a sweep in which a maker fill is impossible. That was true of
+#: every live row from the day the book was added until 4 October, which is why
+#: three live books stepped 29,000 cycles and recorded no trade at all.
+PathFn = Callable[[str, datetime], "list[dict] | None"]
+
 #: ``quote_fn(ticker, at) -> {"bid", "ask", "mid"} | None``: the touch the
 #: venue showed at the horizon, for the paper book to cross on the way out.
 #: None when the venue keeps no touch (a bar feed) or showed none.
 QuoteFn = Callable[[str, datetime], "dict[str, float] | None"]
+
+
+def _path(raw: Any) -> list[dict] | None:
+    """A price path as the book reads it: ``{ts, high, low, close}`` per bar.
+
+    Shaped here rather than in each collector so the three topics cannot drift,
+    and validated rather than trusted: a bar missing a side is dropped, and a
+    path with no usable bar is None, which reads the same as never having looked.
+    """
+    out = []
+    for bar in raw or ():
+        try:
+            ts = bar["ts"]
+            out.append({"ts": ts if isinstance(ts, str) else ts.isoformat(),
+                        "high": float(bar["high"]), "low": float(bar["low"]),
+                        "close": float(bar["close"])})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out or None
 
 
 def _quote(raw: Any) -> dict[str, float] | None:
@@ -49,7 +77,8 @@ def _quote(raw: Any) -> dict[str, float] | None:
 
 def resolve(row: dict, *, realised_fn: RealisedFn, score_fn: ScoreFn,
             horizon_minutes: int, grace_minutes: int = 1,
-            now: datetime | None = None, quote_fn: QuoteFn | None = None) -> bool:
+            now: datetime | None = None, quote_fn: QuoteFn | None = None,
+            path_fn: PathFn | None = None) -> bool:
     """Score a forecast once the horizon has printed. False while it has not.
 
     A live forecast is only worth keeping if it eventually meets a number, and
@@ -75,6 +104,16 @@ def resolve(row: dict, *, realised_fn: RealisedFn, score_fn: ScoreFn,
             quote = None
         if quote is not None:
             row["realised_quote"] = quote
+    if path_fn is not None:
+        # Same bargain as the exit touch: a bonus for the paper book, never a
+        # reason to lose a grade. A sweep that cannot reach the venue's candles
+        # still scores; its book simply cannot fill a quote on that row.
+        try:
+            path = _path(path_fn(row["ticker"], at))
+        except Exception:  # noqa: BLE001
+            path = None
+        if path:
+            row["path"] = path
     if score is None:
         # The harness never answered - the first live in-play window hit the
         # twenty-cent ledger with a dollar-sixty prompt (in-match tool payloads
@@ -91,7 +130,8 @@ def resolve(row: dict, *, realised_fn: RealisedFn, score_fn: ScoreFn,
 
 def write_resolved(pending: list[dict], out: Path, *, realised_fn: RealisedFn,
                    score_fn: ScoreFn, horizon_minutes: int,
-                   now: datetime | None = None, quote_fn: QuoteFn | None = None) -> list[dict]:
+                   now: datetime | None = None, quote_fn: QuoteFn | None = None,
+                   path_fn: PathFn | None = None) -> list[dict]:
     """Write every forecast whose horizon has printed; keep the rest waiting.
 
     ``now`` is for tests; a collector leaves it to the clock.
@@ -100,7 +140,8 @@ def write_resolved(pending: list[dict], out: Path, *, realised_fn: RealisedFn,
     with out.open("a") as fh:
         for row in pending:
             if resolve(row, realised_fn=realised_fn, score_fn=score_fn,
-                       horizon_minutes=horizon_minutes, now=now, quote_fn=quote_fn):
+                       horizon_minutes=horizon_minutes, now=now, quote_fn=quote_fn,
+                       path_fn=path_fn):
                 fh.write(json.dumps(row, default=str) + "\n")
             else:
                 still.append(row)

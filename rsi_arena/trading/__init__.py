@@ -15,7 +15,7 @@ from .book import (MAX_GROSS, MAX_POSITION, MIN_SIZE, START_EQUITY, Book, Mark, 
 from .costs import (CRYPTO_PROXY_SPREAD_BPS, EQUITY_HALF_SPREAD_BPS, KALSHI_PROXY_SPREAD,
                     MAKER_BPS_PER_SIDE, TAKER_BPS_PER_SIDE, EquityCosts, Fill, KalshiCosts, PerpCosts,
                     Quote, VenueCosts, costs_named, default_tick, walk_book)
-from .live import load_state, rows_to_cycles, save_state, step_live
+from .live import load_state, rows_to_cycles, save_state, step_live, instance_key
 from .policy import (ACTIONS, DEFAULT_QUOTE_SIZE, GRAMMAR_NOTE, KELLY_FRACTION, TRADING_CONTRACT,
                      Decision, Quoted, decide, default_decision, quote_from, quote_size_of,
                      read_decision, read_quote)
@@ -34,5 +34,5 @@ __all__ = [
     "quote_size_of", "default_decision", "decide", "Cycle", "TradingSpec",
     "cycles_of", "replay_book", "apply_cycle", "delta_from_details", "book_line", "with_trade",
     "CYCLES_PER_YEAR", "PNL_SCALE_USD", "pnl_objective", "equity_stats", "book_stats", "rows_to_cycles",
-    "load_state", "save_state", "step_live",
+    "load_state", "save_state", "step_live", "instance_key",
 ]
