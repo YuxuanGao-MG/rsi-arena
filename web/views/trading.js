@@ -139,7 +139,7 @@ export async function tradingView({ signal, topic = DEFAULT, query = {} }) {
             ? html`<a href="${raw(href.run(b.run_id, b.side))}">${b.run_id}</a> · ${b.side}${b.split ? ` · ${b.split}` : ""}`
             : html`${b.side || ""}${b.split ? ` · ${b.split}` : ""}`}</span></th>
       <td class="n ${raw(dir(num(st.total_return)))}">${fmtPct(st.total_return)}</td>
-      <td class="n">${n2(st.sharpe)}</td>
+      <td class="n">${st.sharpe != null ? n2(st.sharpe) : n2(st.trade_t)}</td>
       <td class="n">${st.max_drawdown == null ? "—" : fmtPct(-num(st.max_drawdown))}</td>
       <td class="n">${pct(st.hit_rate)}</td>
       <td class="n">${fmtUsd(st.avg_win)} / ${fmtUsd(st.avg_loss)}</td>
@@ -171,8 +171,16 @@ export async function tradingView({ signal, topic = DEFAULT, query = {} }) {
                note: `started at ${money(startEq)} · ${shown.kind === "live" ? "live" : "replay"} book` })}
       ${stat({ value: fmtPct(totalReturn), tone: dir(totalReturn), label: "total return",
                note: s.cycles != null ? `over ${plural(num(s.cycles), "cycle")}` : "since the book opened" })}
-      ${stat({ value: n2(s.sharpe), tone: dir(num(s.sharpe)), label: "Sharpe, per cycle",
-               note: `daily ${n2(s.daily_sharpe)} · ${t.cyclesPerYear} cycles a year on this topic` })}
+      ${s.sharpe != null
+        ? stat({ value: n2(s.sharpe), tone: dir(num(s.sharpe)), label: "Sharpe, per cycle",
+                 note: `daily ${n2(s.daily_sharpe)} · ${t.cyclesPerYear} cycles a year on this topic` })
+        // A replay book's marks are the question set's windows - one crypto
+        // holdout book's 960 of them are spread over 120 days of a year, median
+        // gap three hours, not one pair consecutive. Annualising that produced
+        // "Sharpe" figures of -74 and -395. A t on per-trade P&L needs no clock.
+        : stat({ value: n2(s.trade_t), tone: dir(num(s.trade_t)), label: "t on trade P&L",
+                 note: `${s.trades != null ? plural(num(s.trades), "trade") : "trades"} sampled across the ` +
+                       `question set · no Sharpe: these windows are not consecutive` })}
       ${stat({ value: maxDD == null ? "—" : fmtPct(-maxDD), tone: maxDD > 0 ? "down" : "",
                label: "max drawdown", note: "peak to trough, on the marks" })}
       ${stat({ value: pct(s.hit_rate), label: "hit rate",
@@ -231,7 +239,7 @@ export async function tradingView({ signal, topic = DEFAULT, query = {} }) {
           per closed trade; turnover is notional traded as a multiple of starting equity.</caption>
         <thead><tr>
           <th scope="col">agent</th><th scope="col" class="n">return</th>
-          <th scope="col" class="n">Sharpe</th><th scope="col" class="n">max DD</th>
+          <th scope="col" class="n" title="Sharpe for a book whose marks are consecutive; for a replay book, whose windows are a sample scattered across a year, Student's t on per-trade P&amp;L instead">Sharpe / t</th><th scope="col" class="n">max DD</th>
           <th scope="col" class="n">hit rate</th><th scope="col" class="n">avg win / loss</th>
           <th scope="col" class="n">turnover</th><th scope="col" class="n">fees</th>
           <th scope="col" class="n">trades</th><th scope="col">curve</th>

@@ -257,10 +257,42 @@ def test_stats_from_three_hand_built_trades():
     assert s["fees_usd"] == 30.0 and s["trades"] == 3
 
 
+#: Cycles a year for marks a minute apart, which is what `marks_of` builds.
+PER_YEAR_MINUTE = 525_600
+
+
 def test_a_flat_book_has_no_sharpe():
-    s = equity_stats(marks_of([1e6, 1e6, 1e6]), [], 100)
+    s = equity_stats(marks_of([1e6, 1e6, 1e6]), [], PER_YEAR_MINUTE)
+    assert s["contiguous"] is True, "minute marks at a minute cadence are a series"
     assert s["sharpe"] == 0.0 and s["daily_sharpe"] == 0.0 and s["max_drawdown"] == 0.0
-    assert equity_stats([], [], 100)["sharpe"] == 0.0
+    assert equity_stats([], [], PER_YEAR_MINUTE)["sharpe"] in (0.0, None)
+
+
+def test_a_sampled_book_reports_no_sharpe_at_all():
+    """Its marks are not consecutive, so nothing annualised means anything.
+
+    One crypto holdout book's 960 marks are spread over 120 days of a year,
+    median gap three hours, not one pair of them consecutive minutes. Annualised
+    on 525,600 cycles a year that produced a "Sharpe" of -395, and -74 as a
+    "daily" one, for a book that lost two percent.
+    """
+    scattered = marks_of([1e6, 0.999e6, 0.998e6, 0.997e6])
+    # three hours apart, as the real ones are
+    scattered = [replace(m, at=T0 + i * 180 * M) for i, m in enumerate(scattered)]
+    s = equity_stats(scattered, [], PER_YEAR_MINUTE)
+    assert s["contiguous"] is False
+    assert s["sharpe"] is None and s["daily_sharpe"] is None
+
+
+def test_the_t_on_trade_pnl_needs_no_clock():
+    """What a sampled book reports instead: is the average trade worth making."""
+    losing = equity_stats(marks_of([1e6] * 3), [trade(-100.0), trade(-110.0), trade(-90.0),
+                                                trade(-105.0)], PER_YEAR_MINUTE)
+    assert losing["trade_t"] is not None and losing["trade_t"] < -5
+    mixed = equity_stats(marks_of([1e6] * 3),
+                         [trade(500.0), trade(-480.0), trade(20.0)], PER_YEAR_MINUTE)
+    assert abs(mixed["trade_t"]) < 1, "a mixed set is not distinguishable from zero"
+    assert equity_stats(marks_of([1e6] * 3), [trade(1.0)], PER_YEAR_MINUTE)["trade_t"] is None
 
 
 # -- policy -----------------------------------------------------------------------
