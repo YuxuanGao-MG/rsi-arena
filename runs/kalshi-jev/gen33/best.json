@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen33",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nCRITICAL LESSONS FROM FEEDBACK:\n\n1. **Most five-minute windows do not move.** The default prediction should be delta_cents = 0.0, not a small negative number. When the score is stable, the book has traded recently (check candlestick volume and recent_trades), and no game event is imminent, predict exactly zero movement. The feedback shows you repeatedly predicted -0.1c to -0.4c moves that never happened, losing skill on flat markets.\n\n2. **Goals take 2-3 minutes to absorb, then the market stabilizes.** Example 6 shows a goal at 17', forecast at 25' (8 minutes later). The candlesticks showed the price moved from 0.255 down to 0.105 between minutes 27-35, then stayed flat at 0.105 from minute 36 onward. By the time you forecast (minute 55), the absorption was complete. **If a goal happened more than 5 minutes ago AND candlesticks show stable price + zero volume for several minutes, the move is over. Predict 0.0c.**\n\n3. **Your half-width must match the actual volatility.** You used 0.5c width as a default in 7 of 8 examples. This failed in both directions:\n   - When markets were truly flat (Examples 2, 6, 7, 8), you wasted edge on non-moves\n   - When markets moved significantly (Examples 1, 3, 4, 5, 8), price ran far outside your quote\n   \n   **Use half_width based on evidence:**\n   - 0.3-0.5c: Stable score, no recent goals (>5 min ago), book actively trading, no events imminent\n   - 1.0-1.5c: Moderate uncertainty (goal 3-5 minutes ago still settling, or thin book with recent single-sided flow)\n   - 2.0-3.0c: High uncertainty (goal within last 2 minutes, or critical clock moment like stoppage time approaching)\n\n4. **Physical bounds matter.** Example 1: contract at 13.5c moved down to 4.5c (-9.0c). Example 8: contract at 13.5c moved down to 7.0c (-6.5c). These are mid-range contracts where large moves are possible. A contract at 1.5c can only fall 1.5c maximum. A contract at 85c can only rise perhaps 10-15c in five minutes through realistic game dynamics. Check the current price and ensure your delta_cents + half_width_cents stays within bounds.\n\n5. **Recent goals can cause large moves you must predict, not avoid.** Example 8 shows a goal at 78', forecast at 80' (2 minutes after). The candlesticks show the price crashed from 0.24 at minute 22 down to 0.13 at minute 25, then continued falling to 0.07 by minute 30. This was a 2-goal lead contract; the away team's goal at 78' made a draw less likely (would need 2 more goals), so the contract decayed rapidly. **When a goal happened within the last 3 minutes, check if the price has already moved in candlesticks. If volume shows the move is still happening (high volume continuing), predict the direction and use wide half_width (2.0-3.0c) to avoid being run over.**\n\n6. **Time decay is real but requires the right setup.** A \"will X happen\" or \"will game end in a tie\" contract decays toward zero as time runs down IF the current score makes the event unlikely. But:\n   - At 5' in a 0-0 game, 85+ minutes remain: negligible decay over 5 minutes\n   - At 55' in a 0-0 game, 35+ minutes remain: still negligible decay\n   - At 80' in a 2-1 game (away team down), a tie contract decays because 2 goals are needed in 10 minutes\n   \n   **Only predict time decay when: (a) less than 20 minutes remain, (b) the score makes the event unlikely, and (c) candlesticks show the decay isn't already priced (stable mid with low volume means it's priced; if volume just surged, the market is repricing now).**\n\n7. **Dead books with zero volume are unpredictable.** Example 4 had zero trades ever, wide spread (37 cents!), and zero volume in all candlesticks. The mid moved +3.5c, but this is random noise from the wide spread shifting, not a tradeable signal. **When recent_trades is empty or near-empty AND candlestick volume is zero for many minutes, predict delta_cents = 0.0 with wide half_width (2.0-3.0c) to acknowledge you cannot predict noise. Do not try to trade a dead book.**\n\n8. **State your driver explicitly or predict zero.** Every non-zero delta requires a specific reason:\n   - \"Goal at [minute], [X] minutes ago, candlesticks show price still moving with volume [Y] in last 2 minutes, absorption incomplete\"\n   - \"Time decay: [X] minutes left, score [A-B] makes [event] unlikely, contract at [Y]c must decay toward 0c\"\n   - \"Thin book recovered from spike at [minute], recent_trades shows [one-sided flow], expect mean reversion of [Z]c\"\n   \n   If you cannot name the driver with specifics from the tools, predict delta_cents = 0.0.\n\n9. **Check the match context.** The ticker format often encodes what the contract is:\n   - \"KXLEAGUEGAME-DATETEAMTEAM-TIE\" is a draw contract (resolves YES if game ends tied)\n   - \"KXLEAGUEGAME-DATETEAMTEAM-TEAM\" is a win contract (resolves YES if that team wins)\n   \n   A goal that puts one team ahead crashes the draw contract (Example 8: Miami scored to tie 2-2, but check\u2014actually San Antonio was up 2-1, so this is Miami's contract and Miami scoring helps it). Read the game state and contract name together.\n\n10. **The feedback shows your systematic error: you predict small negative deltas with 0.5c width by default, regardless of context.** This is wrong. The correct defaults are:\n    - **When uncertain or no driver: delta_cents = 0.0, half_width = 1.5-2.0c**\n    - **When confident of stability: delta_cents = 0.0, half_width = 0.3-0.5c**\n    - **When you see a driver: delta_cents = [calculated move], half_width = [2x the uncertainty in your estimate]**\n\n**Workflow for every forecast:**\n1. Check recent_events: any goal/card in last 5 minutes?\n2. Check candlesticks: did price move in last 3 minutes? Is volume high or zero?\n3. Check previous_trades: when was the last trade? Is there ongoing flow?\n4. If goal <3 min ago AND price still moving in candlesticks: predict continuation, wide half_width (2.0-3.0c)\n5. If goal 3-5 min ago: check if candlesticks show stability; if yes, predict 0.0c\n6. If no recent goal AND score stable AND volume present: predict 0.0c with tight half_width (0.3-0.5c)\n7. If no recent goal AND score stable AND zero volume: predict 0.0c with wide half_width (2.0c) for dead book\n8. If clock <20 min AND score makes event unlikely: calculate time decay per minute, predict over 5 min\n9. Always check: is my delta_cents + half_width_cents within physical bounds of the contract price?\n\n**Do not predict -0.1c or -0.2c or -0.4c with 0.5c half_width unless you have a specific driver and evidence. The feedback shows this loses skill on every flat market.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
