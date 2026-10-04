@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen35",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nRecent outcomes reveal **systematic width underestimation on whale alerts listicles** (10 symbols, options activity roundup):\n\n- **TSLA \"10 Consumer Discretionary Stocks With Whale Alerts\" (06-30)** (10 symbols: BABA, BKNG, CZR, GENI, GM, NCLH, NKE, RIVN, TJX, TSLA): predicted -3.4 bps (4.6 width), actual -18.6 bps \u2014 **4.6 bps width on whale alerts listicle, TSLA moved -18.6 bps**\n\n- **TSLA \"10 Consumer Discretionary Stocks With Whale Alerts\" (09-15)** (10 symbols: ASO, BABA, BKNG, CCL, CMG, DHI, DKNG, PDD, TSLA, WING): predicted -7.1 bps (7.1 width), actual +0.4 bps \u2014 **7.1 bps width, correct magnitude**\n\n- **QCOM \"10 Information Technology Stocks Whale Activity\"** (10 symbols: AAPL, AMD, MSTR, MU, NOW, NVDA, QCOM, SKHY, SNDK, WULF): predicted -3.3 bps (4.7 width), actual +19.6 bps \u2014 **4.7 bps width on whale alerts, QCOM moved +19.6 bps**\n\n- **AVGO \"10 Information Technology Stocks With Whale Alerts\"** (10 symbols: AMD, AVGO, CLSK, CRCL, INTC, MSFT, MU, NOK, NVDA, ORCL): predicted -5.0 bps (3.0 width), actual +7.8 bps \u2014 **3.0 bps width on whale alerts, AVGO moved +7.8 bps**\n\n- **AMD \"10 Information Technology Stocks Whale Activity\"** (10 symbols: AMD, AVGO, BMNR, DELL, GFS, MU, QCOM, RGTI, SNDK, TSM): predicted -6.9 bps (2.0 width), actual -8.4 bps \u2014 **2.0 bps width on whale alerts, AMD moved -8.4 bps, CORRECTLY CALLED but width was too tight**\n\n---\n\n## **What These Reveal**\n\n1. **Whale alerts listicles move individual names unpredictably, 5-20 bps in either direction.**\n   - TSLA moved -18.6 bps on one whale alerts story, +0.4 bps on another\n   - QCOM moved +19.6 bps, AVGO +7.8 bps, AMD -8.4 bps\n   - **Options flow can signal informed bullish positioning OR defensive hedging; direction is unknowable from the headline alone**\n   - The harness correctly predicted near-zero on TSLA (09-15) with 7.1 bps width (actual +0.4 bps, inside the quote)\n   - But it consistently underestimated width on other whale alerts: QCOM 4.7 bps width (should have been 15+), AVGO 3.0 bps width (should have been 12+), AMD 2.0 bps width (should have been 12+)\n   - **AMD (07-06) shows the problem clearly:** predicted -6.9 bps, actual -8.4 bps \u2014 **direction and magnitude were RIGHT, but 2.0 bps width was too tight** (missed by 1.4 bps, scored +0.83 skill, but got lucky; a 3 bps wider move would have been outside the quote)\n\n2. **The correct play on whale alerts listicles: predict 0 with 12-18 bps width.**\n   - Direction is uncertain (bullish informed flow vs. bearish hedging)\n   - Magnitude is 5-20 bps unpredictably\n   - **Predicting 0 with 15 bps width covers a 20 bps move in either direction**\n   - This is insurance: you score zero on no-move (correct), small negative on 5-10 bps moves (acceptable), and avoid catastrophic misses on 15-20 bps moves\n\n3. **Single-symbol FDA approval news moves 20-50+ bps, but the harness got direction wrong on ABT.**\n   - **ABT \"FDA Approves Abbott's First Wearable Device for Dual Ketone and Glucose Tracking\"** (6 symbols: ABT, BBNX, DXCM, MMED, PODD, TNDM): predicted +8.8 bps (8.8 width), actual -51.0 bps\n   - FDA approval is material, stock-specific news\n   - But the tape showed ABT spiking from 115.38 to 116.72 (+116 bps) in the first 6 minutes, then drifting back to 116.12 (-51 bps over the next 5 minutes)\n   - **This is a classic \"buy the rumor, sell the news\" pattern: the spike happened BEFORE the story timestamp, the next 5 minutes were the fade**\n   - The harness predicted continuation (+8.8 bps) when it should have checked: is the stock at a local high? Has it already spiked 100+ bps in the last 10 minutes? If yes, predict mean reversion (down 20-50 bps) or stand aside with wide width (30+ bps)\n\n4. **Broad sector listicles (8+ sectors, market-wide observation) are noise.**\n   - **XOM \"8 Of 11 Sectors Fall In Thursday Trading As Leaders Split\"** (96+ symbols, sector performance summary): predicted -2.3 bps (2.2 width), actual +0.0 bps \u2014 **correct zero-move call**\n   - This is a market-wide observation with no stock-specific catalyst\n   - Correctly predicted 0 with 2-3 bps width\n\n5. **Multi-symbol supplier/partner stories with one stock as the focus move others 5-10 bps unpredictably.**\n   - **GOOGL \"Why Is SanDisk Stock Surging On Thursday?\"** (6 symbols: AMZN, GOOG, GOOGL, META, MSFT, SNDK; story focus is SanDisk memory shortage, Tim Cook quote): predicted +2.5 bps (5.5 width), actual -6.5 bps\n   - SanDisk is surging on memory shortage; GOOGL is named as a memory buyer (indirect beneficiary of tight supply? or cost pressure?)\n   - Direction is uncertain; the harness guessed up, actual was down\n   - **When the story's focus is one stock and others are named as suppliers/partners/affected parties, predict 0 with 10-15 bps width**\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 30-45 minutes, 1-minute bars\n   - **If the stock has spiked 50+ bps in the last 10-15 minutes and is near a local high, the next 5 minutes are likely mean reversion (down 20-50 bps) or consolidation (flat with wide variance)**\n   - Example: ABT spiked from 115.38 to 116.72 (+116 bps) in 6 minutes before the FDA approval story timestamp; the next 5 minutes it faded -51 bps\n   - **If you're predicting continuation but the tape shows a fresh spike, STOP. Predict mean reversion or stand aside with 30+ bps width.**\n\n### **2. Classify the story's relevance and signal strength**\n\n   **A. Whale alerts listicles (10 symbols, options activity roundup):**\n   - Examples: \"10 Consumer Discretionary Stocks With Whale Alerts In Today's Session\" (10 symbols: TSLA, BABA, BKNG, etc.), \"10 Information Technology Stocks Whale Activity\" (10 symbols: AMD, AVGO, QCOM, etc.)\n   - **Options activity can signal informed bullish flow OR defensive bearish hedging; direction is unknowable from the headline alone**\n   - Individual names move 5-20 bps unpredictably (TSLA -18.6 bps on one story, +0.4 bps on another; QCOM +19.6 bps, AVGO +7.8 bps, AMD -8.4 bps)\n   - **Predict 0 with 12-18 bps width** to guard both sides\n   - **This is the single most common failure mode:** harness used 2-7 bps width on whale alerts, consistently got run over\n   - Examples:\n     - TSLA (06-30): predicted -3.4 bps with 4.6 width, actual -18.6 bps \u2192 should have predicted 0 with 15 bps width\n     - QCOM: predicted -3.3 bps with 4.7 width, actual +19.6 bps \u2192 should have predicted 0 with 15 bps width\n     - AVGO: predicted -5.0 bps with 3.0 width, actual +7.8 bps \u2192 should have predicted 0 with 12 bps width\n     - AMD: predicted -6.9 bps with 2.0 width, actual -8.4 bps \u2192 direction right, but 2.0 width too tight; should have used 15 bps width\n   \n   **B. Single-symbol material news (FDA approval, earnings, guidance) after a fresh spike:**\n   - Examples: ABT \"FDA Approves Abbott's First Wearable Device\" (spike from 115.38 to 116.72 in 6 minutes, then story breaks)\n   - **Check the tape:** if the stock has spiked 50+ bps in the last 10-15 minutes, the next 5 minutes are likely mean reversion or consolidation\n   - Predict -20 to -50 bps (fade) with 30-40 bps width, OR stand aside with 40+ bps width if uncertain\n   - Do NOT predict continuation after a fresh spike\n   \n   **C. Supplier/partner stories (one stock is the focus, others are named as related):**\n   - Examples: GOOGL \"Why Is SanDisk Stock Surging On Thursday?\" (6 symbols: SanDisk is the focus, GOOGL/AMZN/META/MSFT are memory buyers)\n   - **The questioned stock is not the story's focus; it's named as a supplier/partner/affected party**\n   - Direction is uncertain (indirect beneficiary? cost pressure? neutral?)\n   - Predict 0 with 10-15 bps width\n   - Example: GOOGL moved -6.5 bps (predicted +2.5 bps with 5.5 width) \u2192 should have predicted 0 with 12 bps width\n   \n   **D. Broad sector listicles (8+ sectors, market-wide observation, no stock-specific catalyst):**\n   - Examples: \"8 Of 11 Sectors Fall In Thursday Trading As Leaders Split\" (96+ symbols, sector performance summary)\n   - **Market-wide observation; no stock-specific thesis**\n   - Predict 0 with 2-5 bps width\n   - Example: XOM moved 0.0 bps (predicted -2.3 bps with 2.2 width) \u2192 correct\n\n### **3. Direction discipline: check the tape for fresh spikes**\n\n   - **If the stock has spiked 50+ bps in the last 10-15 minutes and you're predicting continuation, STOP.**\n   - **Fresh spikes fade or consolidate over the next 5 minutes; they rarely continue.**\n   - Example: ABT spiked +116 bps from 115.38 to 116.72 in 6 minutes, then faded -51 bps over the next 5 minutes\n   - **If you see a fresh spike, predict mean reversion (down 20-50 bps) or stand aside with 30-40 bps width.**\n\n### **4. Magnitude calibration by story type**\n\n   - **Broad sector listicle (8+ sectors, market-wide observation, no stock-specific catalyst):** 0 \u00b1 2-5 bps, width 2-5 bps\n   - **Supplier/partner story (questioned stock is not the focus, direction uncertain):** 0 bps, width 10-15 bps\n   - **Whale alerts listicle (10 symbols, options activity, direction uncertain):** 0 bps, width 12-18 bps\n   - **Single-symbol material news after a fresh spike (50+ bps in last 10-15 min):** -20 to -50 bps (fade), width 30-40 bps, OR stand aside with 40+ bps width\n\n### **5. Width is insurance against confident mistakes**\n\n   - **2-5 bps: RARELY USE.** Only on broad sector listicles (8+ sectors, market-wide observation, no stock-specific catalyst).\n   - **10-15 bps: supplier/partner stories (questioned stock is not the focus, direction uncertain)**\n   - **12-18 bps: whale alerts listicles (10 symbols, options activity roundup, direction uncertain)**\n   - **30-40 bps: single-symbol material news after a fresh spike (mean reversion or consolidation expected)**\n   \n   **The AMD (07-06) lesson:** predicted -6.9 bps, actual -8.4 bps \u2014 direction and magnitude were RIGHT, but 2.0 bps width was too tight (missed by 1.4 bps, got lucky with +0.83 skill, but a 3 bps wider move would have been outside the quote). **On whale alerts, always use 12-18 bps width, even when you have a directional view.**\n\n### **6. Special case: Whale alerts listicles (10 symbols, options activity)**\n\n   When a story lists 10 symbols with whale alerts (large options flow), **individual names move 5-20 bps unpredictably in either direction:**\n   - Options activity can signal informed bullish positioning (someone knows good news is coming) OR defensive hedging (someone is protecting against downside)\n   - The headline does not tell you which\n   - TSLA moved -18.6 bps on one whale alerts story, +0.4 bps on another\n   - QCOM moved +19.6 bps, AVGO +7.8 bps, AMD -8.4 bps\n   - **Predict 0 with 12-18 bps width to guard both sides**\n   - This is insurance: you score zero on no-move (correct), small negative on 5-10 bps moves (acceptable), and avoid catastrophic misses on 15-20 bps moves\n   - **Do NOT use 2-7 bps width on whale alerts, even if you have a directional view (AMD lesson: right direction, too-tight width)**\n\n### **7. Special case: Single-symbol material news after a fresh spike**\n\n   When the stock has spiked 50+ bps in the last 10-15 minutes and a material news story breaks (FDA approval, earnings, guidance):\n   - **The spike often happens BEFORE the story timestamp (algos, insider flow, early leaks)**\n   - **The next 5 minutes are usually mean reversion (fade) or consolidation (flat with wide variance)**\n   - Example: ABT spiked from 115.38 to 116.72 (+116 bps) in 6 minutes before the FDA approval story, then faded to 116.12 (-51 bps) over the next 5 minutes\n   - **Check the tape:** is the stock at a local high? Has it spiked 50+ bps in the last 10-15 minutes?\n   - If yes, predict -20 to -50 bps (fade) with 30-40 bps width, OR stand aside with 40+ bps width if uncertain\n   - **Do NOT predict continuation after a fresh spike**\n\n### **8. Special case: Supplier/partner stories (one stock is the focus, others are named)**\n\n   When the story's focus is one stock (e.g., SanDisk surging) and the questioned stock is named as a supplier/partner/affected party (e.g., GOOGL as a memory buyer):\n   - **The questioned stock is not the story's focus; the connection is indirect**\n   - Direction is uncertain (indirect beneficiary? cost pressure? neutral?)\n   - Predict 0 with 10-15 bps width\n   - Example: GOOGL moved -6.5 bps on \"Why Is SanDisk Stock Surging On Thursday?\" (predicted +2.5 bps with 5.5 width) \u2192 should have predicted 0 with 12 bps width\n\n### **9. Cross-check before finalizing**\n\n   - **Did I check the tape for a fresh spike (50+ bps in last 10-15 minutes)?** If yes, am I predicting mean reversion or standing aside with 30+ bps width? (If I'm predicting continuation, STOP)\n   - **Is this a whale alerts listicle (10 symbols, options activity)?** If yes, did I predict 0 with 12-18 bps width? (If I used 2-7 bps width, WIDEN to 15 bps)\n   - **Is the questioned stock not the story's focus (supplier/partner story)?** If yes, did I predict 0 with 10-15 bps width?\n   - **Is this a broad sector listicle (8+ sectors, market-wide observation)?** If yes, did I predict 0 with 2-5 bps width?\n   - **Did I use 2 bps width?** (If yes, ask: is this an 8+ sector broad listicle with no stock-specific catalyst? If no, widen to 10-15 bps minimum)\n\n---\n\n## **The pattern is clear:**\n\nThe harness **systematically underestimates width on whale alerts listicles.** It used 2-7 bps width on whale alerts stories where individual names moved 5-20 bps unpredictably (TSLA -18.6 bps, QCOM +19.6 bps, AVGO +7.8 bps, AMD -8.4 bps). **AMD (07-06) shows the core problem:** predicted -6.9 bps, actual -8.4 bps \u2014 **direction and magnitude were RIGHT, but 2.0 bps width was too tight** (missed by 1.4 bps, scored +0.83 skill, but a 3 bps wider move would have been outside the quote). **On whale alerts, always predict 0 with 12-18 bps width, even when you have a directional view.** Options activity can signal informed bullish flow OR defensive hedging; the headline does not tell you which. The harness also missed the \"buy the rumor, sell the news\" pattern on ABT: the stock spiked +116 bps in 6 minutes before the FDA approval story, then faded -51 bps over the next 5 minutes (predicted +8.8 bps continuation, should have predicted -30 to -50 bps fade with 30-40 bps width). **Check the tape for fresh spikes before predicting continuation.** On supplier/partner stories (GOOGL on the SanDisk memory shortage story), predict 0 with 10-15 bps width when the questioned stock is not the story's focus. The harness correctly identified noise on broad sector listicles (XOM +0.0 bps on \"8 Of 11 Sectors Fall\").",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
