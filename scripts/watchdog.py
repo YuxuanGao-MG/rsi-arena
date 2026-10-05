@@ -74,6 +74,15 @@ WATCHED = ("loop.yml", "live.yml", "live-crypto.yml", "live-news.yml")
 #: weekday-only workflow nothing.
 MISSES_ALLOWED = 2
 
+#: How long after its cron a run may still be waiting to start. Not a guess:
+#: over the last forty scheduled runs of each workflow in this repository,
+#: GitHub started them a median of 82 to 112 minutes after the time written in
+#: the cron, with a worst case of 255. A firing younger than this has not been
+#: missed, it has not happened yet, and judging it is how this check reported
+#: the loop as stopped five minutes after a cron it was going to honour an hour
+#: later. Measured with `scripts/watchdog.py --delays`.
+START_GRACE = timedelta(minutes=300)
+
 #: A topic that has not finished a generation in this long has stopped
 #: evolving, whatever the workflow's own status says.
 GENERATION_HOURS = 20
@@ -332,11 +341,13 @@ def check_workflows(rep: Report, repo: str) -> None:
         when = lambda r: datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))
         crons = crons_of(wf)
         now = datetime.now(UTC)
-        due = firings_before(crons, now, MISSES_ALLOWED) if crons else []
+        # Judged only once they are old enough to have started. See START_GRACE.
+        due = firings_before(crons, now - START_GRACE, MISSES_ALLOWED) if crons else []
         if due:
             # The oldest of the last few scheduled firings. Anything green or
             # still going since then means the schedule is being honoured.
-            cutoff, said = due[-1], f"since {due[-1]:%d %b %H:%M}Z ({len(due)} due)"
+            cutoff, said = due[-1], (f"since {due[-1]:%d %b %H:%M}Z ({len(due)} due, "
+                                     f"allowing {START_GRACE.total_seconds() / 3600:.0f}h to start)")
         else:
             # No cron, or one this cannot read: fall back on a flat day.
             cutoff, said = now - timedelta(hours=24), "in 24h"
@@ -714,6 +725,8 @@ def main() -> int:
     ap.add_argument("--skip-git", action="store_true", help="do not read the remote branch")
     ap.add_argument("--skip-reader", action="store_true", help="do not fetch the deployed page")
     ap.add_argument("--skip-s3", action="store_true", help="do not list the trace bucket")
+    ap.add_argument("--delays", action="store_true",
+                    help="print how late GitHub has been starting each schedule, and exit")
     args = ap.parse_args()
 
     # Each check inside a guard. One of them raising used to end the run with a
@@ -722,6 +735,21 @@ def main() -> int:
     # answers the other checks would have given were simply absent. A watchdog
     # that goes blind on one bad check is worse than one check fewer, so an
     # exception becomes that check's own fault and the rest still report.
+    if args.delays:
+        for wf in WATCHED:
+            raw = gh(["run", "list", "--workflow", wf, "--repo", args.repo, "--limit", "40",
+                      "--json", "createdAt,event"])
+            runs = [datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))
+                    for r in json.loads(raw or "[]") if r.get("event") == "schedule"]
+            crons = crons_of(wf)
+            late = sorted(d for started in runs
+                          for due in firings_before(crons, started + timedelta(minutes=1), 1)
+                          if 0 <= (d := (started - due).total_seconds() / 60) < 360)
+            if late:
+                print(f"  {wf:18} {len(late):3} runs   median {late[len(late) // 2]:5.0f} min"
+                      f"   p90 {late[int(0.9 * (len(late) - 1))]:5.0f}   max {late[-1]:5.0f}")
+        return 0
+
     rep = Report()
     for name, run in (("workflows", lambda: check_workflows(rep, args.repo)),
                       ("repository", None if args.skip_git else lambda: check_repo(rep)),

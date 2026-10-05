@@ -154,6 +154,22 @@ def test_live_news_is_not_overdue_on_a_saturday():
     assert due[-1].isoweekday() <= 5
 
 
+def test_a_firing_too_young_to_have_started_is_not_judged():
+    """GitHub starts these schedules a median of 82 to 112 minutes late, worst
+    case 255, measured over forty runs of each (`watchdog.py --delays`). Judging
+    a firing the moment its cron passes reported the loop as stopped five
+    minutes after a cron it honoured an hour later."""
+    assert watchdog.START_GRACE >= timedelta(minutes=255), \
+        "the grace is under the worst start delay this repository has actually seen"
+    now = datetime(2026, 10, 5, 3, 22, tzinfo=UTC)
+    crons = watchdog.crons_of("loop.yml")
+    judged = watchdog.firings_before(crons, now - watchdog.START_GRACE, 1)
+    assert judged, "nothing at all is being judged"
+    assert judged[0] <= now - watchdog.START_GRACE, "a firing inside the grace was judged"
+    # and the 03:17 firing, five minutes before `now`, must not be among them
+    assert all(f < datetime(2026, 10, 5, 3, 17, tzinfo=UTC) for f in judged)
+
+
 # ---------------------------------------------------------------------------
 # Listing the bucket.
 
