@@ -35,7 +35,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import statistics
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -89,13 +92,60 @@ def has_trading_tables(cur) -> bool:
 # ---------------------------------------------------------------------------
 # Rows.
 
+
+def restated(stats: dict, book: dict, topic: str) -> dict:
+    """The book's statistics with the time-based ones re-judged by today's rule.
+
+    A book file on disk carries whatever `equity_stats` computed on the day it
+    was written, and on 4 October that changed: an annualised Sharpe is
+    meaningful only where the marks are consecutive, and a replay book's are the
+    question set's windows, scattered across a year. Publishing the stored blob
+    verbatim meant republishing one old run re-introduced six books' worth of
+    numbers that had just been corrected - which is how this was found, by
+    republishing gen2 and watching `restate_sharpe.py` have work to do again.
+
+    So the three fields that depend on the rule are recomputed here from the
+    book's own marks and trades, and everything else is passed through.
+    """
+    from rsi_arena.trading.stats import CYCLES_PER_YEAR, is_contiguous
+
+    out = dict(stats or {})
+
+    class _M:                                     # enough of a Mark to be timed
+        def __init__(self, at):
+            self.at = at
+
+    marks = []
+    for m in book.get("marks") or []:
+        at = m.get("at")
+        if not at:
+            continue
+        marks.append(_M(at if isinstance(at, datetime) else datetime.fromisoformat(str(at))))
+    per_year = CYCLES_PER_YEAR.get(topic, 0)
+    contiguous = is_contiguous(marks, (365 * 24 * 3600) / per_year if per_year else 0)
+    out["contiguous"] = contiguous
+    if not contiguous:
+        out["sharpe"] = None
+        out["daily_sharpe"] = None
+
+    pnls = [float(t["pnl_usd"]) for t in (book.get("trades") or [])
+            if t.get("pnl_usd") is not None]
+    t = None
+    if len(pnls) >= 3:
+        sd = statistics.stdev(pnls)
+        if sd:
+            t = statistics.mean(pnls) / (sd / math.sqrt(len(pnls)))
+    out["trade_t"] = t
+    return out
+
+
 def book_row(topic: str, book: dict, *, kind: str, book_id: str) -> dict[str, Any]:
     """One ``rsi.books`` row from a book file or a live state file."""
     return {"topic": topic, "book_id": book_id,
             "harness_fp": book.get("harness_fp"), "harness_name": book.get("harness_name"),
             "kind": kind, "run_id": book.get("run_id"), "side": book.get("side"),
             "split": book.get("split"), "started_at": book.get("started_at"),
-            "stats": Json(book.get("stats") or {})}
+            "stats": Json(restated(book.get("stats") or {}, book, topic))}
 
 
 def trade_row(topic: str, book_id: str, t: dict, *, harness_fp: str | None = None) -> dict[str, Any]:

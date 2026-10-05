@@ -155,7 +155,15 @@ def test_a_book_file_is_replaced_whole_in_order(pub, tmp_path):
     assert (book["topic"], book["book_id"], book["kind"]) == \
         (TOPIC, "gen1@kalshi-jev:baseline:holdout", "replay")
     assert (book["run_id"], book["side"], book["split"]) == ("gen1@kalshi-jev", "baseline", "holdout")
-    assert book["stats"].adapted == STATS
+    # Not the blob verbatim: the publisher re-judges the time-based statistics
+    # with today's rule, so republishing an old book file cannot put a corrected
+    # number back. Everything else passes through untouched.
+    published = book["stats"].adapted
+    assert {k: v for k, v in published.items()
+            if k not in ("sharpe", "daily_sharpe", "contiguous", "trade_t")} == \
+        {k: v for k, v in STATS.items() if k not in ("sharpe", "daily_sharpe")}
+    assert published["contiguous"] is False, "these fixture marks are not consecutive"
+    assert published["sharpe"] is None and published["daily_sharpe"] is None
     assert cur.calls[1][1] == cur.calls[2][1] == (TOPIC, "gen1@kalshi-jev:baseline:holdout")
 
     # Trades take the book's harness and id; the open one has nulls where it should.
@@ -237,7 +245,15 @@ def test_live_mode_publishes_past_the_sidecar_and_advances_it_after_commit(pub, 
         ["insert into rsi.books", "insert into rsi.trades", "insert into rsi.book_marks"]
     book = dict(zip(pub.BOOK_COLUMNS, cur.calls[1][1]))
     assert (book["book_id"], book["kind"], book["harness_fp"]) == (f"live:{TOPIC}", "live", "fp-live")
-    assert book["stats"].adapted == STATS
+    # Not the blob verbatim: the publisher re-judges the time-based statistics
+    # with today's rule, so republishing an old book file cannot put a corrected
+    # number back. Everything else passes through untouched.
+    published = book["stats"].adapted
+    assert {k: v for k, v in published.items()
+            if k not in ("sharpe", "daily_sharpe", "contiguous", "trade_t")} == \
+        {k: v for k, v in STATS.items() if k not in ("sharpe", "daily_sharpe")}
+    assert published["contiguous"] is False, "these fixture marks are not consecutive"
+    assert published["sharpe"] is None and published["daily_sharpe"] is None
     # Only the second line of each: the close, with its exit filled in.
     (only_trade,) = cur.calls[2][1]
     assert dict(zip(pub.TRADE_COLUMNS, only_trade))["closed_at"] == "2026-09-20T15:05:00+00:00"
@@ -431,3 +447,48 @@ def test_the_publisher_names_every_column_the_table_has(table, writer):
         f"rsi.{table} has {sorted(missing)} and {writer} never names them, so they are "
         f"null on every row. If a column is deliberately not written by this script, "
         f"say so here with the name of what does write it.")
+
+
+# ---------------------------------------------------------------------------
+# Republishing must not reintroduce a statistic that was corrected.
+
+def _book_file(marks_minutes, pnls, topic="crypto-horizon-1m"):
+    from datetime import datetime, timedelta, timezone
+    t0 = datetime(2026, 10, 4, tzinfo=timezone.utc)
+    return {
+        "book_id": "b", "topic": topic, "harness_fp": "fp",
+        "marks": [{"at": (t0 + timedelta(minutes=m)).isoformat(), "equity_usd": 1e6}
+                  for m in marks_minutes],
+        "trades": [{"pnl_usd": p} for p in pnls],
+        # what an older `equity_stats` left on disk
+        "stats": {"total_return": -0.02, "sharpe": -394.76, "daily_sharpe": -85.7},
+    }
+
+
+def test_a_stale_sharpe_on_disk_is_not_republished():
+    """A book file carries whatever was computed the day it was written. One
+    republish of gen2 put six corrected books back to their old numbers, which
+    is how this was found."""
+    from publish_trading import restated
+    book = _book_file([0, 180, 360, 540], [-10.0, -11.0, -9.0, -10.5])
+    out = restated(book["stats"], book, "crypto-horizon-1m")
+    assert out["contiguous"] is False
+    assert out["sharpe"] is None and out["daily_sharpe"] is None
+    assert out["trade_t"] is not None and out["trade_t"] < -5
+    assert out["total_return"] == -0.02, "everything else must pass through"
+
+
+def test_a_book_whose_marks_are_consecutive_keeps_its_sharpe():
+    from publish_trading import restated
+    book = _book_file(list(range(8)), [1.0, -1.0, 2.0])
+    out = restated(book["stats"], book, "crypto-horizon-1m")
+    assert out["contiguous"] is True
+    assert out["sharpe"] == -394.76, "a live book's Sharpe is still meaningful"
+
+
+def test_restating_is_idempotent():
+    from publish_trading import restated
+    book = _book_file([0, 180, 360, 540], [-10.0, -11.0, -9.0])
+    once = restated(book["stats"], book, "crypto-horizon-1m")
+    twice = restated(once, book, "crypto-horizon-1m")
+    assert once == twice
