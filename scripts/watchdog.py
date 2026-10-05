@@ -95,6 +95,23 @@ READER_TOPICS = ("kalshi-horizon-5m", "crypto-horizon-1m", "news-equity-5m")
 RUN_COLUMNS = ("id,topic,created,parent,accepted,reasons,incumbent_fp,candidate_fp,"
                "baseline,candidate,decision,search,llm,split")
 
+#: Every request a topic's pages make, not just the overview's two. The News
+#: pages stopped loading on 4 October - "the database did not answer within 15s"
+#: - and this check was green throughout, because the two queries it knew about
+#: were fine and the three it did not know about were 16 seconds, 1.6 seconds
+#: and a sort of thirteen thousand rows. A check that covers some of the pages
+#: reports on some of the outages.
+READER_QUERIES = (
+    ("overview runs", "runs?select={RUN}&topic=eq.{t}&order=created.desc&limit=200", None),
+    ("overview skill", "run_side_stats?select=run_id,side,rows_total,scored,refusals,quiet,"
+                       "removed,benchmark&split=eq.holdout&topic=eq.{t}", 2.0),
+    ("metrics windows", "rollouts?select=run_id,side,skill,err,naive_error,unmeasurable,ok,"
+                        "scored&split=eq.holdout&topic=eq.{t}", 2.0),
+    ("trading marks", "book_marks?select=at,equity_usd,cash_usd,gross_exposure_usd,"
+                      "open_positions,drawdown,event&topic=eq.{t}&order=at.asc", 2.0),
+    ("trading trades", "trades?select=*&topic=eq.{t}&order=opened_at.desc&limit=500", 2.0),
+)
+
 #: Supabase cancels a statement at three seconds, so a query approaching that is
 #: worth saying out loud before it crosses. How close is measured only where the
 #: measurement means something: an aggregate returning five kilobytes spends its
@@ -511,14 +528,13 @@ def check_reader(rep: Report) -> None:
 
     for topic in READER_TOPICS:
         notes, faults = [], []
-        for what, query in (
-            ("runs", f"runs?select={RUN_COLUMNS}&topic=eq.{topic}"
-                     f"&order=created.desc&limit=200"),
-            ("pooled skill", f"run_side_stats?select=run_id,side,removed,benchmark"
-                             f"&split=eq.holdout&topic=eq.{topic}&limit=1000"),
-        ):
+        for what, shape, budget in READER_QUERIES:
+            query = shape.format(RUN=RUN_COLUMNS, t=topic)
             took, size, broke = fetch(query)
-            budget = SLOW_SECONDS.get(what)
+            # A budget of None means the wall clock is mostly transfer - the
+            # runs query ships a megabyte and a half of jsonb - so it is only
+            # required to work. The rest are small and their clock is database
+            # time, so slowness in them is worth saying before it is a 500.
             if not broke and budget and took > budget:
                 # Confirmed, not assumed: re-read before calling it slow.
                 for _ in range(CONFIRM - 1):
@@ -531,7 +547,7 @@ def check_reader(rep: Report) -> None:
             if budget and took > budget:
                 faults.append(f"{what} took {took:.1f}s of the 3s a statement gets, twice over")
             notes.append(f"{what} {took:.2f}s/{size / 1024:.0f}KB")
-        name = f"{topic} overview loads"
+        name = f"{topic} pages load"
         if faults:
             rep.bad(name, "; ".join(faults))
         else:

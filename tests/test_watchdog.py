@@ -261,7 +261,7 @@ def test_a_500_from_the_overview_is_a_fault(monkeypatch):
     monkeypatch.setattr(watchdog, "READER_TOPICS", ("t",))
     rep = watchdog.Report()
     watchdog.check_reader(rep)
-    assert [name for name, ok, _ in rep.faults] == ["t overview loads"]
+    assert [name for name, ok, _ in rep.faults] == ["t pages load"]
     assert "500" in rep.faults[0][2]
 
 
@@ -279,7 +279,11 @@ def test_slowness_is_confirmed_before_it_is_reported(monkeypatch):
     monkeypatch.setattr(watchdog, "READER_TOPICS", ("t",))
     # Negative, not zero: a fake answers in about no time at all, and `took > 0.0`
     # is then false on a fast machine, which would pass this test by not testing.
-    monkeypatch.setattr(watchdog, "SLOW_SECONDS", {"pooled skill": -1.0})
+    # Every budget negative, so any reading counts as slow; the runs query keeps
+    # its None budget, which is the behaviour under test.
+    monkeypatch.setattr(watchdog, "READER_QUERIES", tuple(
+        (what, shape, None if budget is None else -1.0)
+        for what, shape, budget in watchdog.READER_QUERIES))
     served = Served([])
     monkeypatch.setattr(watchdog.urllib.request, "urlopen", served)
     rep = watchdog.Report()
