@@ -126,22 +126,28 @@ SLOW_SECONDS = {"pooled skill": 2.0}
 #: a second attempt before it becomes a fault.
 CONFIRM = 2
 
-#: Columns a migration added for something to write, with how recent a row must
-#: be for its emptiness to count. A column that is null on every row is either a
-#: feature that never shipped or a pipeline step that silently stopped, and
-#: neither announces itself: `rsi.live_forecasts.quote`, `fills` and `path` were
-#: null on every row from the day migration 010 created them until 4 October,
-#: because the paper trader ran after the publisher and never wrote the record
-#: back. Three months, no error, and the contract says every window must post a
-#: two-sided quote.
+#: Columns that are legitimately null on every row, and why. Everything else
+#: that is null on every row of a table that has rows gets reported.
 #:
-#: Only columns something is *supposed* to fill belong here. A column that is
-#: legitimately sparse would make this noise.
-WRITTEN_COLUMNS = {
-    ("live_forecasts", "quote"): 24,
-    ("live_forecasts", "fills"): 24,
-    ("live_forecasts", "path"): 24,
+#: Written as an allowlist rather than a watchlist because the watchlist missed
+#: things twice. `rsi.live_forecasts.quote`, `fills` and `path` were null from
+#: the day migration 010 created them - three months, on a contract that says
+#: every window must post a two-sided quote. And `rsi.runs.audit` was null on
+#: all 103 runs because the publisher's INSERT never named it, which migration
+#: 002's own comment had predicted ("so publish_runs.py was dropping it on the
+#: floor") while adding the column to fix it. Neither failed, neither was slow,
+#: and nothing looked. A column nobody has written is either a feature that
+#: never shipped or a step that silently stopped.
+COLUMNS_ALLOWED_EMPTY = {
+    # Nothing has gone wrong on these tables lately, which is the good case.
+    ("rollouts", "error_text"),
+    ("live_forecasts", "error_text"),
+    ("live_forecasts", "unscored_because"),
 }
+
+#: Tables the scan skips entirely: a feature nobody has used yet is not a fault.
+TABLES_ALLOWED_EMPTY = {"votes", "guesses", "trace_feedback"}
+
 
 #: Where the trajectories live, and what each topic is called there.
 #:
@@ -419,26 +425,37 @@ def check_database(rep: Report) -> None:
                 rep.bad(f"{topic} is forecasting", f"{n} forecasts in 12h, none scored")
             else:
                 rep.ok(f"{topic} is forecasting", f"{n} in 12h, {s} scored")
-        # A column nothing writes. Checked on recent rows only: the three that
-        # prompted this were empty for three months and the backfill is not
-        # worth it, so what matters is that they are filled *now*.
-        for (table, column), hours in sorted(WRITTEN_COLUMNS.items()):
-            try:
-                cur.execute(f"""select count(*), count({column}) from rsi.{table}
-                                 where at > now() - interval '{int(hours)} hours'""")
-                total, filled = cur.fetchone()
-            except Exception as exc:                      # noqa: BLE001
-                conn.rollback()
-                rep.ok(f"{table}.{column} is written", f"could not check: {str(exc)[:60]}")
+        # Every column of every table, not a list somebody remembered to keep.
+        cur.execute("""select table_name, column_name from information_schema.columns
+                        where table_schema = 'rsi' order by table_name, ordinal_position""")
+        by_table: dict[str, list[str]] = {}
+        for table, column in cur.fetchall():
+            by_table.setdefault(table, []).append(column)
+        cur.execute("""select matviewname from pg_matviews where schemaname = 'rsi'""")
+        derived = {r[0] for r in cur.fetchall()}
+        empty: list[str] = []
+        for table, columns in by_table.items():
+            if table in derived or table in TABLES_ALLOWED_EMPTY:
                 continue
-            where = f"{table}.{column} is written"
+            try:
+                counts = ", ".join(f"count({c})" for c in columns)
+                cur.execute(f"select count(*), {counts} from rsi.{table}")
+                row = cur.fetchone()
+            except Exception:                                  # noqa: BLE001
+                conn.rollback()
+                continue
+            total, filled = row[0], row[1:]
             if not total:
-                rep.ok(where, f"no {table} rows in {hours}h to judge by")
-            elif filled:
-                rep.ok(where, f"{filled} of {total} rows in {hours}h")
-            else:
-                rep.bad(where, f"null on all {total} rows in the last {hours}h; "
-                               f"whatever fills it has stopped or never started")
+                continue
+            empty += [f"{table}.{c}" for c, n in zip(columns, filled)
+                      if n == 0 and (table, c) not in COLUMNS_ALLOWED_EMPTY]
+        if empty:
+            rep.note("columns_never_written", sorted(empty))
+            rep.bad("every column is written",
+                    f"{len(empty)} column(s) are null on every row: {', '.join(empty[:5])}"
+                    + (" ..." if len(empty) > 5 else ""))
+        else:
+            rep.ok("every column is written", "no column is null on every row")
 
         # The overview reads a materialised view, so it is only as true as its
         # last refresh. `publish_runs.py` refreshes it after writing rollouts;

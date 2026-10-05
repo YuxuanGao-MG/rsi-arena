@@ -9,6 +9,7 @@ the order can be asserted.
 from __future__ import annotations
 
 import importlib.util
+import re
 import json
 from pathlib import Path
 
@@ -379,3 +380,54 @@ def test_the_live_workflow_trades_and_publishes_the_book(name):
     assert "env.SUPABASE_DB_URL != ''" in publish["if"]
     # The same guard as the forecasts' publish, whatever it is in this file.
     assert publish["if"] == by["Publish to the reader"]["if"]
+
+
+# ---------------------------------------------------------------------------
+# A column the writer never names.
+#
+# `rsi.runs.audit` existed from migration 002 and the publisher's INSERT never
+# mentioned it, so it was null on all 103 runs - including the three promotions
+# whose whole point is that a frozen set confirmed them, and behind a reader
+# panel that had therefore never once appeared. Nothing failed, nothing was
+# slow, and no check looked. This one is static, so it costs nothing and runs
+# with the suite.
+
+def _insert_columns(sql_text, table):
+    """The column list of the INSERT into `table` in this source."""
+    m = re.search(rf"insert\s+into\s+rsi\.{table}\s*\(([^)]*)\)", sql_text, re.I | re.S)
+    return {c.strip() for c in m.group(1).split(",")} if m else set()
+
+
+def _declared_columns(table):
+    """What the migrations create and add for `table`, in declaration order."""
+    cols = set()
+    for path in sorted((ROOT / "supabase" / "migrations").glob("*.sql")):
+        text = path.read_text()
+        made = re.search(rf"create table (?:if not exists )?rsi\.{table}\s*\((.*?)\n\);",
+                         text, re.I | re.S)
+        if made:
+            for line in made.group(1).splitlines():
+                line = line.strip()
+                if not line or line.startswith("--"):
+                    continue
+                first = line.split()[0].strip(",")
+                if first.lower() in ("primary", "unique", "foreign", "constraint", "check"):
+                    continue
+                cols.add(first)
+        for add in re.finditer(rf"alter table rsi\.{table}\s+add column (?:if not exists )?(\w+)",
+                               text, re.I):
+            cols.add(add.group(1))
+    return cols
+
+
+@pytest.mark.parametrize("table,writer", [("runs", "publish_runs.py")])
+def test_the_publisher_names_every_column_the_table_has(table, writer):
+    declared = _declared_columns(table)
+    assert declared, f"no migration appears to create rsi.{table}"
+    written = _insert_columns((ROOT / "scripts" / writer).read_text(), table)
+    assert written, f"{writer} has no insert into rsi.{table}"
+    missing = declared - written
+    assert not missing, (
+        f"rsi.{table} has {sorted(missing)} and {writer} never names them, so they are "
+        f"null on every row. If a column is deliberately not written by this script, "
+        f"say so here with the name of what does write it.")

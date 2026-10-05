@@ -399,14 +399,14 @@ def publish(cur, run_dir: Path, *, trading: bool | None = None,
     cur.execute("""
         insert into rsi.runs (id, topic, created, parent, incumbent, incumbent_fp,
                               candidate_fp, accepted, reasons, baseline, candidate,
-                              decision, search, llm, split)
-        values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                              decision, search, llm, split, audit)
+        values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         on conflict (id) do update set
             topic = excluded.topic, parent = excluded.parent,
             accepted = excluded.accepted, reasons = excluded.reasons,
             baseline = excluded.baseline, candidate = excluded.candidate,
             decision = excluded.decision, search = excluded.search,
-            llm = excluded.llm, split = excluded.split
+            llm = excluded.llm, split = excluded.split, audit = excluded.audit
     """, (run_id, manifest["topic"], manifest.get("created"),
           qualified(manifest.get("parent"), manifest["topic"]),
           manifest.get("incumbent"), manifest.get("incumbent_fingerprint"),
@@ -415,7 +415,13 @@ def publish(cur, run_dir: Path, *, trading: bool | None = None,
           manifest.get("decision", {}).get("reasons") or [],
           Json(manifest.get("baseline")), Json(manifest.get("candidate")),
           Json(manifest.get("decision")), Json(manifest.get("search")),
-          Json(manifest.get("llm")), Json(manifest.get("split"))))
+          Json(manifest.get("llm")), Json(manifest.get("split")),
+          # The confirmation pass. `rsi.runs` has had a column for it since
+          # migration 002 and this insert never named it, so for 103 runs it was
+          # null - including the three promotions whose whole point is that a
+          # frozen set confirmed them. `web/views/run.js` renders a panel from
+          # it and that panel has never once appeared.
+          Json(manifest.get("audit"))))
 
     topic = manifest.get("topic") or ""
     rollouts, traced = publish_rollouts(cur, run_id, run_dir, topic)
