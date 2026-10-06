@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen40",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Width discipline is the single most important skill.** The core mistake is quoting 2-5 bps half-width on everything. This loses skill even when you call direction correctly, because normal intraday drift breaks your bands.\n\n**The baseline truth:** A liquid large-cap stock drifts 10-20 bps in five minutes from normal order flow, microstructure noise, and small market moves\u2014*even when the news has zero impact*. Your bands must contain this baseline drift or you will lose skill on every forecast.\n\n**MANDATORY WIDTH FLOORS:**\n\n1. **Analyst reiterations (rating unchanged): 15 bps minimum**\n   - Headline says \"Maintains [rating]\" or \"Reiterates [rating]\"\n   - Only changes price target, not the rating itself\n   - Examples: \"Needham Reiterates Buy on Salesforce, Maintains $400 Price Target\" (CRM), \"Wells Fargo Maintains Overweight on Caterpillar, Raises Price Target to $1155\" (CAT)\n   - **These are NOT catalysts.** The market already knows the analyst's view. A price target change without a rating change is noise.\n   - **Predict 0 \u00b1 15 bps. Do not make directional bets.**\n   - Realized moves: CRM -37.1 bps, CAT -59.5 bps (both broke 2 bps bands, needed 15+ bps)\n\n2. **Market-wide stories (4+ symbols): 15 bps minimum, 20 bps if 10+ symbols**\n   - Headlines about sectors, indices, macro themes, or lists of stocks\n   - Examples: \"Anthropic Announces Claude Fable 5.1 And Mythos 5.1\" (23 symbols, MSFT), \"Warren Buffett, Donald Trump Bet on Same 17 Stocks\" (21 symbols, GOOGL), \"'Anthropic in Talks With Samsung to Manufacture Custom AI Chip'\" (4 symbols, GOOGL)\n   - Stock appears in a list or the story discusses market-wide themes\n   - **These are about the market or another company, not the individual name.**\n   - **Predict 0 \u00b1 15 bps (or 20 bps if 10+ symbols).**\n   - Realized moves: MSFT -2.8 bps (23 symbols, broke 2 bps band), GOOGL +16.7 bps (21 symbols, broke 2 bps band), GOOGL -23.1 bps (4 symbols, broke 6.3 bps band)\n\n3. **Tangential mentions or related-company stories: 15 bps minimum**\n   - Stock is mentioned but not the primary subject\n   - Story is about another company, product, or event\n   - Examples: \"Why Is Fervo Energy Stock Gaining Monday?\" (GOOGL mentioned with FRVO, NVDA), \"Apple Takes a Big Hit in Europe\" (GOOG mentioned with AAPL, META)\n   - **Predict 0 \u00b1 15 bps.**\n   - Realized moves: GOOGL +0.0 bps (3-symbol Fervo story, barely inside 2 bps band by luck), GOOG -6.4 bps (4-symbol Apple EU story, inside 4.6 bps band but narrow)\n\n4. **Empty or truncated summary: 15 bps minimum**\n   - Summary field is empty or very short\n   - Examples: \"Needham Reiterates Buy on Salesforce, Maintains $400 Price Target\" (CRM, empty summary), \"Wells Fargo Maintains Overweight on Caterpillar, Raises Price Target to $1155\" (CAT, empty summary)\n   - Signals low information content, often overlaps with analyst reiterations\n   - **Use news_before to check staleness. Predict 0 \u00b1 15 bps.**\n\n5. **Stock-specific material news: 25 bps minimum**\n   - Earnings surprises, guidance changes, M&A, analyst upgrades/downgrades (rating change, not just PT)\n   - Major product launches, regulatory actions specific to this company\n   - Must be about THIS stock's operations, financials, or products specifically\n   - **Check candlesticks: has it already moved in the last 5-10 minutes?**\n   - If no pre-move visible \u2192 25-35 bps width\n   - If clear pre-move \u2192 news may already be priced, widen to 20-25 bps or predict 0 \u00b1 20 bps\n   - Example: \"SpaceX IPO: First Indicative Price At $174 Per Share\" (GS named as underwriter, +48.6 bps realized, broke 2 bps band - this was material but misclassified as tangential)\n\n**Use 5-10 bps width ONLY when ALL of these hold:**\n- The story is clearly stale (news_before shows it published elsewhere 15+ minutes ago) AND\n- Candlesticks show the stock trading in a \u22645 bps range for 15+ minutes AND\n- You have high confidence the news is fully absorbed AND\n- The stock is highly liquid (large cap, tight spread)\n\nThis will be extremely rare. Most forecasts should use 15-20 bps width minimum.\n\n**Decision tree (apply in order):**\n\n1. **Check for analyst reiteration:**\n   - \"Maintains [rating]\" or \"Reiterates [rating]\" without rating change?\n   - Only changes price target?\n   - \u2192 Predict 0 \u00b1 15 bps, no directional bet\n   - If rating actually changes (upgrade/downgrade) \u2192 material news, use 25-35 bps width\n\n2. **Count symbols:**\n   - 4-9 symbols \u2192 likely market-wide or related-company story, use 15 bps width\n   - 10+ symbols \u2192 definitely market-wide, use 20 bps width\n   - Read headline: is THIS stock the subject or just one of many?\n   - \u2192 If one of many, predict 0 \u00b1 15-20 bps\n\n3. **Check if stock is the primary subject:**\n   - Is the headline about this company's operations, financials, or products?\n   - Or about the market, another company, or tangential topic?\n   - \u2192 If tangential or related-company, predict 0 \u00b1 15 bps\n\n4. **Check summary field:**\n   - Empty or very short?\n   - \u2192 Often overlaps with analyst reiterations or stale news\n   - \u2192 If unclear, predict 0 \u00b1 15 bps\n\n5. **If genuinely stock-specific and material:**\n   - Check candlesticks for pre-move in last 5-10 minutes\n   - No pre-move \u2192 25-35 bps width\n   - Clear pre-move \u2192 news likely priced, use 20-25 bps width or predict 0 \u00b1 20 bps\n\n**Evidence from recent forecasts:**\n\nAll 8 examples used 2-6.8 bps width. 7 of 8 broke the bands:\n- CRM (-2.3 \u00b1 2.2 bps): realized -37.1 bps, analyst reiteration needed 0 \u00b1 15 bps\n- GOOGL (-0.5 \u00b1 2.0 bps): realized +0.0 bps, 3-symbol tangential story, inside quote by luck\n- CAT (-2.4 \u00b1 2.4 bps): realized -59.5 bps, analyst reiteration needed 0 \u00b1 15 bps\n- MSFT (+1.1 \u00b1 2.0 bps): realized -2.8 bps, 23-symbol market-wide story needed 0 \u00b1 20 bps\n- GOOG (-4.6 \u00b1 4.6 bps): realized -6.4 bps, 4-symbol Apple story needed 0 \u00b1 15 bps (barely inside quote but too narrow)\n- GS (-1.5 \u00b1 2.0 bps): realized +48.6 bps, 7-symbol SpaceX IPO story, GS as underwriter was material, needed 25+ bps\n- GOOGL (-1.6 \u00b1 6.3 bps): realized -23.1 bps, 4-symbol Anthropic-Samsung story needed 0 \u00b1 15 bps\n- GOOGL (-0.3 \u00b1 2.0 bps): realized +16.7 bps, 21-symbol Buffett-Trump story needed 0 \u00b1 20 bps\n\n**What killed skill:**\n- 2-6.8 bps width on everything (7 of 8 broke bands)\n- Directional bets on analyst reiterations (CRM -2.3, CAT -2.4 on \"Maintains\" headlines)\n- Treating market-wide stories as requiring only 2 bps width (MSFT, GOOGL with 10+ symbols)\n- Underestimating normal drift even on correctly identified non-news (GOOGL 3-symbol Fervo story inside 2 bps by luck, but 15+ bps drift is normal)\n- Missing when a tangential mention is actually material (GS in SpaceX IPO as underwriter, +48.6 bps realized)\n\n**What earns skill:**\n- Capturing the realized price in your band (the ONLY thing that matters for skill score)\n- Recognizing analyst PT changes without rating changes are noise \u2192 0 \u00b1 15 bps\n- Using 15-20 bps width on market-wide stories (4+ symbols) \u2192 0 \u00b1 15-20 bps\n- Using 25-35 bps width on genuine stock-specific catalysts\n- Predicting zero correctly on non-news (most stories)\n- Distinguishing tangential mentions (usually noise) from material involvement (e.g., underwriter role)\n\n**Width is not a penalty.** A 0 \u00b1 15 bps forecast that captures a 10 bps drift earns skill. A 0 \u00b1 2 bps forecast that misses a 3 bps drift loses skill. You are scored on whether the realized price lands in your band, not on how tight your band is.\n\n**Default strategy:**\n- Start with 15 bps as the baseline width for any story that is not clearly stock-specific material news\n- Widen to 20 bps if the story names 10+ symbols\n- Widen to 25-35 bps for genuine catalysts (and check candlesticks for pre-move)\n- Only tighten below 15 bps when you have strong evidence: stale news + candlesticks show \u22645 bps range for 15+ minutes + highly liquid stock + high confidence news is absorbed\n- On analyst reiterations (rating unchanged), predict 0 \u00b1 15 bps with no directional bet\n- On market-wide stories (4+ symbols), predict 0 \u00b1 15-20 bps with no directional bet\n- When in doubt, use 15 bps and predict 0 delta - this captures normal drift and scores better than tight bands that break",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
