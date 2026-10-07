@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen44",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: Normal five-minute drift in liquid large caps is 15-40 basis points, not 2-5 basis points.**\n\nProduction data from 8 cycles shows universal failure of narrow bands (half_width < 25 bps):\n\n**Observed five-minute moves:**\n- GS (4 symbols, CNBC final trades): realized -2.0 bps, predicted -0.1 \u00b1 2.0, missed by 1.9 bps, skill +0.02\n- INTC (6 symbols, BofA upgrade): realized +78.3 bps, predicted +0.5 \u00b1 8.5, missed by 77.8 bps, skill +0.01\n- META (1 symbol, Zuckerberg AI cloud): realized -5.3 bps, predicted -0.2 \u00b1 2.0, missed by 5.0 bps, skill +0.05\n- MSFT (7 symbols, Oracle pressure): realized -5.0 bps, predicted -0.9 \u00b1 2.0, missed by 4.2 bps, skill +0.17\n- GOOGL (8 symbols, Anthropic IPO): realized +10.3 bps, predicted +1.1 \u00b1 2.0, missed by 9.2 bps, skill +0.11\n- META (1 symbol, Wells Fargo target): realized -46.0 bps, predicted +0.8 \u00b1 2.0, missed by 46.8 bps, skill -0.02\n- SPY (1 symbol, Senate pilot bill): realized -2.8 bps, predicted +0.2 \u00b1 2.0, missed by 3.0 bps, skill -0.03\n- XLK (15 symbols, Tesla/Alphabet AI): realized +3.9 bps, predicted -3.9 \u00b1 4.1, missed by 7.8 bps, skill -0.78\n\n**Critical pattern: Every forecast with half_width under 25 bps failed to earn meaningful positive skill.**\n\nThe best narrow-band result was MSFT at +0.17 skill, but realized moved only -5.0 bps. When realized moves were larger (INTC +78.3 bps, META -46.0 bps), narrow bands catastrophically failed.\n\n**Key lessons:**\n\n1. **Realized moves of 40-80 bps occur regularly even on non-material news.** META moved -46.0 bps on a Wells Fargo price target raise (skill -0.02 with 2 bps width). INTC moved +78.3 bps on a known upgrade (the stock had already jumped 5% premarket; the news was fully absorbed, yet the five-minute window still moved 78 bps).\n\n2. **Even \"quiet\" 3-5 bps moves punish narrow bands.** META -5.3 bps, MSFT -5.0 bps, SPY -2.8 bps all exceeded 2 bps half-width. The directional call is often wrong (SPY predicted +0.2, got -2.8), and 2 bps leaves zero margin.\n\n3. **Multi-symbol stories (3+) are unpredictable but still move 3-10 bps baseline.** GS (4 symbols) moved -2.0 bps, MSFT (7 symbols) moved -5.0 bps, GOOGL (8 symbols) moved +10.3 bps, XLK (15 symbols) moved +3.9 bps. These are market stories, not stock-specific catalysts, yet all moved enough to escape 2 bps bands.\n\n4. **Single-symbol material news can move 40+ bps even when already priced.** META moved -46.0 bps on a price target announcement. The headline says \"surging\" and \"popping\" - the move had already happened - yet the next five minutes dropped 46 bps. This is reversion, not continuation, and a 2 bps band has no chance.\n\n5. **Making directional calls on multi-symbol stories loses skill.** XLK predicted -3.9 bps on a 15-symbol Tesla/Alphabet story, realized +3.9 bps, wrong direction by 7.8 bps, skill -0.78 (worst in dataset). The lesson: multi-symbol stories are not directional signals for any single name.\n\n6. **Width under 10 bps has failed in 100% of cases except one lucky hit.** Only INTC used 8.5 bps (still failed with +0.01 skill). Every 2-4 bps forecast earned skill between -0.78 and +0.17, median near zero.\n\n**Mandatory minimum: half_width_bps must be at least 25.0 in all cases.**\n\nProduction shows that 25 bps is not \"conservative\" - it is the minimum required to contain normal five-minute movement. Even 25 bps will fail on large moves (META -46 bps, INTC +78 bps), but those are unavoidable outliers. The goal is to stop losing skill on the 90% of cases where realized is under 15 bps.\n\n**Decision tree:**\n\n**Step 1: Count symbols in the news**\n- 3+ symbols \u2192 multi-symbol market story\n  - Predict delta_bps = 0, half_width_bps = 25\n  - DONE - do not proceed\n- Examples: GS (4 symbols, -2.0 bps), MSFT (7 symbols, -5.0 bps), GOOGL (8 symbols, +10.3 bps), XLK (15 symbols, +3.9 bps)\n- These stories name your symbol but are not about your symbol\n- Do not make directional bets (XLK lost -0.78 skill trying this)\n\n**Step 2: Check if news describes existing price action (1-2 symbols only)**\n- Headlines with \"surging,\" \"popping,\" \"rallies,\" \"slides,\" \"jumps X% premarket\"\n  - Predict delta_bps = 0, half_width_bps = 25\n  - DONE\n- Example: META \"Stock Is Surging\" moved -46.0 bps (reversion after the surge)\n- Example: INTC \"jumps 5% premarket\" moved +78.3 bps (continued volatility despite full pricing)\n- If the headline says the move already happened, the next five minutes are unpredictable\n\n**Step 3: Single-symbol news without pre-move**\n- Check candlesticks for last 10-15 minutes\n- If stock moved 30+ bps already: predict delta_bps = 0, half_width_bps = 25 (fade the move)\n- If no pre-move and material catalyst (M&A, earnings surprise, rating with target):\n  - delta_bps = [your directional call], half_width_bps = 30-35 minimum\n  - Material means: acquisition, guidance revision, surprise earnings beat/miss, rating change with explicit price target\n  - Non-material: partnerships, product launches, analyst mentions without targets, commentary\n- If uncertain: predict delta_bps = 0, half_width_bps = 25\n- DONE\n\n**Width guidance:**\n\n- **Minimum width in all cases: 25 bps.** No exceptions. Production data shows 7 of 8 forecasts with width under 25 bps earned skill between -0.78 and +0.17.\n\n- **Use 30-35 bps when making directional calls.** If you predict delta_bps \u2260 0, you need margin for error. Even correct direction can miss if width is too tight.\n\n- **Use 35-50 bps on high-volatility names or when recent 1-minute candles show 20+ bps ranges.** INTC moved 115.00 to 115.72 in one minute (62 bps range) before the forecast; the realized move was +78 bps. When recent volatility is elevated, widen further.\n\n**What the current harness gets wrong:**\n\n1. **Using 2 bps half-width on nearly everything.** This failed in 6 of 8 cases. The two partial successes (GS +0.02, META +0.05) were tiny realized moves (under 6 bps) where luck aligned.\n\n2. **Making directional calls on multi-symbol stories.** XLK predicted -3.9 bps on a 15-symbol story about Tesla and Alphabet, realized +3.9 bps, wrong by 7.8 bps, skill -0.78. Never bet direction on 3+ symbol stories.\n\n3. **Ignoring that headlines describing past moves predict nothing about the next five minutes.** META \"surging\" (already up) moved -46 bps. INTC \"jumps 5% premarket\" (already priced) moved +78 bps. These are continuation or reversion, both unpredictable on five minutes.\n\n4. **Assuming quiet markets mean tight bands.** MSFT moved only -5.0 bps, but the 2 bps band still missed by 4.2 bps. SPY moved -2.8 bps, missed by 3.0 bps. Even tiny realized moves escape 2 bps bands because direction is often wrong.\n\n5. **Confusing \"non-material news\" with \"no movement.\"** META Zuckerberg AI cloud comment (non-material) moved -5.3 bps. SPY Senate pilot bill (irrelevant to SPY) moved -2.8 bps. Non-material news still generates 3-10 bps of drift.\n\n**What earns skill:**\n\n- Recognizing multi-symbol stories immediately (count symbols, predict 0 \u00b1 25, done)\n- Using 25 bps minimum width on all forecasts (production floor for liquid large caps)\n- Predicting delta = 0 when you cannot articulate a clear, fresh, material catalyst\n- Understanding that five-minute windows have 5-15 bps of baseline drift from bid-ask bounce, market beta, and thin-minute noise\n- Fading headlines that describe moves already made (\"surging,\" \"jumps X% premarket\")\n- Recognizing that even correct direction needs 30+ bps width to absorb normal variance\n\n**What kills skill:**\n\n- Using any width under 25 bps (failed 7 of 8 times)\n- Making directional bets on 3+ symbol stories (XLK -0.78 skill)\n- Assuming pre-moved stocks will continue (META \"surging\" reversed -46 bps)\n- Trusting that non-material news means no movement (typical drift is 5-15 bps)\n- Using tight bands on volatile names (INTC had 60+ bps one-minute ranges, moved 78 bps)\n\n**Default forecast when uncertain:** delta_bps = 0, half_width_bps = 25. This is the correct answer for most Benzinga headlines.\n\n**Never use width below 25 bps.** The production dataset shows zero cases where narrow bands earned meaningful positive skill. The best was MSFT +0.17 skill on a -5 bps move, and that still used 2 bps width that would have failed on any larger realization.\n\n**The 25 bps floor is non-negotiable.** It is derived from observed five-minute drift in SPY, MSFT, GOOGL, META, GS - the most liquid large caps in the market. If these names move 3-10 bps on irrelevant news, every forecast must account for it.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
