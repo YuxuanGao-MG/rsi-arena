@@ -436,6 +436,53 @@ def check_database(rep: Report) -> None:
                 rep.bad(f"{topic} is forecasting", f"{n} forecasts in 12h, none scored")
             else:
                 rep.ok(f"{topic} is forecasting", f"{n} in 12h, {s} scored")
+        # A paper book's two records of itself must agree. Its equity curve is
+        # marked every cycle; its trades are published one per position. The sum
+        # of the closed trades' P&L, from the first trade onward, has to equal
+        # the change in equity over the same span, give or take what is still
+        # open. On 7 October the kalshi live book disagreed with itself by
+        # $152,998 - the trades said it had lost two and a half times what the
+        # curve said - with no duplicate or overlapping rows to explain it, and
+        # nothing had noticed because each number is plausible alone.
+        for topic, book_id in (("kalshi-horizon-5m", "live:kalshi-horizon-5m"),
+                               ("crypto-horizon-1m", "live:crypto-horizon-1m"),
+                               ("news-equity-5m", "live:news-equity-5m")):
+            try:
+                cur.execute("""select min(opened_at) from rsi.trades where book_id = %s""",
+                            (book_id,))
+                first = cur.fetchone()[0]
+                if first is None:
+                    rep.ok(f"{topic} book reconciles", "no trades yet")
+                    continue
+                cur.execute("""select equity_usd from rsi.book_marks
+                                where book_id = %s and at <= %s order by at desc limit 1""",
+                            (book_id, first))
+                opening = cur.fetchone()
+                cur.execute("""select equity_usd from rsi.book_marks where book_id = %s
+                                order by at desc limit 1""", (book_id,))
+                latest = cur.fetchone()
+                cur.execute("""select coalesce(sum(pnl_usd), 0), count(*) from rsi.trades
+                                where book_id = %s and closed_at is not null""", (book_id,))
+                pnl, n = cur.fetchone()
+            except Exception as exc:                          # noqa: BLE001
+                conn.rollback()
+                rep.ok(f"{topic} book reconciles", f"could not check: {str(exc)[:50]}")
+                continue
+            if not (opening and latest):
+                rep.ok(f"{topic} book reconciles", "no marks to compare against")
+                continue
+            moved = float(latest[0]) - float(opening[0])
+            gap = moved - float(pnl)
+            # One percent of the starting book, which is larger than any open
+            # position may be and far smaller than the disagreement found.
+            if abs(gap) > 10_000:
+                rep.bad(f"{topic} book reconciles",
+                        f"its {n} trades sum to {float(pnl):+,.0f} and its equity curve moved "
+                        f"{moved:+,.0f} over the same span: {gap:+,.0f} unaccounted for")
+            else:
+                rep.ok(f"{topic} book reconciles",
+                       f"{n} trades, {gap:+,.0f} between the trades and the curve")
+
         # Every column of every table, not a list somebody remembered to keep.
         cur.execute("""select table_name, column_name from information_schema.columns
                         where table_schema = 'rsi' order by table_name, ordinal_position""")
