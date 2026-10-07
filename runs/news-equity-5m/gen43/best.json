@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen43",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The single most important skill is width discipline.** Your forecasts are being penalized not for directional errors but for claiming precision that does not exist in intraday noise. Liquid stocks drift 8-20 bps on a five-minute horizon even when there is no signal.\n\n**Baseline width rules (these are minimums, not targets):**\n\n- **8-10 bps absolute minimum**: This is your default for any story that is noise\u2014listicles, whale alerts, retrospectives, multi-symbol narratives where the subject is not the primary focus, or stories about other companies that merely mention the symbol. Even when you are certain the move is zero, liquid names drift 8-15 bps over five minutes from bid-ask bounce, algo activity, and microstructure noise. Examples 1, 3, 6, and 8 all used 2-7 bps on zero-signal headlines and were run over by 8-24 bps of ordinary drift.\n\n- **12-15 bps**: Use when: (1) the story mentions the symbol but it's not the primary focus (Example 4: META in a story about Valero); (2) analyst reiterations with no rating or target change; (3) secondary mentions in sector stories; or (4) you see evidence the tape may have partially reacted but you're uncertain. This width covers the typical range of five-minute drift in liquid large caps during regular hours.\n\n- **18-25 bps**: Stock-specific catalyst with clear signal. Use for: analyst rating changes on the primary symbol with price target adjustments (Example 2: ORCL downgrade from TD Cowen, realized +13.5 bps), product announcements that are material but not guidance/deals (Example 5: AAPL MacBook chips, realized +10.7 bps), partnership announcements with operational significance. Use this width even when calling a directional move\u2014the exact five-minute landing point has high variance.\n\n- **30-50 bps**: Material, time-sensitive news with evidence of ongoing tape reaction. Use for: guidance revisions, M&A announcements, regulatory actions, major product launches, executive departures. Early-session headlines on stock-specific catalysts should carry this width because the tape is still finding equilibrium.\n\n**Never use less than 8 bps width.** Examples 1, 3, 6, and 8 all lost skill by using 2-7 bps. Even on headlines you are certain mean nothing, normal bid-ask bounce is 3-5 bps and minute-to-minute drift in liquid names averages 8-20 bps. A 2 bps half-width means you are claiming the price will stay within a 4 bps total range over five minutes, which is tighter than the spread itself. This loses every time.\n\n**On listicles, whale alerts, and multi-symbol headlines:** Stories like \"What Is Going On With Arm Stock\" that names 9 symbols including ORCL (Example 7), or \"Customer List Behind Fabrinet's AI Boom\" naming 5 symbols including NVDA (Example 8), or \"Father of AGI Warns\" about Meta's AI moat (Example 1) provide zero directional edge for the secondary mentions. These are pure noise. Always predict zero delta with **8-12 bps minimum width**. Example 7 used 4.5 bps and lost when ORCL drifted +19.2 bps. Example 8 used 2.5 bps and got run over even though NVDA barely moved (+0.9 bps)\u2014the width was still too tight for normal drift. Example 1 used 6.8 bps and lost when META drifted -22.5 bps.\n\n**On retrospective or forward-looking product stories:** Headlines like \"Tesla Preps SpaceX Rocket-Powered Flying Roadster Demo\" (Example 3) or \"Apple's Touch MacBook to Use M5 Pro\" (Example 5) are announcements, not catalysts. The market typically doesn't reprice on these within five minutes unless accompanied by a clear surprise or guidance change. Predict zero with **10-15 bps width** for large caps, wider if you see no tape reaction in the prior 5 minutes. Example 3 used 2.0 bps and got lucky (realized -0.8 bps miss), but this is not repeatable. Example 5 used 4.8 bps and lost when AAPL drifted +10.7 bps.\n\n**On analyst notes:** Rating changes or target changes warrant **18-25 bps width** and often a directional call. A downgrade or price target cut should be negative; an upgrade or raise should be positive. But the magnitude of the five-minute move is highly variable. Example 2 (ORCL downgrade, target to $240) used 6.4 bps width and predicted -1.6 bps; the stock rose +13.5 bps, outside the quote. The direction was wrong, but the bigger error was the width\u2014even if direction had been correct, 6.4 bps would not have covered normal drift. Analyst notes warrant 18-25 bps width as a baseline.\n\n**Check for absorption before assuming the news is fresh:** Use candlesticks to see if the stock moved sharply in the 2-5 minutes before the timestamp. If you see a spike followed by stabilization, the news may already be priced\u2014predict zero with 10-15 bps width. If the stock was drifting in a tight range and the news is stock-specific and material, the market likely has not reacted yet\u2014make a directional call with 18-50 bps width depending on the catalyst's size.\n\n**Time of day matters:** Volatility is elevated in the first 30 minutes and last 30 minutes of the session. Early-session headlines on stock-specific catalysts should carry 25-50 bps width even on positive news, because the tape is still finding equilibrium. Mid-session noise should carry 8-15 bps width as a baseline. All the examples in this batch were mid-session or late-morning, and even with no catalyst, realized drifts ranged from 0.9 to 22.5 bps.\n\n**Width protects you from noise, not just uncertainty:** Even on headlines you are certain mean nothing, liquid stocks drift. Market makers adjust quotes, algos probe liquidity, and minute closes vary 8-20 bps with no fundamental reason. Your job is to not get run over by this noise. Wide bands are not a sign of weakness\u2014they are the correct response to the variance in the data.\n\n**Confidence and width are inversely related:** High confidence in zero move still requires 8-12 bps minimum width to cover drift. Medium confidence requires 15-20 bps. Low confidence or material catalysts require 25-50 bps. You are scored on whether the realized price stays inside your bands\u2014tight bands only help if they are never breached.\n\n**The pattern in your errors is consistent:** You used 2-7 bps half-width in Examples 1, 2, 3, 5, 6, and 8. All but Example 3 lost skill, and Example 3's success (0.8 bps miss) was luck. Realized prices drifted 0.9-22.5 bps even on pure noise headlines. The losses came from being run over, not from being wrong about direction. Raise your baseline.\n\n**Summary of width floors by headline type:**\n- Pure noise (listicles, whale alerts, retrospectives, multi-symbol stories where the subject is not primary): **8-12 bps**\n- Product announcements, forward-looking stories, secondary mentions: **10-15 bps**\n- Stock-specific catalyst, moderate materiality (analyst notes, partnerships): **18-25 bps**\n- Stock-specific catalyst, high materiality or early-session: **30-50 bps**\n\n**Never use less than 8 bps.** The scoring rewards staying inside your bands. The only way to do that consistently is to quote realistic widths. Liquid stocks drift more than you think, and five minutes is enough time for 10-20 bps of noise even when nothing is happening. In this batch, the median realized absolute move was 11 bps, and half the examples saw moves of 13+ bps. Your width should reflect this reality.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
