@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen47",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: 2 bps bands break constantly. The new feedback confirms the pattern from previous cycles.**\n\n**New examples analyzed:**\n\n1. QCOM (1 symbol, \"Maintains Neutral, Raises PT to $210\"): predicted -6.5 \u00b1 6.5 bps, realized -73.6 bps, skill +0.09 (broke by 67 bps, but skill positive because the 6.5 bps band was wider than 2 bps)\n2. V (10 symbols, crypto/fintech commentary): predicted -2.3 \u00b1 2.2 bps, realized +3.5 bps, skill -0.45 (broke by 5.8 bps on tiny move, wrong direction)\n3. ORCL (4 symbols, OpenAI CEO speculation): predicted -1.9 \u00b1 2.0 bps, realized +39.5 bps, skill -0.05 (broke by 41.5 bps)\n4. SPY (1 symbol, Fed Chair comments): predicted +0.2 \u00b1 2.0 bps, realized +9.3 bps, skill +0.02 (broke by 9.1 bps)\n5. V (10 symbols, whale alert listicle): predicted -0.4 \u00b1 2.0 bps, realized +1.2 bps, skill -0.08 (inside band but negative skill because wrong direction on 1.2 bps move)\n6. NFLX (13 symbols, China AI/semiconductor commentary): predicted -2.3 \u00b1 2.3 bps, realized +37.2 bps, skill -0.06 (broke by 39.5 bps)\n7. MSFT (5 symbols, investor commentary on AI): predicted -2.5 \u00b1 2.5 bps, realized -77.7 bps, skill +0.03 (broke by 75.2 bps, but skill positive because direction was correct)\n8. INTC (4 symbols, BofA note on CPU boom): predicted -2.7 \u00b1 5.3 bps, realized -33.6 bps, skill +0.08 (broke by 30.9 bps, but skill positive because 5.3 bps band was wider than default)\n\n**Key lessons from the new feedback:**\n\n**1. Multi-symbol stories (4+ symbols) can easily move 30-80 bps, not 5-20 bps as previously thought.**\n\n- V (10 symbols, crypto): +3.5 bps (tiny)\n- ORCL (4 symbols, OpenAI): +39.5 bps\n- V (10 symbols, whale alerts): +1.2 bps (tiny)\n- NFLX (13 symbols, semiconductor): +37.2 bps\n- MSFT (5 symbols, AI commentary): -77.7 bps\n- INTC (4 symbols, CPU boom): -33.6 bps\n\nThe distribution is bimodal: multi-symbol stories either realize under 5 bps (noise) or 30-80 bps (market-wide moves). The 2-2.5 bps bands break on the 30-80 bps tail. But 10-15 bps bands would also break on 30-80 bps moves.\n\n**The issue is not the band width. The issue is that multi-symbol stories are about market-wide moves, not stock-specific catalysts.** When MSFT moves -77.7 bps on an investor's commentary about AI, that's not a MSFT-specific story. It's a sector or market move that happens to be published at that second.\n\n**2. \"Maintains\" with price target changes can move 70+ bps.**\n\nQCOM \"Maintains Neutral, Raises PT to $210\": realized -73.6 bps (down despite PT raise)\n\nThis contradicts the previous guidance that \"maintains\" should get 0 delta. But note:\n- QCOM moved -73.6 bps (down) despite the PT being raised\n- This suggests the move was NOT caused by the headline\n- The headline broke at 10:08:40, 38.7 minutes after open\n- The candlesticks show QCOM dropped from 193.21 at 13:30 to 186.92 at 14:07 (327 bps down in 37 minutes)\n- The -73.6 bps realized move is a continuation of a trend that started before the headline\n\n**The story was not the cause. QCOM was already falling, and the \"maintains\" headline broke during that fall.**\n\n**3. Calling direction on multi-symbol stories is toxic, even when realized is tiny.**\n\n- V (10 symbols, crypto): predicted -2.3 bps, realized +3.5 bps, skill -0.45 (only 5.8 bps error but skill -0.45 because wrong direction)\n- V (10 symbols, whale alerts): predicted -0.4 bps, realized +1.2 bps, skill -0.08 (only 1.7 bps error but skill -0.08 because wrong direction)\n\nBoth realized moves were under 5 bps (well inside a 10 bps band), but calling the wrong direction on tiny moves produces negative skill. Predicting 0 delta would have scored better in both cases.\n\n**4. Wider bands improve skill even when they still break.**\n\n- QCOM: 6.5 bps band broke by 67 bps, but skill was +0.09 (positive)\n- MSFT: 2.5 bps band broke by 75.2 bps, but skill was +0.03 (positive because direction was correct)\n- INTC: 5.3 bps band broke by 30.9 bps, but skill was +0.08 (positive)\n\nCompare to:\n- ORCL: 2.0 bps band broke by 41.5 bps, skill -0.05 (negative)\n- NFLX: 2.3 bps band broke by 39.5 bps, skill -0.06 (negative)\n\nThe difference: QCOM (6.5 bps), INTC (5.3 bps) used wider bands than ORCL (2.0 bps), NFLX (2.3 bps). Even though all broke, the wider bands produced positive skill because they reduced the error relative to the no-change benchmark.\n\n**5. Fed comments on SPY can move 9+ bps.**\n\nSPY \"Fed Chair Warsh Says...\": realized +9.3 bps, skill +0.02\n\nThis is a single-symbol story (SPY) about Fed policy. It's not a typical single-stock catalyst. SPY moved 9.3 bps, which is material for an ETF but small for the Fed. The 2.0 bps band broke by 9.1 bps, but skill was still slightly positive because the miss was smaller than the realized move.\n\n**What the model should do differently:**\n\n**Step 1: Count symbols and classify the story type.**\n\n- 1 symbol, material catalyst (earnings, upgrade/downgrade, M&A, FDA): This is rare. Check if already priced.\n- 1 symbol, non-material (maintains, reiterations, commentary, ownership changes): Predict 0 delta.\n- 1 symbol, but the story is about the market (Fed, macro, sector): Treat as multi-symbol.\n- 2+ symbols: The story is about the market, not the stock. Predict 0 delta.\n\n**Step 2: Check if the stock already moved significantly.**\n\nUse candlesticks to check if the stock moved 50+ bps in a clear direction in the last 30 minutes. If yes, the story may be describing a move that already happened, not causing a new one.\n\nExamples:\n- QCOM: Dropped 327 bps in 37 minutes before the \"maintains\" headline. The -73.6 bps realized move is a continuation, not a reaction.\n- Previous feedback PLTR: Ran 449 bps in 6 minutes before the \"stocks moving higher\" headline. The -71.1 bps realized move is a reversal, not a reaction.\n\n**If the stock moved 50+ bps before the headline and the realized move continues that trend, the story is stale and the move is not news-driven.**\n\n**Step 3: Set half-width based on realized volatility and symbol count.**\n\nThe feedback shows:\n- 2 bps bands break constantly (ORCL, NFLX, V, SPY all broke on 3-40 bps moves)\n- 5-7 bps bands still break but produce positive skill (QCOM, INTC)\n- Multi-symbol stories can move 30-80 bps (ORCL, NFLX, MSFT, INTC)\n\n**New half-width rules:**\n\n- **1 symbol, not material, not volatile (last 30 min range < 50 bps): 10 bps**\n  - Most single-symbol noise stories realize 5-20 bps\n  - 10 bps will contain half and break on the rest, but breaks will be small\n  \n- **1 symbol, not material, volatile (last 30 min range > 50 bps): 15 bps**\n  - If the stock is already moving, use a wider band\n  - QCOM used 6.5 bps and broke but had positive skill; 15 bps would do better\n\n- **2-5 symbols: 15 bps**\n  - ORCL (4 symbols): realized 39.5 bps (would break 15 bps by 24.5 bps)\n  - MSFT (5 symbols): realized -77.7 bps (would break 15 bps by 62.7 bps)\n  - INTC (4 symbols): realized -33.6 bps (would break 15 bps by 18.6 bps)\n  - But 15 bps is better than 2 bps, and the skill was positive for MSFT/INTC\n\n- **6-10 symbols: 20 bps**\n  - V (10 symbols, crypto): realized 3.5 bps (well inside)\n  - V (10 symbols, whale alerts): realized 1.2 bps (well inside)\n  - These are small moves, but 20 bps prevents breaks on 30-40 bps market drift\n\n- **11+ symbols: 25 bps**\n  - NFLX (13 symbols): realized 37.2 bps (would break 25 bps by 12.2 bps, but better than 2.3 bps band that broke by 39.5 bps)\n\n**Step 4: Always predict 0 delta for multi-symbol stories and non-material single-symbol stories.**\n\nThe feedback confirms:\n- Calling direction on multi-symbol stories is toxic (V examples: skill -0.45, -0.08)\n- Calling direction on \"maintains\" is toxic (previous feedback: COF, WMT)\n- Even tiny errors in direction produce negative skill when the realized move is under 5 bps\n\n**Always predict 0 delta unless:**\n- Single symbol\n- Material catalyst (initiation, upgrade/downgrade, earnings with numbers, M&A with terms, FDA approval/rejection, CEO/CFO departure)\n- Not already priced (stock didn't move 30+ bps in last 5 minutes)\n- Not stale (stock didn't move 50+ bps in last 30 minutes in the same direction as the story)\n\n**Step 5: For the rare material, single-symbol, new, not-priced catalyst, use direction \u00b1 15-20 bps.**\n\nNone of the new examples show a true material catalyst. All the single-symbol stories were either:\n- \"Maintains\" (QCOM)\n- Fed commentary (SPY, which is market-wide)\n\nThis confirms that material, single-symbol catalysts are rare in this data.\n\n**Decision table:**\n\n| Symbols | Story Type | Stock Moved 50+ bps in Last 30 Min? | Prediction |\n|---------|------------|--------------------------------------|------------|\n| 1 | Non-material | No | 0 \u00b1 10 bps |\n| 1 | Non-material | Yes | 0 \u00b1 15 bps |\n| 1 | Material | Yes (same direction as story) | 0 \u00b1 15 bps (stale) |\n| 1 | Material | No (or opposite direction) | Direction \u00b1 15 bps |\n| 1 | Market-wide (Fed, macro) | - | 0 \u00b1 15 bps (treat as multi-symbol) |\n| 2-5 | Any | - | 0 \u00b1 15 bps |\n| 6-10 | Any | - | 0 \u00b1 20 bps |\n| 11+ | Any | - | 0 \u00b1 25 bps |\n\n**What counts as material (single-symbol only):**\n\n\u2713 Analyst **initiation** with rating\n\u2713 Analyst **upgrade** or **downgrade** (rating change)\n\u2713 Earnings with actual results (EPS, revenue numbers)\n\u2713 M&A announcement with specific terms\n\u2713 FDA approval/rejection\n\u2713 CEO/CFO departure\n\n\u2717 Analyst **maintains** existing rating (even with PT change)\n\u2717 Analyst **reiterates** existing rating (even with PT change)\n\u2717 Price target change without rating change\n\u2717 Ownership stake change (fund buying/selling)\n\u2717 Commentary, analysis, sector view, investor opinions\n\u2717 \"Why is X moving\" stories\n\u2717 IPO of another company (even if your stock is mentioned)\n\u2717 Fed/macro commentary (even if single-symbol like SPY)\n\n**Key insight from the new feedback:**\n\nThe model is still using 2-2.5 bps as default half-width. This breaks constantly and produces negative skill on 30-80 bps market moves.\n\n**The fix:** Use 10-25 bps half-width scaled by symbol count and volatility. Always predict 0 delta for multi-symbol stories and non-material single-symbol stories. Never call direction unless you see a material, single-symbol catalyst that is new and not priced.\n\n**The lesson:** Multi-symbol stories are about market moves, not stock-specific reactions. A 2 bps band assumes the stock won't move, but when the market moves, individual stocks move 30-80 bps. Wider bands (10-25 bps) reduce error and produce positive skill even when they break, because the benchmark is the realized move, not zero.\n\n**Summary of changes from previous context:**\n\n1. **Increased half-widths across the board:** 10 bps for single-symbol noise (up from 10 bps, confirmed), 15 bps for 2-5 symbols (up from 15 bps for 2-9, confirmed), 20 bps for 6-10 symbols (new), 25 bps for 11+ symbols (up from 20 bps for 10+).\n\n2. **Always 0 delta for multi-symbol stories.** No exceptions. Even 4-5 symbol stories can move 30-80 bps, but those are market moves, not stock-specific reactions. Calling direction is toxic.\n\n3. **Check for staleness:** If stock moved 50+ bps before headline and realized move continues that trend, predict 0 delta with wider band (15 bps). The story is describing, not causing.\n\n4. **\"Maintains\" are never material,** even when they break by 70+ bps. QCOM moved -73.6 bps on a \"maintains,\" but that was a continuation of a pre-existing trend, not a reaction to the headline.\n\n5. **Wider bands improve skill even when they break.** QCOM (6.5 bps), INTC (5.3 bps), MSFT (2.5 bps) all broke but had positive skill because they reduced error relative to the benchmark. The benchmark is the realized move, not zero.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
