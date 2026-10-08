@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen48",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n**The core error pattern from feedback:**\n\nThe harness systematically predicts near-zero (-3 to +2 bps) with 2-3 bps width on stories where stocks then move 5-37 bps. Review the recent losses:\n\n- **GOOGL on \"SpaceXAI Launches Grok 4.6 On Google Cloud Vertex AI\"** (names GOOG, GOOGL, SPCX - partnership news, AI product on Google Cloud): predicted +1.6 bps (2.0 width), actual +4.6 bps\n- **META on \"How Much $100 Invested 10 Years Ago Would Be Worth\"** (pure listicle, names only META): predicted -2.9 bps (2.9 width), actual +27.1 bps \u2014 **massive miss on what looked like noise**\n- **AAPL on \"Magnificent 7 Broke Key Technical Level\"** (names 7 mega-caps, technical analysis story): predicted +0.4 bps (2.0 width), actual +10.0 bps\n- **GOOG on \"Anthropic to Pay Nscale $45B for AI Computing Power\"** (names AMZN, GOOG, GOOGL - major AI infrastructure deal): predicted +1.9 bps (2.0 width), actual +5.2 bps\n- **GOOGL on \"Slop Economy Warning: VC Expects Another 2008 \u2014 Blame AI\"** (names 5 mega-caps AMZN/GOOGL/META/MSFT/NVDA, negative AI sentiment): predicted -1.4 bps (2.0 width), actual -12.9 bps\n- **XLK on \"Nasdaq 100 Rallies as Oil Slides\"** (market-wide story): predicted +0.5 bps (2.0 width), actual -1.6 bps \u2014 **correctly called it noise, got unlucky on 2 bps of drift**\n- **DHR on \"Q2 2026 Earnings Call Transcript\"** (direct earnings event, published 6 minutes after open): predicted -2.4 bps (2.4 width), actual -37.3 bps \u2014 **transcript release catches ongoing earnings reaction**\n- **TSLA on \"US Debt Nearing $40T; Home Depot Earnings Better\"** (names 14 symbols including TSLA, macro + HD earnings story): predicted -1.2 bps (2.0 width), actual -13.8 bps\n\n**What these reveal:**\n\n1. **Even \"pure listicles\" can move stocks 20-30 bps.** The META story looked like classic Benzinga filler (\"how much $100 would be worth\"), but META moved 27 bps. When a story focuses entirely on one symbol, even if it's retrospective fluff, *treat it as signal not noise*. The market may be reacting to *why Benzinga is writing about this stock today*.\n\n2. **Transcripts published shortly after open capture ongoing earnings reactions, not fresh news.** DHR transcript hit at 9:36 AM (6 minutes after open), and DHR had already spiked +4% in the first few minutes. The transcript is documentation, not catalyst. The stock then reversed -37 bps in the next 5 minutes. When earnings transcripts appear in the first 10-30 minutes of trading, the earnings reaction is *already underway*. Check the tape: if the stock has moved 200+ bps from yesterday's close, predict continuation with wide width (15-25 bps) or mean reversion if the spike looks exhausted.\n\n3. **AI infrastructure and partnership stories (even brief ones naming 2-3 symbols) move stocks 5-15 bps.** Grok on Google Cloud (+4.6 bps), Anthropic/Nscale deal (+5.2 bps). These are material business developments, not noise.\n\n4. **Negative sentiment stories (macro warnings, bubble warnings) move mega-caps 10-15 bps down.** The \"Slop Economy\" AI bubble warning moved GOOGL -12.9 bps. Risk-off sentiment on mega-cap themes is a real signal.\n\n5. **2 bps width is still too tight for almost everything.** Even when the prediction is directionally right (GOOGL -1.4 bps predicted, -12.9 bps actual), 2 bps width guarantees a quote breach. Use 5-8 bps minimum unless you have *very* high confidence the stock will not move at all.\n\n**The updated decision framework:**\n\n**1. Check the tape first, always.**\n   - Pull candlesticks for the last 30-45 minutes, 1-minute bars\n   - Is the stock up or down significantly from the prior close? (Check the open bar vs. recent closes)\n   - If this is early in the session (first 30 minutes) and an earnings transcript appears, the earnings reaction is *already in progress*. The headline is catching up to the tape, not driving it.\n   - If the stock spiked 200-400 bps in the first 5 minutes and has been drifting sideways for 20 minutes, a transcript release may trigger profit-taking or continuation \u2014 predict 0-10 bps with 15-20 bps width.\n\n**2. Classify the story's relevance to your symbol:**\n\n   **Single-stock focus** (headline and summary are entirely about this one company, even if it's retrospective/listicle content):\n   - Examples: \"How Much $100 Invested In META 10 Years Ago Would Be Worth Today\" (just META), \"Transcript: DHR Q2 Earnings Call\" (just DHR)\n   - **Even if it looks like filler, treat it as signal.** The market may be reacting to *why this stock is getting attention today*.\n   - **If it's a transcript in the first 10-30 minutes, the earnings reaction is underway.** Check if the stock has already moved 200+ bps from yesterday's close.\n   - **Magnitude: 10-30 bps typical for retrospective content, 20-50+ bps for earnings transcripts catching ongoing reactions**\n   \n   **Partnership or product news (2-3 symbols, describes a specific business development):**\n   - Examples: \"SpaceXAI Launches Grok 4.6 On Google Cloud Vertex AI\" (GOOG/GOOGL/SPCX), \"Anthropic to Pay Nscale $45B for AI Computing Power\" (AMZN/GOOG/GOOGL)\n   - These are material: product launches, partnerships, major contracts\n   - **Magnitude: 5-15 bps in direction of the business win** (Google Cloud getting Grok \u2192 GOOGL up; Anthropic spending $45B on compute \u2192 GOOG up as cloud provider)\n   \n   **Thematic multi-stock** (story discusses sector trend, technology shift, or market theme; names 5-10 symbols including yours):\n   - Examples: \"Magnificent 7 Broke Key Technical Level\" (7 symbols, technical story), \"Slop Economy Warning: Blame AI\" (5 mega-caps, negative sentiment), \"Nasdaq 100 Rallies\" (market-wide)\n   - **Sentiment stories (bubble warnings, risk-off) move mega-caps 10-15 bps in the negative direction**\n   - **Technical stories (200-day MA breaks) move mega-caps 5-12 bps, typically in the direction the story describes as \"next\"**\n   - **Market-wide stories are usually noise unless your symbol is specifically named with a thesis**\n   \n   **Mega-listicle (10+ symbols, your symbol is one of many, no specific thesis):**\n   - Example: \"US Debt Nearing $40T; Home Depot Earnings Better\" (14 symbols, TSLA is incidental)\n   - This is noise, but still moves stocks 5-15 bps due to correlation and algo activity\n   - Predict 0 with 5-8 bps width\n\n**3. Match forecast to situation:**\n\n   **If single-stock retrospective content (listicle about this stock alone):**\n   - The market interprets *why Benzinga is writing about this stock today* as a signal\n   - Predict +10 to +25 bps with 10-15 bps width (stocks mentioned in isolation tend to drift up on attention)\n   - Example: META \"how much $100 invested would be worth\" should have predicted +15 bps, width 12 bps\n   \n   **If earnings transcript in first 10-30 minutes of trading:**\n   - Check the tape: how much has the stock moved from yesterday's close?\n   - If the stock is up/down 200-400 bps already, the earnings reaction is *in progress*. The transcript is documentation.\n   - Look at the last 10-20 minutes of 1-min bars:\n     - If the stock spiked and is now consolidating, predict 0-10 bps continuation or -10 to -20 bps mean reversion, width 15-20 bps\n     - If the stock is still climbing/falling, predict +10 to +20 bps continuation (or -10 to -20 bps), width 15-20 bps\n   - Example: DHR transcript at 9:36 AM, stock already spiked, should predict -10 to +10 bps, width 18 bps\n   \n   **If partnership/product news (2-3 symbols, specific business development):**\n   - Assess who wins: cloud provider getting a product (GOOGL up), company spending on compute (may be neutral or slight down), product launcher (up)\n   - Predict +5 to +15 bps for the clear winner, 0-5 bps for others, width 8-12 bps\n   - Example: Grok on Google Cloud \u2192 GOOGL +8 bps, width 10 bps\n   \n   **If thematic multi-stock (5-10 symbols, sentiment or technical story):**\n   - **Negative sentiment (bubble warnings, risk-off):** predict -8 to -15 bps, width 10-15 bps\n   - **Technical story (200-day MA break):** predict +5 to +12 bps if story says \"buying opportunity\", -5 to -12 bps if story says \"more downside\", width 8-12 bps\n   - **Market-wide rallies/sell-offs:** predict 0 with 5-8 bps width unless your symbol is specifically called out\n   - Example: \"Slop Economy AI warning\" \u2192 GOOGL -10 bps, width 12 bps\n   \n   **If mega-listicle (10+ symbols, no thesis):**\n   - Predict 0 with 5-8 bps width\n   - Example: \"US Debt + Home Depot earnings\" naming 14 symbols \u2192 TSLA 0 bps, width 6 bps\n\n**4. Width is insurance against confident mistakes:**\n\n   - **2 bps: NEVER USE.** Even on pure noise, 5 bps of random drift will breach it.\n   - **5-8 bps: mega-listicle (10+ symbols), high confidence noise, or market-wide story not about your symbol**\n   - **8-12 bps: partnership/product news, thematic multi-stock stories, technical stories**\n   - **10-15 bps: single-stock retrospective content, sentiment-driven multi-stock stories**\n   - **15-20 bps: earnings transcripts in first 30 minutes (ongoing reaction, high uncertainty), or single-stock content with unclear signal**\n   \n   **When in doubt, go wider.** A correct direction with 12 bps width beats zero-with-2bps that misses by 15.\n\n**5. Magnitude calibration by story type:**\n\n   - **Mega-listicle (10+ symbols, no thesis):** 0 \u00b1 5-8 bps, width 5-8 bps\n   - **Market-wide story (rally/sell-off not specific to your symbol):** 0 \u00b1 5 bps, width 5-8 bps\n   - **Thematic multi-stock (5-10 symbols, technical or sentiment story):** 5-15 bps in theme direction, width 8-15 bps\n   - **Partnership/product news (2-3 symbols, specific business development):** 5-15 bps for the winner, width 8-12 bps\n   - **Single-stock retrospective content (listicle about this stock alone):** 10-25 bps up (attention premium), width 10-15 bps\n   - **Earnings transcript in first 30 minutes (ongoing reaction):** -20 to +20 bps (mean reversion or continuation), width 15-20 bps\n\n**6. Special case: Earnings transcripts shortly after open**\n\n   When an earnings call transcript is published in the first 10-30 minutes of trading:\n   - The earnings *already happened* (yesterday after close or this morning pre-market)\n   - The transcript is documentation of the call, not new information\n   - The stock has likely already moved 100-400 bps on the actual earnings\n   - Your 5-minute forecast is about *what happens next*: continuation, consolidation, or mean reversion\n   - Check the tape carefully:\n     - If the stock spiked in the first 5 minutes and has been flat for 15-20 minutes, the move may be done \u2192 predict 0-5 bps, width 15 bps\n     - If the stock is still moving steadily in one direction, predict +10-20 bps continuation (or -10 to -20), width 15-20 bps\n     - If the stock spiked huge (300+ bps) and volume is thinning, watch for reversal \u2192 predict -10 to -20 bps, width 18 bps\n\n**7. Special case: Single-stock \"listicle\" content**\n\n   When a story is entirely about one stock but looks like filler content (retrospective returns, \"what if you invested $100\", historical analysis):\n   - **Do not dismiss it as noise.** The market interprets *why Benzinga is covering this stock today* as a signal.\n   - These stories correlate with 10-30 bps upward drifts (attention premium, retail interest)\n   - Predict +10 to +20 bps, width 10-15 bps\n   - Example: META \"how much $100 invested 10 years ago would be worth\" \u2192 predict +15 bps, width 12 bps\n\n**8. Cross-check before finalizing:**\n\n   - **Is my width at least 5 bps?** (If not, raise it to 5 bps minimum)\n   - **If it's a single-stock story, did I predict 10+ bps up?** (Single-stock attention usually moves prices up 10-25 bps)\n   - **If it's an earnings transcript in the first 30 minutes, did I check the tape for the ongoing reaction?** (The transcript is not the catalyst; the earnings were)\n   - **If it's a partnership/product story, did I identify the winner?** (Cloud providers win when they get new products; predict +5-15 bps)\n   - **If it's a thematic multi-stock story, did I match direction to sentiment?** (Negative sentiment \u2192 down 10-15 bps; technical \"buying opportunity\" \u2192 up 5-12 bps)\n   - **Am I using 2 bps width?** (If yes, change it to at least 5 bps)\n\n**The pattern is clear: stories that name 1-3 symbols with specific content (partnerships, products, single-stock retrospectives, earnings transcripts) move those stocks 5-30 bps, not 0-2 bps. Single-stock listicles that look like filler often move prices 10-25 bps up on attention premium. Earnings transcripts in the first 30 minutes document ongoing reactions, not fresh catalysts \u2014 check the tape for what's already happened. Use 5-8 bps minimum width on everything; use 10-20 bps on single-stock stories and early-session earnings transcripts. Never use 2 bps width.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
