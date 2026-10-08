@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen41",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\n**THE OVERWHELMING DEFAULT IS ZERO.**\n\nThe feedback shows that most five-minute windows see no price movement. Predicting zero when the market stays flat scores exactly 0.00 skill. Predicting small moves when the market stays flat scores negative skill. Only predict non-zero when you have concrete evidence of an ongoing move visible in the last 2-3 minutes of candlesticks.\n\n**Process - check in this order:**\n\n1. **Check candlesticks for the last 10 minutes.** Look at the \"mid\" field in each bar.\n   - If the mid has been constant (within 0.5c) for the last 3+ minutes: the book is stable, predict zero.\n   - Most examples showed stable candlesticks and stayed flat for the next 5 minutes.\n   - Do not predict moves based on what \"should\" happen theoretically. Only predict moves you can see actively happening in the candlestick data.\n\n2. **Check for price floors on low-priced contracts.**\n   - Contracts under 10c (0.10) cannot fall much further - they hit the zero floor.\n   - DO NOT predict downward moves on contracts already in single digits.\n   - Example 2: contract at 1.5c stayed flat. Example 7: contract at 0.5c stayed flat. Example 8: contract at 10.5c fell to 2.5c after a goal, but the harness predicted only -0.2c and missed most of the move.\n   - A contract at 5c can only fall 5c maximum, so downward moves are structurally constrained.\n   - However: if the contract is at 10-15c and candlesticks show a sharp ongoing drop (e.g., falling 2-3c per minute in the last 2-3 bars), a large downward move is possible. Example 8 showed -8c in five minutes after the price had already fallen from 36.5c to 10.5c and continued falling in the last bars.\n\n3. **Recent goal absorption - the most reliable signal for non-zero predictions.**\n   - A goal scores, the price typically jumps immediately (within 1-2 minutes).\n   - Check candlesticks: is the price *actively moving* in the last 2-3 minutes?\n   - If yes: predict continued absorption in the same direction, magnitude 0.5-2.0c for small moves, up to 5-10c for large ongoing collapses.\n   - If the price jumped but has been flat for 3+ minutes: absorption is complete, predict zero.\n   - Example 5: market went from 0.275 to 0.255 (-2.0c) in the visible window, then jumped to 0.475 (+22.0c) in the next five minutes. The harness predicted -0.1c and missed the entire move. When a goal happens and the price hasn't fully absorbed it yet (still moving in recent bars), be much bolder.\n   - Example 8: price fell from 0.365 to 0.105 (-26c) over 30 minutes, was still at 0.105, then fell another -8c to 0.025 in the next five minutes. When you see a multi-goal event causing a sustained collapse visible in the last several bars, predict continuation of that collapse.\n   - The key question: are the last 2-3 candlestick bars showing directional movement, or have they stabilized?\n\n4. **Magnitude calibration when goal absorption is ongoing:**\n   - Small adjustments (price moving 0.5-1c over last 3 bars): predict 0.5-1.5c continuation\n   - Medium moves (price moving 2-3c over last 3 bars): predict 1.5-3.0c continuation\n   - Large ongoing collapses (price fell 10+ cents in last 10 minutes and still falling in last 2-3 bars): predict 3-8c continuation\n   - Example 8: price fell from 36.5c to 10.5c between minutes :26 and :50, a -26c collapse. At the forecast time (:05), the price was 10.5c and had fallen from much higher recently. It then fell another -8c. The pattern: when a major score change causes a sustained multi-minute collapse visible in many recent bars, the absorption can continue for 5+ more minutes.\n   - Check recent_events: if there are multiple goals in quick succession (e.g., 3-1 becomes 3-1, check timestamps), the market may still be processing.\n\n5. **Book mean reversion - rare and unreliable.**\n   - Only valid when candlesticks show a sharp spike (2+ cents in one bar) in the last 1-2 minutes with low volume.\n   - If the price spiked but has held steady for 2+ minutes: no reversion to predict, the new level is accepted.\n   - This pattern is uncommon in the data. Do not predict mean reversion unless you see the spike actively reversing in the last 2 bars.\n\n6. **Time decay - only in the final 10 minutes.**\n   - Only meaningful in the final 10 minutes of a match when the clock is a major factor.\n   - Before 80': five additional minutes change the probability negligibly (under 0.5c).\n   - Examples at 35', 55', 65' all had 10+ minutes remaining and did not decay.\n   - Do not predict time decay until 80' or later.\n\n7. **Market structure facts:**\n   - The base rate for a goal in any random five-minute window is ~10-15%. The market already prices this in.\n   - Most five-minute windows see zero price movement.\n   - Kalshi contracts trade in penny increments. A 0.5c move is significant.\n   - Round-trip costs are 2-3 cents, so most noise is unprofitable to trade.\n\n**When to predict zero (the default):**\n- Candlesticks show the mid unchanged (within 0.5c) for the last 3+ minutes \u2192 predict zero\n- Contract is under 5c with no visible upward catalyst \u2192 predict zero\n- Mid-match (before 80') with no active price movement in candlesticks \u2192 predict zero\n- More than 3 minutes have passed since the last goal and candlesticks are flat \u2192 predict zero\n- No clear directional movement visible in the last 2-3 bars \u2192 predict zero\n\n**When to predict non-zero (rare):**\n- Candlesticks show the mid climbing or falling consistently in the last 2-3 minutes following a recent goal (ongoing absorption)\n- Price has fallen dramatically (10+ cents) in the last 10 minutes and is still falling in the last 2-3 bars (extended collapse)\n- Sharp spike (2+ cents) in the last 1-2 minutes AND the last bar shows reversal in the opposite direction (mean reversion)\n- Match is at 85'+ and a \"will happen\" contract is decaying as time runs out\n\n**Magnitude calibration when predicting non-zero:**\n- Small ongoing absorption (last 3 bars moved 0.5-1c): predict 0.5-1.5c continuation\n- Medium ongoing absorption (last 3 bars moved 2-3c): predict 1.5-3.0c continuation\n- Large extended collapse (price fell 10+ cents in last 10 min, still falling in last 2-3 bars): predict 3-8c continuation\n- Mean reversion after spike: 1.0-2.0c back toward pre-spike level\n- Time decay in final 5-10 minutes: 0.5c-1.5c downward on \"will happen\" contracts\n- All other scenarios: 0.0c\n- Be bold when the evidence is clear: Example 5 moved +22c and Example 8 moved -8c. When goals cause extended multi-minute moves visible in the trailing bars, predict accordingly.\n\n**Half-width:**\n- Predicting zero because no catalyst: 0.5-1.0c (acknowledges small unpredictable event risk)\n- Predicting small directional move (under 2c) on visible catalyst: 0.5-1.0c\n- Predicting large directional move (2c+) on strong visible catalyst: 1.0-2.0c\n- Predicting very large move (5c+) on extended collapse pattern: 1.5-3.0c\n- Tighter width = more confident, but also more likely to get run over if wrong\n- The half-width determines when you get filled. Wider is safer but trades less.\n\n**Reality check before submitting:**\n- If candlesticks show the mid flat (within 0.5c) for the last 3+ minutes \u2192 you must predict zero\n- If the contract is under 5c \u2192 do not predict it going lower unless you see strong upward movement\n- If the match is before 80' \u2192 time decay is not a factor\n- If predicting non-zero: point to specific bars in the last 2-3 minutes showing directional movement\n- When you do see clear sustained directional movement (multi-minute collapses, post-goal jumps not yet stabilized), be bold enough to capture it\n- Check recent_events timestamps: a goal at 33' when clock shows 35' means the goal was 2 minutes ago - has the price stabilized since, or still moving?\n\n**The best strategy:** \nPredict zero unless candlesticks show active directional movement in the last 2-3 minutes. Most five-minute windows do not move. When they do move (like after a goal or during an extended collapse), the movement is usually visible in the trailing candlestick bars as a clear trend continuing into the present moment. Read what the market is already doing in the most recent bars, not what it theoretically should do. The question is: has the move finished (bars flat for 3+ minutes) or is it still in progress (bars still moving in the last 2-3 minutes)?",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
