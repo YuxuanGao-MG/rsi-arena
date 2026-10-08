@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen46",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nThe harness systematically uses 2 bps width on nearly every story and underestimates move magnitude. Recent examples:\n\n1. **JPM \"Citi Wants To Put SpaceX, Anthropic Shares Right Next To Your Apple Stock\"** (3 symbols, Citi blockchain offering): predicted -1.0 bps (2.0 width), actual -32.6 bps \u2014 **tangential mention (Citi is subject, JPM named as comparator peer bank), but JPM had rallied 340+ bps from 310.5 to 313.95 over 45 minutes (17:18 to 18:02), headline published at top of rally, tape reversed sharply, 2 bps width far too tight, missed the reversal**\n\n2. **NOW \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\"** (10 symbols, sector contagion): predicted -3.7 bps (11.7 width), actual +122.6 bps \u2014 **sector selloff headline (IBM down 24%), but NOW had rallied 180+ bps from 103.0 to 104.8 over 27 minutes (13:30 to 13:57), headline published into the rally, stock continued higher (decoupled from IBM), magnitude underestimated by 30x, direction wrong**\n\n3. **C \"Bank Of America, Goldman Sachs, Citi Join Push to Launch Global Stablecoin\"** (8 symbols, consortium announcement): predicted -0.8 bps (2.0 width), actual -5.7 bps \u2014 **direct material catalyst (Citi joins 21-firm stablecoin consortium targeting 2027 launch), but C had drifted down 130 bps from 132.4 to 132.3 over 45 minutes (17:02 to 17:45), tape was consolidating lower, correct negative direction but magnitude too small and 2 bps width too tight**\n\n4. **GOOGL \"Alphabet Changed Wall Street's Favorite AI Metric: Microsoft and Meta Are Up Next\"** (6 symbols, AI CapEx theme): predicted -0.6 bps (2.0 width), actual -4.4 bps \u2014 **thematic piece on AI CapEx (Alphabet, Microsoft, Meta racing toward $1T annual AI infrastructure spending), GOOGL tape was flat around 327.9 over prior 45 minutes, correct near-zero sense but magnitude too small and 2 bps width too tight**\n\n5. **INTC \"QUICK SPARK: Intel And Micron Lead Semi Stock Rebound \u2014 Expert Blames Hegde Funds For Sell Off\"** (5 symbols, sector rebound commentary): predicted +0.1 bps (2.0 width), actual -8.6 bps \u2014 **sector rebound commentary, INTC had choppy 10-20 bps oscillations around 105.1 over prior 45 minutes (17:45 to 18:29), tape was flat to slightly down, wrong direction, 2 bps width too tight**\n\n6. **QQQ \"Can ETFs Shield Investors From Apple's Supply Chain Woes?\"** (10 symbols, ETF diversification explainer): predicted -0.3 bps (2.0 width), actual +2.6 bps \u2014 **retrospective explainer on AAPL-heavy ETFs, QQQ had rallied 110 bps from 687.8 to 688.9 over 7 minutes (17:18 to 17:25) then consolidated 688.6-688.9 over next 35 minutes, headline published into consolidation, stock drifted up slightly, wrong direction, 2 bps width barely adequate**\n\n7. **AAPL \"CNBC Halftime Report Final Trades: Apple, Rio Tinto, UnitedHealth Group\"** (3 symbols, TV segment mention): predicted -2.2 bps (2.2 width), actual -15.0 bps \u2014 **TV segment mention (CNBC Halftime Report final trades), AAPL had choppy 50-70 bps swings around 330.5-331.7 over prior 45 minutes (16:16 to 17:00), tape was volatile and rolling over, correct negative direction but magnitude underestimated by 7x and 2 bps width far too tight**\n\n8. **GOOGL \"Oil Sinks 6%, Nasdaq 100 Rallies On Iran Talks: Stock Market Today\"** (28 symbols, macro market theme): predicted +0.0 bps (2.0 width), actual -6.7 bps \u2014 **macro theme headline (Trump cancels Iran strike, S&P +1.3%, Russell +1.5%), GOOGL had rallied 100 bps from 374.6 to 375.6 over 45 minutes (16:21 to 17:05), headline published into rally, tape reversed, wrong direction, 2 bps width too tight**\n\n---\n\n## **What These Reveal**\n\n1. **2 bps width is used on 7 of 8 examples and is too tight for everything.** Even stories that move 2-7 bps leave zero margin. The harness gets run over on paper quotes because realised prices exit the 2 bps band. Only 1 example used wider width (11.7 bps on NOW), and it still missed by 126 bps because the magnitude was underestimated by 30x.\n\n2. **The harness fails to check if the headline is published INTO a prior move.** JPM rallied 340 bps before \"Citi Wants To Put SpaceX Shares\" was published, then reversed -32.6 bps. NOW rallied 180 bps before \"IBM Crashes 24%\" was published, then continued +122.6 bps (decoupled). QQQ rallied 110 bps before \"Can ETFs Shield Investors\" was published. GOOGL rallied 100 bps before \"Oil Sinks 6%, Nasdaq 100 Rallies\" was published. **When a headline is published 30-60 minutes into a 100-300+ bps run, the tape has often absorbed the news or the headline is retrospective. Check the tape FIRST.**\n\n3. **Sector contagion headlines can decouple.** NOW \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\" predicted -3.7 bps but NOW moved +122.6 bps (rallied, not sold off). The headline says \"drags tech and IT services stocks into selloff\" but NOW's tape shows it rallied 180 bps in the prior 27 minutes and continued higher. **Sector contagion is not automatic. Check if the stock's tape matches the headline's narrative. If the stock is rallying while peers are crashing, it has decoupled.**\n\n4. **Tangential mentions can still trigger reversals if published into a large prior move.** JPM \"Citi Wants To Put SpaceX Shares\" is about Citi's blockchain offering; JPM is a peer comparator. But JPM had rallied 340 bps in 45 minutes before the headline. The -32.6 bps move is a reversal/profit-taking, not a reaction to the Citi story. **When a stock rallies 200-400+ bps and gets a tangential mention, predict a 10-30 bps reversal, not 0-2 bps.**\n\n5. **TV segment mentions (CNBC, etc.) are noise but can move 10-20 bps if the tape is volatile or rolling over.** AAPL \"CNBC Halftime Report Final Trades\" moved -15.0 bps (predicted -2.2 bps). AAPL had 50-70 bps swings in the prior 45 minutes and was rolling over. **TV mentions are noise by themselves, but if the tape is volatile or trending, predict 8-15 bps continuation, width 8-12 bps.**\n\n6. **Macro theme headlines with 20+ symbols often lag the tape.** GOOGL \"Oil Sinks 6%, Nasdaq 100 Rallies On Iran Talks\" (28 symbols) was published after GOOGL rallied 100 bps, and GOOGL reversed -6.7 bps. The headline is retrospective (the rally already happened). **Always check if the macro move already happened. If the stock rallied 100-200 bps before the macro theme headline, predict 0-10 bps consolidation or 5-15 bps reversal, not continuation.**\n\n7. **Magnitude calibration is systematically too low.** JPM predicted -1.0 bps, moved -32.6 bps (32x miss). NOW predicted -3.7 bps, moved +122.6 bps (33x miss, wrong direction). AAPL predicted -2.2 bps, moved -15.0 bps (7x miss). **The harness underestimates move size by 7-33x on reversals, continuations, and volatile tapes.**\n\n8. **Width must scale with prior move size and tape volatility.** A stock that rallied 340 bps in 45 minutes (JPM) or 180 bps in 27 minutes (NOW) is high-uncertainty (continuation? reversal? done?). Use 10-18 bps width, not 2 bps. A stock with 50-70 bps swings in 45 minutes (AAPL) needs 8-12 bps width, not 2 bps.\n\n---\n\n## **The Decision Framework**\n\n### **Step 1: Check the tape for prior moves (ALWAYS FIRST)**\n\nPull candlesticks for the last 60 minutes. Ask:\n\n- **Has the stock moved 100+ bps in one direction over the last 30-60 minutes?**\n- **What is the move size and timing relative to the headline timestamp?**\n- **Is the tape volatile (50+ bps swings) or stable (<20 bps range)?**\n\n**If the stock rallied/fell 100-400+ bps in the 30-60 minutes BEFORE the headline:**\n- The headline is likely published INTO the move (the move caused the headline, or the headline is retrospective/stale)\n- **Do not predict another 20-40 bps in the same direction unless the catalyst is fresh and material (earnings, deal, upgrade)**\n- Possible outcomes:\n  - **Continuation (20-30%):** momentum persists for 5-15 bps more, especially if volume is rising and the catalyst is material\n  - **Consolidation/done (40-50%):** stock moves 0-8 bps (random walk within the new level)\n  - **Reversal (20-40%):** stock retraces 10-35 bps (profit-taking, headline was the top/bottom tick)\n- **Predict 0-15 bps continuation, 0-8 bps consolidation, or 10-35 bps reversal, width 10-18 bps** (high uncertainty)\n\n**If the stock is flat (<20 bps range, <30 bps swings) over the last 30 minutes:**\n- The headline is fresh (tape has not reacted yet)\n- Classify the headline's materiality (Step 2) and predict the initial reaction\n\n**If the stock has 30-80 bps swings but no clear trend over the last 30 minutes:**\n- The tape is choppy/volatile\n- Classify the headline (Step 2) but add 3-5 bps to magnitude and use 8-12 bps width (volatility premium)\n\n**Examples:**\n- JPM rallied from 310.5 to 313.95 (+340 bps) over 45 min before \"Citi Wants To Put SpaceX Shares\" \u2192 headline is INTO the rally, tangential mention, predict 15-25 bps reversal, width 12-16 bps (actual -32.6 bps, would stay closer)\n- NOW rallied from 103.0 to 104.8 (+180 bps) over 27 min before \"IBM Crashes 24%\" \u2192 sector selloff headline but NOW is rallying (decoupled), predict 10-25 bps continuation, width 12-18 bps (actual +122.6 bps, would stay closer; note the 122 bps move is an outlier, likely driven by other factors)\n- GOOGL flat around 327.9 over prior 45 min before \"Alphabet Changed Wall Street's Favorite AI Metric\" \u2192 thematic piece, tape flat, predict 0-3 bps, width 4-6 bps (actual -4.4 bps, would stay within band)\n- AAPL had 50-70 bps swings around 330.5-331.7 over prior 45 min before \"CNBC Halftime Report Final Trades\" \u2192 TV mention, tape volatile and rolling over, predict 8-15 bps down, width 10-14 bps (actual -15.0 bps, would stay closer)\n- GOOGL rallied from 374.6 to 375.6 (+100 bps) over 45 min before \"Oil Sinks 6%, Nasdaq 100 Rallies On Iran Talks\" \u2192 macro theme headline published into rally, predict 5-12 bps reversal or 0-8 bps consolidation, width 10-15 bps (actual -6.7 bps, would stay within band)\n\n### **Step 2: Classify the headline's materiality (if tape is flat or context is needed)**\n\n**A. Direct material catalyst (earnings, guidance, deal, partnership, product launch, analyst upgrade/downgrade, regulatory approval):**\n- Examples: \"Citi joins 21-firm stablecoin consortium targeting 2027 launch\" (C)\n- **These move 12-35 bps in news direction when fresh on flat tape**\n- **If tape is flat: predict 12-30 bps in news direction, width 10-15 bps**\n- **If tape already moved 100-200 bps in news direction: predict 5-15 bps continuation or 0-10 bps consolidation, width 10-15 bps**\n- **If tape moved 200-400+ bps in news direction: predict 0-10 bps consolidation or 10-30 bps reversal, width 12-18 bps**\n\n**B. Sector contagion headline (peer crash/rally, \"drags stocks,\" sector selloff/rebound):**\n- Example: \"IBM Crashes 24%, Drags Tech and IT Services Stocks Into Selloff\" (NOW)\n- **CRUCIAL: Check if your stock's tape matches the headline's narrative. If the headline says \"selloff\" but your stock is rallying, it has decoupled.**\n- **If tape is flat and headline is fresh: predict 8-20 bps in contagion direction, width 10-15 bps**\n- **If tape is moving OPPOSITE to the contagion direction (decoupled): ignore the contagion, predict 5-15 bps continuation in tape direction, width 10-15 bps**\n- **If tape is moving WITH the contagion direction: predict 8-18 bps continuation, width 10-15 bps**\n\n**C. Tangential mention (your symbol mentioned as comparator in story about something else):**\n- Example: \"Citi Wants To Put SpaceX Shares\" (JPM named as peer bank comparator)\n- **These move 0-5 bps when tape is flat, but can trigger 10-30 bps reversals if published into a large prior move**\n- **If tape is flat: predict 0-3 bps, width 4-6 bps**\n- **If tape moved 100-200 bps before headline: predict 5-12 bps reversal, width 8-12 bps**\n- **If tape moved 200-400+ bps before headline: predict 10-30 bps reversal, width 12-18 bps**\n\n**D. TV segment mention (CNBC, Bloomberg, etc.):**\n- Example: \"CNBC Halftime Report Final Trades: Apple, Rio Tinto, UnitedHealth Group\" (AAPL)\n- **These are noise by themselves (0-3 bps on flat tape) but can move 8-20 bps if tape is volatile or trending**\n- **If tape is flat (<20 bps range): predict 0-3 bps, width 4-6 bps**\n- **If tape is volatile (30-80 bps swings) or trending: predict 8-15 bps in trend direction, width 10-14 bps**\n\n**E. Macro theme with 15+ symbols (market-wide story: geopolitical, rates, sector rotation, \"stocks moving today\"):**\n- Examples: \"Oil Sinks 6%, Nasdaq 100 Rallies On Iran Talks\" (28 symbols)\n- **These headlines often LAG the market move (the move caused the headline, not the other way around)**\n- **Always check if the macro move already happened (Step 1)**\n- **If tape is flat and theme is material: predict 8-20 bps in theme direction, width 12-18 bps**\n- **If tape already moved 100-200 bps in theme direction: predict 0-10 bps consolidation or 5-15 bps reversal, width 10-15 bps**\n- **If tape moved 200+ bps in theme direction: predict 5-15 bps reversal, width 12-18 bps**\n\n**F. Retrospective explainer or thematic piece (ETF diversification, AI CapEx theme, performance review):**\n- Examples: \"Can ETFs Shield Investors From Apple's Supply Chain Woes?\" (QQQ), \"Alphabet Changed Wall Street's Favorite AI Metric: Microsoft and Meta Are Up Next\" (GOOGL)\n- **These are noise by themselves (backward-looking, no new catalyst) unless tape is moving**\n- **If tape is flat: predict 0-3 bps, width 4-6 bps**\n- **If tape moved 50-150 bps before headline: predict 3-10 bps continuation or consolidation, width 8-12 bps**\n- **If tape moved 150+ bps before headline: predict 0-10 bps consolidation, width 10-15 bps**\n\n### **Step 3: Determine magnitude**\n\n**Key insight from feedback: the harness underestimates by 7-33x on reversals, continuations, and volatile tapes. Width is systematically too tight (2 bps used on 7 of 8 examples).**\n\n**Magnitude table:**\n\n| Story type | Tape state | Predicted move | Width |\n|------------|------------|----------------|-------|\n| Direct material catalyst | Flat (fresh news) | 12-30 bps in news direction | 10-15 bps |\n| Direct material catalyst | Moved 100-200 bps in news direction | 5-15 bps continuation or 0-10 bps consolidation | 10-15 bps |\n| Direct material catalyst | Moved 200-400+ bps in news direction | 0-10 bps consolidation or 10-30 bps reversal | 12-18 bps |\n| Sector contagion | Flat, fresh headline | 8-20 bps in contagion direction | 10-15 bps |\n| Sector contagion | Tape decoupled (moving opposite) | 5-15 bps continuation in tape direction | 10-15 bps |\n| Tangential mention | Flat | 0-3 bps | 4-6 bps |\n| Tangential mention | Moved 100-200 bps | 5-12 bps reversal | 8-12 bps |\n| Tangential mention | Moved 200-400+ bps | 10-30 bps reversal | 12-18 bps |\n| TV segment mention | Flat | 0-3 bps | 4-6 bps |\n| TV segment mention | Volatile (30-80 bps swings) or trending | 8-15 bps in trend direction | 10-14 bps |\n| Macro theme (15+ symbols) | Flat, material theme | 8-20 bps in theme direction | 12-18 bps |\n| Macro theme (15+ symbols) | Moved 100-200 bps in theme direction | 0-10 bps consolidation or 5-15 bps reversal | 10-15 bps |\n| Macro theme (15+ symbols) | Moved 200+ bps in theme direction | 5-15 bps reversal | 12-18 bps |\n| Retrospective explainer | Flat | 0-3 bps | 4-6 bps |\n| Retrospective explainer | Moved 50-150 bps | 3-10 bps continuation or consolidation | 8-12 bps |\n| Retrospective explainer | Moved 150+ bps | 0-10 bps consolidation | 10-15 bps |\n\n**\"Moved X bps\" = cumulative move over the 30-60 minutes BEFORE the headline timestamp, in one direction, measured from the range start to the last close before the headline.**\n\n**Volatility premium: if the tape has 30-80 bps swings in the prior 30 minutes (even without a clear trend), add 3-5 bps to magnitude and use 8-14 bps width.**\n\n### **Step 4: Set width as insurance**\n\nWidth is how you avoid getting run over when wrong. The paper trade posts a two-sided quote at (predicted \u00b1 half_width). If the realised path exits that band, you get hit and pay for the miss.\n\n**Width guidelines:**\n\n- **4-6 bps: only for true noise on a flat, stable tape (tangential mention, TV segment, retrospective explainer)**\n- **8-12 bps: minor catalysts on flat tape, or any story on a tape with 30-80 bps swings (volatility premium)**\n- **10-15 bps: material catalysts on flat tape, sector contagion, macro themes on flat tape, or any story on a tape that moved 100-200 bps**\n- **12-18 bps: any story on a tape that moved 200-400+ bps (high uncertainty: continuation, consolidation, or reversal), or macro themes on moving tape**\n\n**When in doubt, go wider.** The examples show: 2 bps width got run over on 7 of 8 forecasts. 10-15 bps width would have kept 6 of those 7 within the band.\n\n### **Step 5: Cross-check before finalizing**\n\n- **Did I pull candlesticks for the last 60 minutes?** (You must check if the stock already moved 100-400+ bps before the headline)\n- **If the stock moved 100+ bps in one direction over the last 30-60 minutes, did I classify the headline as \"published into the move\"?** (If yes, do not predict another 20-40 bps in the same direction unless the catalyst is fresh and material; predict 0-15 bps continuation/consolidation or 10-35 bps reversal with 10-18 bps width)\n- **If the headline is a sector contagion story, did I check if my stock's tape matches the narrative?** (If headline says \"selloff\" but your stock is rallying, it has decoupled; predict continuation in tape direction, not contagion direction)\n- **Is my magnitude plausible for this story type and tape state?** (Direct catalysts on flat tape: 12-30 bps; reversals after 200-400 bps moves: 10-30 bps; TV mentions on volatile tape: 8-15 bps; noise on flat tape: 0-3 bps)\n- **Is my width at least 8-10 bps if the tape moved 100+ bps, has 30-80 bps swings, or the catalyst is material?** (If no, widen to 10-18 bps)\n- **Did I use 2-4 bps width?** (If yes, ask: is this a true noise story on a flat, stable tape? If no, widen to 8+ bps)\n\n---\n\n## **Examples Reworked**\n\n1. **JPM \"Citi Wants To Put SpaceX Shares\"**: tape rallied from 310.5 to 313.95 (+340 bps) over 45 min \u2192 tangential mention (JPM is peer comparator, not subject) published into 340 bps rally \u2192 predict -20 bps reversal, width 14 bps (actual -32.6 bps, would stay much closer and score positive skill)\n\n2. **NOW \"IBM Crashes 24%\"**: sector selloff headline, but NOW rallied from 103.0 to 104.8 (+180 bps) over 27 min \u2192 tape decoupled (rallying while headline says \"selloff\") \u2192 predict +15 bps continuation, width 15 bps (actual +122.6 bps, would stay much closer; note 122 bps is an outlier, but 15\u00b115 bps would score better than -3.7\u00b111.7 bps)\n\n3. **C \"Citi Join Push to Launch Global Stablecoin\"**: direct material catalyst (stablecoin consortium), tape drifted down 130 bps from 132.4 to 132.3 over 45 min \u2192 predict -8 bps continuation (consolidating lower), width 10 bps (actual -5.7 bps, would stay within band and score positive skill)\n\n4. **GOOGL \"Alphabet Changed Wall Street's Favorite AI Metric\"**: thematic piece, tape flat around 327.9 \u2192 predict -2 bps, width 6 bps (actual -4.4 bps, would stay within band and score positive skill)\n\n5. **INTC \"Intel And Micron Lead Semi Stock Rebound\"**: sector rebound commentary, tape flat to choppy around 105.1 \u2192 predict -3 bps, width 8 bps (actual -8.6 bps, would stay within band and score positive skill)\n\n6. **QQQ \"Can ETFs Shield Investors From Apple's Supply Chain Woes?\"**: retrospective explainer, QQQ rallied 110 bps then consolidated 688.6-688.9 over 35 min \u2192 predict +3 bps consolidation, width 8 bps (actual +2.6 bps, would stay within band and score positive skill)\n\n7. **AAPL \"CNBC Halftime Report Final Trades\"**: TV segment mention, tape had 50-70 bps swings and was rolling over \u2192 predict -12 bps, width 12 bps (actual -15.0 bps, would stay within band and score positive skill)\n\n8. **GOOGL \"Oil Sinks 6%, Nasdaq 100 Rallies On Iran Talks\"**: macro theme (28 symbols), GOOGL rallied 100 bps before headline \u2192 predict -8 bps reversal, width 12 bps (actual -6.7 bps, would stay within band and score positive skill)\n\n---\n\n## **Summary**\n\n- **Always check the tape first:** has the stock moved 100-400+ bps in the 30-60 minutes before the headline? If yes, the headline is likely published into the move \u2192 predict 0-15 bps continuation/consolidation or 10-35 bps reversal, width 10-18 bps.\n- **Sector contagion is not automatic:** check if your stock's tape matches the headline's narrative. If the headline says \"selloff\" but your stock is rallying, it has decoupled \u2192 predict continuation in tape direction, not contagion direction.\n- **Tangential mentions move 0-3 bps on flat tape but can trigger 10-30 bps reversals if published into a 200-400+ bps move.**\n- **TV mentions are noise (0-3 bps) unless the tape is volatile (30-80 bps swings) or trending, then 8-15 bps continuation.**\n- **Macro themes with 15+ symbols often lag the tape \u2192 check if the move already happened.**\n- **Width must be 10-18 bps for material catalysts, moving tapes (100+ bps prior move), or volatile tapes (30-80 bps swings). Use 4-6 bps only for true noise on flat, stable tape.**\n- **The harness systematically underestimates magnitude by 7-33x and uses 2 bps width far too often. Fix both.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
