@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen45",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n## Parse the Ticker to Know What You're Forecasting\n\nThe ticker encodes the question. Common patterns:\n- `TEAM1TEAM2-TEAM1`: \"Will TEAM1 win?\" (settles at 100 if TEAM1 wins, 0 otherwise)\n- `TEAM1TEAM2-TEAM2`: \"Will TEAM2 win?\" (settles at 100 if TEAM2 wins, 0 otherwise)\n- `TEAM1TEAM2-TIE`: \"Will the match end in a draw?\" (settles at 100 if draw, 0 otherwise)\n\nThe ticker format is typically `[LEAGUE][GAME_ID]-[OUTCOME]` where OUTCOME is a three-letter abbreviation of the team name or \"TIE\".\n\n**Always verify which outcome you are forecasting before interpreting score changes.**\n\n## Early Match Is Volatile, Not Stable\n\nIn the first 20 minutes of a match (especially first 15 minutes), the game state is highly uncertain:\n- Teams are still settling in\n- First goal often comes in this period\n- Volume can be sporadic as market participants adjust positions\n- Even with no recent events, baseline volatility is higher than mid-game\n\n**Example 1:** At 5' game time, 0-0, mid stable at 0.355 for several minutes. Predicted -0.0c \u00b1 0.5c, realized 0.0c. This worked, but was lucky - early match stability is fragile.\n\n**Example 2:** At 15' game time, 0-0, recent injury delay. Predicted -0.3c \u00b1 0.5c, realized +2.0c (2.3c miss). The tight quote failed to account for early-match volatility.\n\n**Example 4:** At 15' game time, 0-0, zero volume. Predicted -0.4c \u00b1 0.5c, realized +1.0c (1.4c miss). Early + illiquid = high uncertainty.\n\n**Example 8:** At 15' game time, 0-0, stable at 0.235. Predicted -0.1c \u00b1 0.5c, realized +2.0c (2.1c miss). A goal occurred during the forecast window.\n\n**Use wider half-width before 20':**\n- Even if no recent events and candlesticks look stable: use 1.0-1.5c minimum\n- With any volatility indicators (spread >2c, volume spikes, recent price moves): use 2.0-2.5c\n- Zero volume books: use 3.0c or don't trade\n\n## Most Moves Are Smaller Than You Think\n\nLooking at the realized outcomes:\n- Example 1: 0.0c (stable)\n- Example 2: +2.0c (early match goal)\n- Example 3: -2.0c (mid-game move)\n- Example 4: +1.0c (early match thin book)\n- Example 5: +1.5c (late match reversal)\n- Example 6: 0.0c (stable)\n- Example 7: -1.0c (mid-game)\n- Example 8: +2.0c (early match goal)\n\n**Typical 5-minute moves when nothing dramatic happens: 0 to 1 cent.**\n\nEven time decay at 75' on an unlikely outcome (Example 5) produced only +1.5c realized move, not the -2.0c that might be expected from rapid probability decay.\n\n**Default forecast for stable conditions should be 0 to \u00b10.3 cents, not \u00b10.5 cents.** Reserve predictions above 0.5c for clear drivers:\n- Active goal absorption (happened in last 3 minutes)\n- Clear time decay setup (>80' with extreme probability <0.05 or >0.95)\n- Book clearly thin and recovering from a spike\n\n## Half-Width Must Cover Early Match Uncertainty\n\nThe pattern in failures:\n\n**Examples that missed with 0.5c half-width:**\n- Example 2: Early match (15'), realized +2.0c, missed by 2.3c\n- Example 3: Mid-game but recent price action, realized -2.0c, missed by 2.0c\n- Example 4: Early match (15') + zero volume, realized +1.0c, missed by 1.4c\n- Example 5: Late match (75') losing team, realized +1.5c, missed by 2.2c\n- Example 8: Early match (15'), realized +2.0c, missed by 2.1c\n\n**Examples that worked:**\n- Example 1: Early match (5') but used 2.3c half-width - overkill for 0.0c realized, but would have covered volatility\n- Example 6: Early match (5') but used 0.7c half-width, realized 0.0c - would not have covered a goal\n- Example 7: Mid-game (45') used 0.9c half-width, realized -1.0c, just barely inside\n\n**New half-width guidelines:**\n\n**Early match (<20'):**\n- Minimum 1.5c even if looks stable\n- If any volatility indicators (spread >3c, volume irregular, recent moves >1c): 2.5c\n- Zero volume: 3.5c or decline to trade\n\n**Mid-game stable (20'-70', no goal in 10+ min, <1c range in last 10 min, volume >200/min):**\n- 1.0c baseline\n- If spread >2c or volume <200/min: 1.5c\n\n**Mid-game after recent move (goal in last 5-10 min or sharp price move):**\n- 2.0c for possible continued absorption or reversal\n\n**Late match (>70'):**\n- Baseline 1.5c (score can still change, time decay accelerates)\n- If extreme probability (<0.10 or >0.90): 1.5-2.0c\n- If still competitive (both teams between 0.20-0.50): 2.0c\n\n**Thin books (spread >5c or volume <50/min):**\n- Add 1.0c to whatever the time-based guideline says\n- If zero volume: 3.5-4.0c or decline\n\n## Check Candlesticks for Volume Patterns, Not Just Price\n\nVolume tells you about book depth:\n\n**High sustained volume (>500/min for several minutes):** Liquid book, quotes can be tighter\n\n**Irregular volume (alternating 0 and 500+):** Thin book, liquidity comes and goes, use wider quotes\n\n**Zero volume for extended periods:** Extremely thin, very wide quotes or decline to trade\n\n**Volume spike (>2000 in one minute):** Major event (goal) or large order, check if price moved accordingly\n\nExample 1: Total volume 326, recent minutes mostly 0-27, but stable mid. Still thin.\nExample 2: Volume very irregular (0 to 1505), thin book confirmed.\nExample 4: Zero volume entire history, completely illiquid.\nExample 6: Mix of high (1225, 5576) and zero, unstable liquidity.\n\n**Volume assessment:**\n- Sustained >500/min: liquid, can use tighter quotes\n- 100-500/min: moderate, baseline quotes\n- <100/min: thin, widen by 0.5-1.0c\n- Zero or near-zero: widen by 1.5-2.0c or decline\n\n## Time Decay Is Overrated on the 5-Minute Horizon\n\nExample 5 is instructive: Home team down 1-2 at 75', contract at 0.05 (5% chance home wins). Classic time decay setup.\n\nPredicted -0.7c over 5 minutes. Realized +1.5c (moved opposite direction).\n\nEven in the most favorable time decay scenario, other factors (thin book recovery, small scoring chances, random order flow) can easily overwhelm the decay signal.\n\n**Time decay guidelines:**\n- Before 70': Ignore it, too small to matter (0.1-0.2c per 5 min)\n- 70-80': Only predict 0.2-0.4c decay for unlikely outcomes (<0.15 or >0.85)\n- 80-90': Predict 0.5-0.8c decay for unlikely outcomes\n- >90': Predict 0.8-1.5c decay for extreme outcomes (<0.08 or >0.92)\n\n**Never predict time decay as your primary signal before 70'.**\n\n## Don't Over-Predict: Zero Is Often Right\n\nExamples 1 and 6 both realized 0.0c moves. Example 7 realized -1.0c when predicting -0.2c (very close).\n\nWhen conditions are genuinely stable:\n- Mid-game (25-65')\n- No goals in last 10+ minutes (verify both recent_events and candlesticks)\n- Candlesticks showing <1c total range over last 10 minutes\n- Reasonable volume (>200/min)\n- Moderate probability (0.15-0.85, not extreme)\n\n**Predict 0.0 to \u00b10.2 cents, not \u00b10.5 cents.**\n\nThe smaller prediction:\n- Is often correct\n- Costs you nothing when right\n- Reduces error when you're slightly wrong\n- Avoids false confidence in directional moves\n\n## Goal Absorption: The One Time to Predict 1-2 Cents\n\nWhen you find a goal in the last 3-5 minutes (check recent_events AND candlesticks for sharp moves):\n\n1. Look at candlesticks to see initial price move direction and magnitude\n2. Estimate how much time has passed since the goal\n3. Predict continuation in the same direction:\n   - 1-2 minutes after goal: +1.5 to +2.5c continuation\n   - 3-4 minutes after goal: +0.5 to +1.5c continuation\n   - 5+ minutes after goal: +0.2 to +0.5c final absorption\n\nUse 2.0-2.5c half-width during active absorption (first 4 minutes), 1.5c for late absorption.\n\n**This is the main scenario where predicting a move >0.5c is justified.**\n\n## Physical Bounds Matter at Extremes\n\nExample 5: Contract at 0.05 (5%). Maximum possible down move is -5c (to zero).\n\nIf you're predicting time decay of -0.7c on a 5c contract, you're predicting the probability drops from 5% to 4.3% in 5 minutes - that's a 14% relative drop. Possible, but aggressive.\n\n**At low prices (<0.10):**\n- Time decay is naturally limited (can't go below zero)\n- Up moves on favorable news can be large relative to price (2-3c move on a 5c contract doubles it)\n- Be cautious predicting down moves larger than 20-30% of current price\n\n**At high prices (>0.90):**\n- Time decay toward certainty is also limited (can't go above 1.00)\n- Down moves on unfavorable news can be large\n- Be cautious predicting up moves larger than 30-40% of remaining distance to 1.00\n\n## When Spread Is Wide, The Mid Is Unreliable\n\nExample 4: Spread of 24 cents (0.11 bid, 0.35 ask, mid 0.23). This mid is almost meaningless - it's the average of two prices nobody believes.\n\nWhen spread >10c:\n- The mid is not a reliable measure of fair value\n- Single small orders can move it dramatically\n- Last trade may be stale (minutes or hours old)\n- Consider not trading at all\n\nWhen spread >5c:\n- Use very wide half-width (3-4c minimum)\n- Reduce confidence in any directional prediction\n- The book cannot absorb even small orders without moving\n\nWhen spread 2-4c:\n- Moderate liquidity, baseline half-width (1.0-1.5c)\n\nWhen spread <2c:\n- Good liquidity, can use tighter quotes (but still respect early match volatility)\n\n## Summary: The Revised Forecast Checklist\n\n1. **Parse the ticker** to know which outcome you're forecasting\n\n2. **Assess timing volatility:**\n   - Before 20': minimum 1.5c half-width even if stable\n   - 20-70': can use 1.0c if genuinely stable\n   - After 70': minimum 1.5c half-width for uncertainty\n\n3. **Check recent_events and candlesticks for goals:**\n   - Goal in last 1-3 min: predict +1.5 to +2.5c continuation, 2.5c half-width\n   - Goal in last 3-5 min: predict +0.5 to +1.5c continuation, 2.0c half-width\n   - No goal in 10+ min: default to small/zero move\n\n4. **Assess book liquidity:**\n   - Volume >500/min, spread <2c: good liquidity\n   - Volume 100-500/min, spread 2-4c: moderate, add 0.5c to half-width\n   - Volume <100/min or spread >5c: thin, add 1.5c to half-width or decline\n   - Volume near zero: add 2.5c to half-width or decline\n\n5. **Determine delta_cents:**\n   - Active goal absorption: +1.0 to +2.5c same direction as initial move\n   - Stable mid-game, no goals: 0.0 to \u00b10.2c\n   - Late match (>75') time decay on unlikely outcome: -0.3 to -0.8c\n   - Default when uncertain: 0.0c\n\n6. **Determine half_width_cents by combining factors:**\n   - Start with time-based baseline (1.5c early, 1.0c mid, 1.5c late)\n   - Add liquidity adjustment (0c if liquid, +0.5c if moderate, +1.5c if thin)\n   - Use 2.0-2.5c during active goal absorption\n   - Never go below 1.0c in practice (only on paper for truly exceptional stability)\n\n7. **Sanity check:**\n   - Is your delta reasonable given typical 5-min moves are 0-2c?\n   - Is your half-width wide enough to cover early-match or thin-book volatility?\n   - Would your quote [mid + delta \u00b1 half_width] survive a 2c surprise move?\n\n**The goal is to quote wide enough to capture realized price 85-90% of the time, while still offering value when you have a genuine signal (goal absorption or extreme time decay).**\n\n**Default to wider quotes and smaller predicted moves. The error pattern shows persistent under-estimation of uncertainty, not over-estimation.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
