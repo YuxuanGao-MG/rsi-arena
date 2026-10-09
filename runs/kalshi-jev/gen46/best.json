@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen46",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nCRITICAL BOUNDS AND UNCERTAINTY:\n\nA contract near 0c or 100c has almost nowhere to go. If mid is 0.5c, it can only fall 0.5c to zero or rise at most 0.5c to 1c; if mid is 99c, it can only rise 1c to 100 or fall modestly. Your delta_cents must respect these physical limits.\n\nTHE CORE LESSON FROM FEEDBACK:\n\n**Most five-minute windows see NO MOVEMENT. The default forecast is delta_cents = 0.**\n\nAll eight examples showed markets that either:\n- Moved 0-1c (Examples 1, 2, 3, 6, 7, 8)\n- Stayed completely flat (Examples 4, 5, 7)\n\nThe harness predicted small moves (0.1-0.2c) in stable conditions and lost skill. **When you cannot identify a specific catalyst happening RIGHT NOW, predict delta = 0.**\n\nHALF_WIDTH: YOUR CORE RISK CONTROL\n\nHalf_width was systematically too narrow. All examples used 0.5c; this was wrong every time.\n\n**Minimum half_width: 2.0c for any baseline forecast.**\n\nWhy? Five-minute market moves are inherently uncertain:\n- You don't know the exact timing of price updates (they can lag reality by 1-3 minutes)\n- You don't know if a thin book will see one large order\n- You don't know if a goal will hit in minute 3 or minute 5 of your window\n- Small prediction errors (0.5c) happen constantly even when you're directionally right\n\n**Half_width is NOT a confidence interval from your model. It's a business decision: how wide can you quote before you lose all your edge to the spread?**\n\nHALF_WIDTH DECISION RULES:\n\n**2.0c baseline:** Mid-match (30-70'), thick book (volume > 2000), stable score, no events in last 5+ minutes, mid 20-80c.\n\n**2.5-3.0c (wider protection):**\n- Early match (< 25'): Anything can happen, volatility high\n- Late match (> 70'): Time decay timing uncertain, goal risk rising  \n- Thin book (volume < 1000): Single orders move the mid unpredictably\n- Recent goal within 3-6 minutes: Absorption timing uncertain\n- Mid at extremes (< 15c or > 85c): Percentage volatility high on small absolute moves\n\n**3.0-4.0c (maximum protection):**\n- Very thin book (volume < 500): Mid is stale, no price discovery\n- Very early (< 15'): Match hasn't settled\n- Recent goal within 1-3 minutes: Violent absorption phase\n- Contract near floor/ceiling (< 8c or > 92c): Explosive percentage moves possible\n\n**Never use half_width < 2.0c. The examples prove that 0.5-1.0c loses money.**\n\nWHEN TO PREDICT DELTA = 0 (the most common answer):\n\n1. **No recent events (last 5+ minutes) AND stable candlesticks (< 0.5c/min for 8+ min):** The market has absorbed everything. Predict 0.\n\n2. **Thin book (volume < 1000):** The mid is stale. No liquidity = no price discovery = no predictable movement. Predict 0, width 2.5-3.0c.\n\n3. **Very thin book (volume < 500):** Dead market. Predict 0, width 3.0c minimum.\n\n4. **Mid-match (30-70') with no catalyst:** Time decay is too slow to matter (< 0.2c per 5 min). Predict 0.\n\n5. **After goal absorption complete:** If candlesticks show the jump happened and have been flat for 5+ minutes, it's over. Predict 0.\n\n**Examples 4, 5, 7 all lost skill by predicting 0.1-0.2c moves in these exact conditions. The correct answer was delta = 0.**\n\nWHEN TO PREDICT NON-ZERO DELTA (rare, needs clear evidence):\n\n**1. Recent goal with ongoing absorption (MOST IMPORTANT CASE):**\n\nCheck recent_events for goals. Match to candlesticks:\n\n- **Goal in last 1-3 minutes, candlesticks show jump still forming:** Absorption ongoing. Predict +2 to +4c or -2 to -4c depending on direction and contract type. Width 3.0-3.5c (violent phase).\n\n- **Goal 3-5 minutes ago, candlesticks show partial movement:** Late absorption. Predict +1 to +2c or -1 to -2c. Width 2.5-3.0c.\n\n- **Goal 5+ minutes ago, candlesticks flat since:** Absorption complete. Predict 0, width 2.0c.\n\n**Understanding the ticker to get direction right:**\n\n- Ticker format: \"KXLEAGUEGAME-DATEHOMEAWAY-TEAMCODE\"\n- **Ends with home team code:** Home WIN contract. Home goal \u2192 rises. Away goal \u2192 falls.\n- **Ends with away team code:** Away WIN contract. Away goal \u2192 rises. Home goal \u2192 falls.  \n- **Ends with \"-TIE\":** DRAW contract. Any goal breaking tie \u2192 falls. Goal equalizing \u2192 rises.\n\nExample 3: FORAJA-FOR (Fortuna home win). Away (Ajax) scored. Contract should fall, but it stayed flat at 3.5c because it was already near the floor - nowhere to go.\n\nExample 8: PENBRI-PEN (Pe\u00f1arol home win). Away (Boston River) scored at 51', equalizing 1-1. The draw contract should RISE (it's now more likely), but this is the home WIN contract, so it should FALL. Candlesticks show it fell from 0.83 to 0.76 by minute 55'. Four minutes later, absorption mostly done. Predict delta = 0, not -0.1c.\n\n**2. Very late match time decay (clock > 80'):**\n\nOnly predict decay when ALL of:\n- Clock > 80' (before this, decay is too slow and noisy)\n- Contract at 30-70c (outside this range, it's constrained by bounds)\n- Stable score for 5+ minutes (no recent goals disrupting)\n- Thick book (volume > 2000, so the mid is real)\n\nDecay rates for a 40-60c contract:\n- Minutes 80-85: -0.5 to -1.5c per 5 minutes\n- Minutes 85-90: -1.5 to -3.0c per 5 minutes  \n- Stoppage time: -3 to -5c per 5 minutes\n\n**Do NOT predict decay before minute 80. Examples 4, 5, 6, 7 all lost skill doing this.**\n\nAt minute 55' or 65', even a \"yes\" contract at 35c will only decay 0.1-0.2c over five minutes, which is noise. Predict 0.\n\n**3. Thin book drift-back:**\n\nIf volume < 500 and you see candlesticks jumped 1-2c on a single trade 1-2 minutes ago, the mid may drift back toward the pre-jump level. But this is unreliable. Usually better to predict 0 with wide width (3.0c).\n\nTHREE-STEP PROCESS:\n\n**Step 1: Check recent_events and candlesticks together.**\n\n- Recent goal in last 5 minutes? Check candlesticks for the jump and its completion.\n- No recent goal and candlesticks flat for 8+ minutes? Everything absorbed or nothing happening.\n\n**Step 2: Assess volume and book liquidity.**\n\n- Volume > 2000: Thick book, mid is reliable\n- Volume 500-2000: Moderate liquidity  \n- Volume < 500: Thin book, mid may be stale, predict 0 with width 3.0c\n- Volume = 0.0: Dead book, absolutely predict 0 with width 3.0c\n\n**Step 3: Determine delta and half_width.**\n\nDefault: delta = 0, half_width = 2.0-3.0c depending on conditions.\n\nOnly predict non-zero delta if you have CLEAR EVIDENCE from Step 1 of ongoing absorption or extreme lateness with decay conditions.\n\nCHECKLIST BEFORE OUTPUTTING:\n\n1. **Have I defaulted to delta = 0?** If no clear catalyst (recent goal still absorbing, or clock > 80' with decay conditions), it should be 0.\n\n2. **Is half_width at least 2.0c?** For thin books (< 1000) or uncertain conditions, at least 2.5-3.0c?\n\n3. **If predicting non-zero delta, what is the specific evidence?**\n   - Recent goal in last 1-4 minutes + candlesticks showing ongoing movement? \n   - Clock > 82' with stable score and thick book?\n   - If neither, go back to 0.\n\n4. **If volume < 1000, have I predicted delta = 0?** Thin books don't support confident directional calls.\n\n5. **Is delta physically possible?** Can't fall 5c from 3c mid, can't rise 5c from 97c mid.\n\n6. **Am I predicting time decay before minute 80?** Don't. It's invisible in the noise.\n\nABSORPTION TIMING (CRITICAL):\n\nWhen a goal happens, the market doesn't adjust instantly. The absorption happens over 3-8 minutes:\n\n- Minutes 0-2 after goal: Violent movement, 10-20c jump\n- Minutes 2-4: Continued adjustment, another 3-8c  \n- Minutes 4-6: Final drift, 1-3c\n- Minutes 6+: Complete, market flat\n\n**Your five-minute window may catch different phases.** If the goal was 4 minutes ago and candlesticks have been flat for 1-2 minutes, absorption is done. Predict 0.\n\nIf the goal was 1-2 minutes ago and candlesticks are still moving, predict continued movement BUT with very wide width (3.0-3.5c) because you don't know when it will stop.\n\nVOLUME IS CRITICAL:\n\nExample 2: volume 0.0 \u2192 predict 0, width 3.0c (dead market)\nExample 4: volume 5060 \u2192 thick book, but early match (15') \u2192 predict 0, width 2.5c  \nExample 5: volume 196 \u2192 very thin \u2192 predict 0, width 3.0c\nExample 7: volume 0.0 \u2192 dead thin \u2192 predict 0, width 3.0c\n\n**When volume < 500, always predict delta = 0 with width 3.0c. The mid is not meaningful.**\n\nTHE PATTERN FROM ALL EIGHT EXAMPLES:\n\n- Seven of eight saw moves of 0-1c\n- The harness predicted 0.1-0.2c and lost skill\n- The correct answer in most cases: delta = 0, half_width 2.0-3.0c\n\n**Better to stand aside with delta = 0 and protective width than to predict phantom moves.**\n\nYour forecast is posted as a two-sided quote. Narrow quotes get you filled and lose money when wrong. Wide quotes protect you but reduce fill rate. The skill score rewards calling actual moves, not trading volume.\n\n**The default forecast for a stable, mid-match, no-catalyst situation: delta_cents = 0, half_width_cents = 2.0 to 2.5.**\n\nOnly deviate when you have specific evidence of ongoing absorption or extreme lateness.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
