@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen49",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nCRITICAL BOUNDS AND UNCERTAINTY:\n\nA contract near 0c or 100c has almost nowhere to go. If mid is 0.5c, it can only fall 0.5c to zero or rise modestly; if mid is 99c, it can only rise 1c to 100 or fall modestly. Your delta_cents must respect these physical limits.\n\nMost five-minute windows see moves of 0-3 cents. The MODE is zero: most windows are quiet. Narrow quotes claim confidence the market will stay in a tight band and are punished when it does not.\n\nCORE PRINCIPLE - WHEN TO WIDEN:\n\nThe default is WIDE quotes (1.5-2.5c half-width). Narrow quotes are the exception, requiring multiple confirming signals of stability.\n\nUse wide quotes (1.5-2.5c half-width) in ANY of these situations:\n- Early match: 0'-30' (goals can happen suddenly, \u00b13-5c moves are common)\n- Low volume: under 500 contracts traded (thin book, drift risk)\n- Recent goal: within last 5 minutes (absorption may continue or reverse)\n- Price at extremes: under 20c or over 80c (limited room but proportionally large % moves)\n- Volatile candlesticks: mid moved 2c+ in last 10 minutes (instability)\n- No confirming signals: when you lack multiple reasons for confidence\n\nUse moderate quotes (1.0-1.5c half-width) when:\n- Mid-match: 30'-70' with no recent events and moderate volume (500-2000)\n- Absorption appears complete: goal was 5+ min ago, candlesticks flat 3+ min\n- Moderate price: 20-80c range\n\nUse narrow quotes (0.5-0.8c half-width) ONLY when ALL of:\n- No recent goal (5+ minutes since any score)\n- Candlesticks flat: mid unchanged \u00b11c for 5+ consecutive minutes\n- Volume moderate to high (>500, ideally >1000)\n- Not in final 20 minutes (75'+) when time decay accelerates\n- Not in first 30 minutes when goal risk is high\n- Mid price 20-80c (not extreme)\n\nTHREE FORECAST STANCES:\n\n1. **Directional**: delta_cents of \u00b11.0 to \u00b13.0, pair with moderate to wide half-width\n   - Clear driver: visible time decay at 60'+, ongoing goal absorption, tape reversing\n   - Example: 75' with mid 45c on \"will score\", predict -1.5c delta with 1.2c width\n\n2. **Neutral with wide protection** (the DEFAULT): delta_cents near zero, half_width 1.5-2.5c\n   - Use when: early match, uncertain state, moderate volume, any ambiguity\n   - This is the RIGHT ANSWER most of the time\n   - Example: 15' with mid 24.5c, predict 0c delta with 2.0c width\n   - Example: 25' with mid 37.5c after goals, predict 0c delta with 2.0c width\n\n3. **Stable and tight**: delta_cents near zero, half_width 0.5-0.8c\n   - Use ONLY with all confirming signals listed above\n   - Rare: most match situations do not qualify\n\nREADING THE SITUATION:\n\n**Check candlesticks first** for recent price movement:\n- Goal absorption: If mid jumped 10+ cents in last 2-4 minutes, a goal occurred. Absorption can continue another 2-5 minutes. If move was recent (last 2 min), predict continuation +0.5 to +1.5c with width 1.5c. If move complete (flat 3+ min), predict zero with width 1.0-1.5c.\n- Stability test: Has mid been within \u00b11c for the last 5+ minutes with no sudden jumps? If no, use wide quotes.\n- Recent volatility: Any 2c+ move in last 10 minutes means use width 1.5c minimum.\n\n**Clock position and time decay**:\nFor \"Will X score\" or \"Will X happen\" contracts that decay toward zero as time runs out:\n- 0'-30': NO systematic decay yet. Goal risk dominates. Use WIDE quotes (1.5-2.5c) unless all stability signals present.\n- 30'-60': Mild decay starts if mid > 40c. Predict -0.3 to -0.6c per 5min. Width 1.0-1.5c.\n- 60'-75': Moderate decay if mid > 30c. Predict -0.6 to -1.2c per 5min, faster if mid > 50c. Width 1.0-1.5c.\n- 75'-90': Strong decay. If mid > 50c predict -1.5 to -2.5c. If mid 30-50c predict -1.0 to -1.8c. At 85'+ decay accelerates. Width 1.2-1.8c (widen for uncertainty in exact decay rate).\n\nFor \"Will X win\" or match outcome contracts: less pure decay, more driven by score and game state.\n\n**Volume and book depth**:\n- Volume 0-500: very thin. Minimum width +1.5c, prefer +2.0c.\n- Volume 500-2000: moderate. Width 1.0-1.5c if other conditions stable.\n- Volume > 2000: thick. Can use 0.8-1.2c width if all other signals confirm stability.\n\n**Recent events from game feed**:\n- Goal in last 5 minutes: market may still be absorbing. Width 1.5c minimum.\n- Red card: major impact, book may take 5-10 minutes to find new level. Width 2.0c+.\n- Yellow card only: minimal price impact, ignore unless it's a second yellow (red card).\n- Substitution: minimal immediate impact.\n- Period transitions (halftime): check for any events that occurred during break. Markets can be slow to price halftime news.\n\n**Tape imbalance** (check previous_trades):\n- If last 5+ trades all one side and total volume low, thin book may mean-revert 0.5-1.0c.\n- But if trades coincide with a goal in recent_events, the imbalance is real, not noise.\n\n**Price extremes**:\n- Mid under 15c: contract near floor, limited downside but can drift up. Predict \u00b10c with width 1.0-1.5c. Avoid predicting down when already at low single digits.\n- Mid over 85c: contract near ceiling, limited upside but can drop. Predict \u00b10c with width 1.0-1.5c.\n\nSPECIFIC PATTERNS FROM FEEDBACK:\n\n**Pattern 1 - Early match (0'-30') needs wide quotes**: \nMatches at 15', 25', 35' with mids in 20-60c range saw realized moves of -2.0c to +5.0c. Early match is volatile even when candlesticks look stable. Minimum width 1.5c, prefer 2.0c before 30'. The harness repeatedly used 0.5c width early and got punished.\n\n**Pattern 2 - Low prices (under 20c) have upside bias**:\nContracts at 14.5c, 19.5c, 22.0c showed realized moves of +1.0c to +15.0c (the +15c was a late goal absorption). When mid is under 20c, do NOT predict downward moves unless there's a clear driver. Predict 0c with width 1.0-1.5c.\n\n**Pattern 3 - Post-goal continuation**:\nAfter a goal visible in candlesticks (10+ cent jump), absorption can continue 3-5 more minutes, especially on low volume. If goal was <3 min ago, predict continuation. If goal was 3-5 min ago and candlesticks still moving, predict continuation +0.5 to +1.0c.\n\n**Pattern 4 - Halftime and period transitions**:\nAt 45' or 90', check recent_events carefully. Red cards, injuries, or other major events at the break can take 5+ minutes to price. If in doubt at a period transition, use wide quotes 2.0c+.\n\n**Pattern 5 - Zero volume books drift randomly**:\nVolume of 0-50 contracts means the book is not actively traded. Wide spread (2-5 cents) and erratic mid movements are noise. Predict \u00b10c with width 2.0-2.5c to avoid getting run over by a single large order.\n\n**Pattern 6 - The harness over-predicted stability**:\nSix of eight examples used 0.5c half-width and six of eight were punished for it. The harness saw \"candlesticks flat\" and predicted tight, ignoring that it was early match, or low volume, or a low price, or recent goal. Require ALL confirming signals before going narrow.\n\nDECISION LOGIC:\n\n1. Check clock: if 0'-30', default to width 1.5-2.0c.\n2. Check volume: if <500, add +1.0c to width.\n3. Check recent_events: any goal in last 5 min, use width 1.5c+.\n4. Check candlesticks: any 2c+ move in last 10 min, use width 1.5c+.\n5. Check price: if mid <20c or >80c, use width 1.0-1.5c minimum.\n6. Only if ALL of these pass (30'+ in match, volume >500, no recent goal, candlesticks flat 5+ min, mid 20-80c) consider narrow quotes.\n\nFor delta_cents:\n- If 60'+ and mid >30c on a \"will score\" contract, predict time decay -0.5 to -2.0c depending on clock and mid level.\n- If goal in last 2-3 min and candlesticks show ongoing movement, predict continuation +0.5 to +1.5c.\n- If tape shows mean-reversion setup (one-sided trades, thin book, no game event), predict reversion -0.5 to -1.0c.\n- Otherwise, predict \u00b10c (no change is the modal outcome).\n\nYour forecast is posted as a two-sided quote: bid at (mid + delta - half_width), ask at (mid + delta + half_width). You are charged for fills when realized price crosses your quote. Wide quotes when uncertain earn zero skill but avoid negative skill. Negative skill is worse than silence.\n\nWhen in doubt, widen. The harness lost skill by being too confident, not by being too cautious.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
