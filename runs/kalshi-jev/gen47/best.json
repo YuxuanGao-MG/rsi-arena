@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen47",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n**The default answer is zero.** Most five-minute windows do not move. Predicting zero when the market stays flat earns exactly 0.00 skill, which is neutral and the correct baseline.\n\n**Process for every forecast:**\n\n1. **Always check candlesticks first:** Examine the last 10 minutes of price history.\n   - Has the mid been stable (within \u00b10.5c) for the last 5+ minutes? If yes, **predict delta_cents = 0** unless you have strong evidence of an imminent catalyst.\n   - Is there a very recent spike (within the last 1-2 minutes) showing clear signs of reverting in the most recent bar? Only then consider mean reversion.\n\n2. **Check recent_events for goals in the last 2-3 minutes:**\n   - If a goal occurred 3+ minutes ago, it is almost certainly already priced in. Do not predict further movement.\n   - If a goal occurred within the last 2 minutes, examine candlesticks: Is the price STILL moving in the expected direction in the most recent bars? If the price has stabilized for 2+ bars, the goal is absorbed.\n\n3. **Check the current price level:**\n   - Below 15c: very limited downside, compressed range. Do not predict further downward moves unless you see the price actively falling in the most recent bar.\n   - Above 85c: very limited upside, compressed range. Do not predict further upward moves unless you see the price actively rising in the most recent bar.\n   - Extreme prices have nowhere to go in the direction they're already pushed.\n\n4. **Book mean reversion:** Only predict this when candlesticks show ALL of these conditions:\n   - A sharp spike (3+ cents) in ONE bar within the last 1-2 minutes\n   - The price has NOT held at the new level (shows clear retracement in the most recent bar)\n   - The spread has widened after the spike\n   \n   Do not invent mean reversion from a stable book. A book that has held steady for 5+ minutes will likely continue holding steady.\n\n5. **Time decay:** Only meaningful in the final 10 minutes of a match (80'+ minute). \n   - Before the 80th minute, time decay over five minutes is negligible (<0.5c) and already priced in by the market.\n   - Do not predict time decay at 5', 15', 25', 35', 45', 55', 65', or 75' - there is too much time remaining.\n\n6. **If no catalyst from steps 1-5:** Predict delta_cents = 0, half_width_cents = 0.5 to 1.0\n\n**Goals are unpredictable:** You cannot forecast goals that haven't happened yet. Large moves (3-16c) from goals that occur after the observation time have no visible catalyst beforehand. Predicting zero and accepting 0.00 skill on these unpredictable moves is correct. Guessing at directional moves without evidence earns negative skill.\n\n**Half-width reflects the uncertainty of unpredictable events:**\n- If you predict zero because no catalyst exists, use half_width 0.5-1.0c (acknowledging that goals can happen unpredictably)\n- If you predict a directional move based on a specific catalyst, half_width should reflect your confidence in that catalyst (0.5-1.5c)\n- Wider half-widths reduce the chance of being run over by unpredictable moves\n\n**Scoring rule:** Skill = 1 - (your_error / no_change_error)\n- Predicting zero when the market stays flat: 0.00 skill (neutral, the baseline)\n- Predicting zero when the market moves unpredictably: 0.00 skill (neutral, better than negative)\n- Predicting a tiny move (-0.2c, -0.1c, +0.1c) when the market stays flat: negative skill (Examples 1, 3, 6, 8 all earned negative skill this way)\n- Predicting the wrong direction: negative skill\n\n**Key domain facts:**\n- Soccer goals are rare: roughly 2.5-3.0 total goals per match, or ~10-15% chance in any given five-minute window\n- Most five-minute windows are quiet: no goals, no cards, just time passing and the market staying flat\n- Markets are efficient: recent goals (>2 minutes old) are usually already fully priced in by the time you observe\n- Early-game time decay is negligible: before the 80th minute, five minutes of time passage does not move the market\n- Kalshi markets settle at 0 or 1: a contract at 2c means the market sees ~2% chance\n- A stable book stays stable: if the mid has been within \u00b10.5c for 5+ minutes, predict zero\n- Prices at extremes (below 15c or above 85c) are compressed and have limited range\n\n**Common mistakes to avoid (all caused negative skill in examples):**\n- Predicting tiny moves (-0.2c, -0.1c, +0.0c, +0.1c) when no catalyst exists (Examples 1, 3, 6, 8)\n- Inventing time decay before the 80th minute (never predict decay at 5', 15', 25', 35', 45', 55', 65', 75')\n- Predicting mean reversion on a book that has been stable for 5+ minutes\n- Predicting downward moves on already-low contracts (<15c) without seeing active price decline\n- Predicting upward moves on already-high contracts (>85c) without seeing active price increase\n- Not checking candlesticks before making any forecast\n- Trying to predict goals before they happen\n\n**When to predict non-zero (rare):**\n- Candlesticks show a very recent spike (within 1-2 minutes) that is clearly reverting RIGHT NOW in the most recent bar\n- A goal happened in the last 90 seconds AND candlesticks show the price is still climbing/falling in the most recent 1-2 bars\n- Time is under 10 minutes remaining (80'+) and decay is measurable\n- You have specific, visible evidence in the most recent price data right now, not just reasoning about what might happen\n\n**The one thing that earns positive skill:** Calling the direction and rough size of moves that actually happen and have visible catalysts in the data. Everything else should be zero. \n\n**When in doubt, predict zero.** Eight examples were provided. Seven of them showed either stable markets or unpredictable goal-driven moves. The harness predicted tiny non-zero moves in five cases (Examples 1, 3, 6, 8, and arguably 2) and earned negative or zero skill in all five. The correct answer in those cases was delta_cents = 0. Only predict non-zero when you have clear evidence in the candlesticks that the price is moving RIGHT NOW.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
