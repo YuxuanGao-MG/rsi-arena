@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen54",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The only thing that matters: width that contains the realized price.**\n\nYour systematic error is catastrophically underestimating width. Recent feedback shows you are using 2 bps half-width on almost every forecast. This loses money because stocks move 10-50 bps in five minutes from microstructure alone, regardless of news.\n\n**The physics of five-minute price movement:**\n\nDuring regular trading hours, stocks drift from:\n- Bid-ask bounce (minute closes alternating between bid and ask)\n- Small trades moving the last print\n- Temporary order imbalances\n- Market-wide moves (SPY moves, sector rotation)\n- Normal volatility from liquidity provision\n- Time-of-day effects (open volatility, close positioning)\n\nThis baseline drift exists whether or not there is news. It is not reducible by better prediction. It must be accommodated by wider quotes.\n\n**Observed five-minute drift from recent feedback:**\n\nEight new examples show the persistent pattern:\n- META (large tech, 66+ symbol listicle): realized +1.5 bps (you used \u00b12.0 bps) - SUCCESS\n- PLTR (large tech, 12-symbol listicle): realized +12.5 bps (you used \u00b12.0 bps) - FAIL\n- META (large tech, 7-symbol listicle, near open): realized -28.7 bps (you used \u00b12.0 bps) - FAIL\n- GS (large cap stable, 5-symbol stock-specific, near close): realized +2.2 bps (you used \u00b12.0 bps) - FAIL (marginal)\n- GOOGL (large tech, 10-symbol listicle): realized +13.8 bps (you used \u00b12.0 bps) - FAIL\n- XOM (large cap stable, 2-symbol stock-specific): realized +15.1 bps (you used \u00b12.0 bps) - FAIL\n- C (large cap stable, 1-symbol stock-specific, near open): realized -17.4 bps (you used \u00b16.4 bps) - FAIL but better\n- TSLA (high-beta, 10-symbol listicle): realized +3.0 bps (you used \u00b12.0 bps) - SUCCESS (got lucky)\n\nYou succeeded on only 2 of 8 forecasts (25% success rate). Seven used 2.0 bps half-width when minimums should have been 30-75 bps. The one wider forecast (C at 6.4 bps) was still too narrow but showed the right direction.\n\n**Key insight from new data:**\n\nYou are applying a 2 bps default to nearly everything. This is wrong. The minimum width depends on asset class and context, not your confidence about direction.\n\n**Minimum width rules (these are MINIMUMS for containing 70% of realizations):**\n\n**30 bps: Large cap stable floor**\nUse for BAC, C, CVX, GE, GS, MA, WMT, XOM and similar.\n\nExamples from feedback:\n- GS 5-symbol near close: 30 base + 5 (close) = 35 bps (you used 2.0, realized 2.2 - barely escaped)\n- XOM 2-symbol mid-day: 30 base + 10 (stock-specific) = 40 bps (you used 2.0, realized 15.1)\n- C 1-symbol near open: 30 base + 10 (stock-specific) + 15 (open) = 55 bps (you used 6.4, realized 17.4 - directionally correct but still too narrow)\n\n**40 bps: Large tech floor**\nUse for AAPL, AMZN, GOOGL, META, MSFT, NVDA, PLTR and similar.\n\nExamples from feedback:\n- META 66-symbol listicle mid-day: 40 bps base (you used 2.0, realized 1.5 - got very lucky)\n- PLTR 12-symbol listicle mid-day: 40 bps base (you used 2.0, realized 12.5)\n- META 7-symbol listicle near open: 40 base + 15 (open) = 55 bps (you used 2.0, realized 28.7)\n- GOOGL 10-symbol listicle mid-day: 40 bps base (you used 2.0, realized 13.8)\n\n**60 bps: High-beta floor**\nUse for TSLA, AMD (when volatile), and any stock showing >50 bps bars in recent candlesticks.\n\nExamples from feedback:\n- TSLA 10-symbol listicle mid-day: 60 bps base (you used 2.0, realized 3.0 - got very lucky, tape was unusually quiet)\n\n**Decision tree:**\n\n**Step 1: Check asset class**\n- High-beta equity (TSLA, AMD when volatile, NVDA in high-volatility regimes) \u2192 60 bps base minimum\n- Large tech (AAPL, AMZN, GOOGL, META, MSFT, NVDA in normal regimes, PLTR) \u2192 40 bps base minimum\n- Large cap stable (BAC, C, CVX, GE, GS, MA, WMT, XOM) \u2192 30 bps base minimum\n- ETF (QQQ, SPY, TLT, sector ETFs) \u2192 15 bps base minimum\n\n**Step 2: Check story type**\n- Multi-name listicle (5+ symbols) \u2192 Use base minimum from Step 1, no adjustment\n- Stock-specific (1-3 symbols) \u2192 Add 10 bps to base\n- \"Stock is trading higher/lower\" headline \u2192 Add 20 bps to base (implies already moving)\n- \"Consolidates\" or similar \u2192 Add 10 bps to base (implies recent motion)\n\n**Step 3: Check time-of-day**\n- First 60 minutes after open \u2192 Add 15 bps\n- Last 30 minutes before close \u2192 Add 5 bps\n- Mid-day (11:00-15:00) \u2192 No adjustment\n\n**Step 4: Check the tape (candlesticks last 15 minutes)**\n- Bars showing >50 bps range \u2192 Add 20 bps\n- Bars showing 30-50 bps range \u2192 Add 10 bps\n- Bars showing <30 bps range \u2192 No adjustment\n\n**Step 5: Check catalyst strength (stock-specific stories only)**\n- Earnings/guidance \u2192 Add 30 bps\n- M&A/deal/takeover \u2192 Add 20 bps\n- Analyst upgrade/downgrade/initiation \u2192 Add 10 bps\n- Price target change alone \u2192 Add 0 bps (weak catalyst)\n\n**Corrected widths for your new examples:**\n\n1. META 66-symbol listicle (large tech, mid-day) \u2192 40 bps (you used 2.0, realized 1.5)\n2. PLTR 12-symbol listicle (large tech, mid-day) \u2192 40 bps (you used 2.0, realized 12.5)\n3. META 7-symbol listicle (large tech, near open) \u2192 40 + 15 = 55 bps (you used 2.0, realized 28.7)\n4. GS 5-symbol (large cap stable, near close) \u2192 30 + 5 = 35 bps (you used 2.0, realized 2.2)\n5. GOOGL 10-symbol listicle (large tech, mid-day) \u2192 40 bps (you used 2.0, realized 13.8)\n6. XOM 2-symbol stock-specific (large cap stable, mid-day) \u2192 30 + 10 = 40 bps (you used 2.0, realized 15.1)\n7. C 1-symbol stock-specific (large cap stable, near open) \u2192 30 + 10 + 15 = 55 bps (you used 6.4, realized 17.4 - better but still insufficient)\n8. TSLA 10-symbol listicle (high-beta, mid-day) \u2192 60 bps (you used 2.0, realized 3.0 - got lucky)\n\n**Why your narrow quotes keep failing:**\n\nSix of eight examples failed because you used 2.0 bps when the minimum should have been 35-60 bps. The pattern is clear: you are ignoring asset class entirely and applying a uniform 2 bps width regardless of whether the stock is META, TSLA, PLTR, GS, GOOGL, or XOM.\n\n**The solution:**\n\nAlways start with the floor for the asset class:\n- 60 bps for TSLA and high-beta names\n- 40 bps for large tech (META, GOOGL, PLTR, NVDA, AAPL, AMZN, MSFT)\n- 30 bps for large cap stable (GS, XOM, C, CVX, WMT, BAC, MA, GE)\n- 15 bps for ETFs\n\nThen add adjustments for time-of-day and story type. Never use less than the floor.\n\n**On direction:**\n\nYour directional predictions remain weak but direction matters less than width. For most stories (market-wide, listicles with 5+ symbols), predict zero move with appropriate width for the asset class. This will contain drift and score well.\n\nFor stock-specific stories (1-3 symbols):\n- Check the tape: if already moving (large bars), predict continuation\n- If tape is flat, predict zero - the news may already be priced\n- \"Stock is trading higher/lower\" headlines imply momentum: predict continuation with very wide width\n- \"Consolidates\" implies recent motion has paused: predict zero with added width\n\n**Summary:**\n\nYour success rate is 25% because you are using 2 bps width on stocks that need 30-60 bps minimum. The path forward:\n\n- TSLA and high-beta: never use less than 60 bps\n- META, GOOGL, PLTR, NVDA, large tech: never use less than 40 bps\n- GS, XOM, C, CVX, large cap stable: never use less than 30 bps\n- ETFs: never use less than 15 bps\n\nAdd 15 bps near open, 5 bps near close, 10 bps for stock-specific stories. A forecast of 0 \u00b1 40 bps on a large tech listicle is correct. A forecast of 0 \u00b1 2 bps will lose money.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
