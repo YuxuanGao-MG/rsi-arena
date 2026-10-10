@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen53",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n## THE CORE PROBLEM: MINIMUM HALF-WIDTH IS 12 BPS, NOT 2 BPS\n\nYour recent forecasts used 2-6.6 bps half-widths on moves that realized 8-24 bps. You are being systematically run over because you are underestimating baseline five-minute drift that exists independent of any news catalyst.\n\n## THE PHYSICS OF FIVE-MINUTE DRIFT (EVEN WITH ZERO NEWS IMPACT)\n\nLiquid stocks move 10-20 bps in five minutes from baseline variance alone:\n\n1. **Bid-ask bounce**: Last print can be at bid or ask (\u00b12-5 bps); five minutes later can flip to opposite side = 4-10 bps range\n2. **Microstructure noise**: Market maker inventory adjustments, small order flow imbalances = 3-7 bps\n3. **Broad market correlation**: SPY moves 2-4 bps in five minutes; a 1.2 beta stock moves 2.4-4.8 bps in sympathy\n4. **ETF constituent drift**: An ETF with 500+ holdings has constituent moves that sum to 8-15 bps independent of overall market direction\n5. **Time-of-day volatility**: Last 30 minutes adds 3-5 bps; first 30 minutes adds 2-4 bps\n6. **Low-volume minutes**: Light tape (under 50% of average volume) allows 5-10 bps of drift from single large prints\n\n**Your half-width must contain baseline drift or you will be repeatedly run over.** A 2 bps half-width assumes the stock will not move more than 2 bps from your forecast in either direction - this happens almost never in liquid equities over five minutes.\n\n## MANDATORY MINIMUM HALF-WIDTHS (THESE ARE FLOORS, NOT TARGETS)\n\n**Never use half-width under 12 bps** unless you have overwhelming evidence of: (a) very tight tape for 15+ minutes (range \u22648 bps), (b) mid-day timing (11:00-14:00 ET), (c) not an ETF, (d) not a sector/competitor story, (e) normal or declining volume. This condition is extremely rare.\n\n### 1. Market-wide stories (10+ symbols): 12 bps minimum, predict zero move\n\nExamples: \"Stock Market Today\" (70+ symbols), \"Critical 4 Hours Ahead, Korea And Iran Drive Selling In US Stocks\" (100+ symbols), \"Dow Jones Hit Record Highs\" (21 symbols)\n\nThese are market commentary that names many stocks. The queried stock moves with the market, not the story. The story is already priced into the broad market move you see on the tape.\n\n**Action**: delta = 0, half_width = 12 bps minimum (15 bps if ETF, 16 bps if last 30 minutes)\n\n**Your errors**:\n- C on \"Critical 4 Hours Ahead\" (100+ symbols): used 7.7 bps \u2192 realized +3.3 bps (got lucky this time, but 7.7 bps is dangerously under minimum)\n\n### 2. List articles or stories mentioning your stock in passing (4-9 symbols, headline not about you): 12 bps minimum, predict zero\n\nExamples:\n- \"LuxExperience, Alvotech, Twist Bioscience And Other Big Stocks Moving Higher\" - INTC is one of 15 names in a list\n- \"8 Communication Services Stocks With Whale Alerts\" - your stock is passing mention in a list\n- \"Microsoft Breaks Out Azure Sales\" - headline is about MSFT, ORCL is named as context/competitor\n\n**How to identify**: Read the headline. If it's a list format (\"X stocks that...\") or the headline is about a different company, the queried symbol is incidental.\n\n**Action**: delta = 0, half_width = 12 bps minimum\n\n**Your errors**:\n- INTC on \"LuxExperience, Alvotech, Twist Bioscience\" list (15 symbols): used 6.0 bps \u2192 realized -6.9 bps (missed, outside band)\n- ORCL on \"Microsoft Breaks Out Azure\" (8 symbols, about MSFT): used 2.0 bps \u2192 realized +22.1 bps (massive miss)\n\n### 3. Stock-specific catalyst, tape shows absorption: 15 bps minimum\n\nThe story is about the queried symbol (1-3 symbols, headline mentions it), but the tape shows the market has already reacted:\n- Candlesticks show tight range (\u226410 bps high-low) for last 10+ minutes\n- Volume normal or declining\n- No gaps, no acceleration\n\n**Action**: Small directional delta if you have a view, half_width \u2265 15 bps\n\n**Your errors**:\n- GOOG on Waymo expansion (2 symbols, specific to GOOG): used 5.3 bps \u2192 realized -8.5 bps (missed, outside band; tape showed absorption but width too tight)\n\n### 4. Stock-specific catalyst, tape shows ongoing movement: 20-25 bps minimum\n\nCandlesticks show:\n- Volume spike (2x+ average)\n- Wide range (>15 bps high-low in recent minutes)\n- Price gaps between bars\n- Acceleration (each bar higher/lower than last)\n\n**Action**: Directional delta in the direction of momentum, half_width \u2265 20 bps\n\n### 5. Competitor/sector catalyst stories: 20-25 bps minimum\n\nExamples:\n- \"Why Is SK Hynix Stock Surging Thursday?\" \u2192 INTC (semiconductor sector peer)\n- \"Microsoft Breaks Out Azure Sales\" \u2192 ORCL (cloud competitor)\n- \"Anthropic's AI Warning\" naming specific chip stocks \u2192 AMD, NVDA, etc.\n\nThese create immediate sector volatility through relative valuation adjustments. Even if you can't predict direction, you know variance will be elevated.\n\n**Action**: Directional delta based on competitive positioning, half_width \u2265 20 bps (22-25 bps if multiple direct competitors named)\n\n**Your errors**:\n- INTC on \"Why Is SK Hynix Stock Surging\" (8 symbols, memory chip sector): used 6.6 bps \u2192 realized +24.2 bps (massive miss, outside band)\n- ORCL on \"Microsoft Breaks Out Azure\" (competitor story): used 2.0 bps \u2192 realized +22.1 bps (massive miss)\n- AMD on \"Anthropic's AI Warning\" (8 chip stocks named): used 2.0 bps \u2192 realized -1.8 bps (got lucky on direction but width far too tight)\n\n### 6. Analyst calls on specific stocks: 15-18 bps minimum\n\nEven if tape looks calm, analyst calls create flow over 5-30 minutes as algorithms and fundamental desks react.\n\n**Action**: Directional delta in direction of call (upgrade = positive), half_width \u2265 15 bps (18 bps if multiple stocks or mixed signals)\n\n### 7. Time-of-day adjustments (add to base width):\n\n- **First 30 minutes of session**: +3 bps (opening volatility, overnight news absorption)\n- **Last 30 minutes of session**: +4 bps (closing volatility, rebalancing, index rolls)\n- **Mid-day (11:00-14:00 ET)**: No adjustment (but still respect 12 bps minimum)\n\n**Your errors**:\n- GOOG at 10:07 (37 min after open, opening volatility): used 5.3 bps \u2192 should have been 15+3=18 bps minimum\n- INTC at 09:57 (28 min after open): used 6.0 bps \u2192 should have been 12+3=15 bps minimum\n\n### 8. ETF vs stock adjustment:\n\n- **ETF** (SPY, QQQ, XLF, XLK, etc.): Add 2-3 bps to any width calculation (constituent drift sums to higher total variance)\n\n**Your errors**:\n- XLK (ETF) on \"Why Is Microsoft Stock Gaining\" (4 symbols): used 4.4 bps \u2192 realized +20.2 bps (massive miss; should have been 12+3=15 bps for ETF with competitor news)\n\n### 9. Macro/policy news naming many stocks: 12-15 bps minimum\n\nExamples: \"Trump Bans Chinese Humanoid Robots; Micron Competitor SK Hynix Creates Volatility; Fed Decision Looms\" (88 symbols)\n\nThese are market-wide macro stories. Individual stocks move with their sector/market beta, not the specific headline.\n\n**Action**: delta = 0 (or small beta-adjusted move if you see market direction), half_width = 12-15 bps\n\n**Your errors**:\n- AMZN on \"Trump Bans Chinese Humanoid Robots\" (88 symbols): used 2.0 bps \u2192 realized -5.2 bps (got lucky it was close to zero, but 2.0 bps width is recklessly tight)\n\n## DECISION TREE FOR WIDTH\n\n**Step 1: Count symbols and read headline**\n\n- **10+ symbols** \u2192 Market-wide story \u2192 12 bps min, delta = 0\n- **4-9 symbols** \u2192 Is headline about queried symbol or about something else?\n  - About something else (list, different company, competitor) \u2192 12-20 bps min depending on category\n  - About queried symbol \u2192 Go to Step 2\n- **1-3 symbols** \u2192 Is headline specifically about queried symbol?\n  - Yes \u2192 Go to Step 2\n  - No (passing mention) \u2192 12 bps min, delta = 0\n\n**Step 2: Determine story category**\n\n- **Competitor/sector news** (headline about rival or sector) \u2192 20-25 bps min, skip to Step 3\n- **Analyst call** \u2192 15-18 bps min, directional delta, skip to Step 3\n- **Stock-specific operational news** (guidance, deal, product) \u2192 Check tape in Step 2b\n\n**Step 2b: Check the tape for stock-specific news** (load candlesticks, last 15 minutes)\n\nCalculate: `range = max(high) - min(low)` over last 10 minutes; `vol_ratio = recent_volume / earlier_volume`\n\n- **Tight tape** (range \u226410 bps, vol_ratio \u22641.2) \u2192 News absorbed \u2192 15 bps min\n- **Active tape** (range >15 bps OR vol_ratio >2) \u2192 Fresh catalyst \u2192 20-25 bps min\n\n**Step 3: Apply time and venue adjustments**\n\n- Last 30 min of day \u2192 Add 4 bps\n- First 30 min of day \u2192 Add 3 bps\n- ETF (vs stock) \u2192 Add 3 bps\n\n**Step 4: Sanity check**\n\n- Is your half-width \u2265 12 bps? **If no, you are dangerously underwidth.**\n- For competitor/sector stories, is your half-width \u2265 20 bps? **If no, you will be run over.**\n- For market-wide stories (10+ symbols), is your delta = 0? **If no, you are attributing market moves to non-news.**\n\n## COMMON MISTAKES YOU ARE MAKING\n\n1. **Using 2-6 bps as \"tight\" width**: This does not exist in five-minute equity forecasting. Bid-ask bounce alone is 4-10 bps. Your absolute minimum should be 12 bps, used only for absorbed market-wide news at mid-day.\n\n2. **Not reading headlines carefully**: \"Why Is SK Hynix Stock Surging Thursday?\" is about SK Hynix, not INTC. INTC is named because it's a memory chip peer. This is a sector story requiring 20+ bps for any semiconductor stock named.\n\n3. **Not recognizing competitor news**: \"Microsoft Breaks Out Azure Sales\" is about MSFT's Azure reaching $100B, but ORCL competes in cloud database/infrastructure. This is a competitor catalyst requiring 20+ bps for ORCL, not 2 bps.\n\n4. **Ignoring symbol counts**: 88 symbols = market-wide macro story = not about your stock specifically. Predict zero with 12+ bps width.\n\n5. **Ignoring time of day**: Opening and closing periods add 3-4 bps to minimum width. Four examples were in first hour; none adjusted.\n\n6. **Not recognizing list articles**: \"LuxExperience, Alvotech, Twist Bioscience And Other Big Stocks Moving Higher\" with 15 symbols is a market-wide list. INTC is one name among many. This requires 12 bps minimum with delta = 0.\n\n7. **Confusing confidence with width**: High confidence in zero move (absorbed news, market-wide story) still requires 12 bps minimum width to contain baseline drift. Confidence affects your delta, not your floor on width.\n\n## WHAT SKILL LOOKS LIKE\n\n- A **0 \u00b1 12 bps** forecast on market-wide story that realizes +3 bps \u2192 inside band \u2192 earns skill\n- A **0 \u00b1 20 bps** forecast on competitor news that realizes +22 bps \u2192 just outside band \u2192 loses some skill, but far less than 2 bps width loses\n- A **+3 \u00b1 15 bps** forecast on absorbed positive news that realizes -9 bps \u2192 directionally wrong but realistic width\n- A **0 \u00b1 2 bps** forecast that realizes +24 bps \u2192 catastrophic miss, destroys skill\n\nWidth is not a penalty. Scoring rewards forecasts where realized price lands inside your band. A **0 \u00b1 12 bps** forecast that contains a +9 bps move earns positive skill. A **0 \u00b1 2 bps** forecast that misses a +3 bps move earns negative skill.\n\n## YOUR PATH FORWARD\n\n**Default widths by story type (these are minimums):**\n\n- Market-wide (10+ symbols): 12 bps (15 if ETF, 16 if end of day)\n- List/passing mention (4-9 symbols, not about you): 12 bps\n- Stock-specific absorbed: 15 bps (18 if end of day, 18 if opening hour)\n- Stock-specific fresh: 20-25 bps\n- Competitor/sector catalyst: 20-25 bps (use 22-25 for direct competitors)\n- Analyst call: 15-18 bps\n- Macro/policy news: 12-15 bps\n\n**Before returning your forecast, ask**: \"If this stock drifts 12 bps on baseline noise with no news impact, will my band contain it?\" If no, you are underwidth and will be run over.\n\n**The 12 bps floor is not negotiable.** It reflects the empirical reality of five-minute equity variance. Violations should be extremely rare and only when you have overwhelming tape evidence of a truly frozen market.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
