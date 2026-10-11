@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen55",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## The central error: 2 bps width fails systematically\n\n**Every example except one used 2.0 bps half-width. This is the failure mode.**\n\n- Example 1 (AAPL): 2.0 bps width, actual -15.0 bps, both sides hit, skill +0.18\n- Example 2 (GOOGL): 5.9 bps width, actual -47.2 bps, bid hit, skill -0.04\n- Example 3 (GOOG): 2.0 bps width, actual -53.4 bps, bid hit, skill +0.01\n- Example 4 (NOW): 2.0 bps width, actual +3.1 bps, both sides hit, skill -0.01\n- Example 5 (GOOG): 5.8 bps width, actual -3.2 bps, bid hit, skill -0.45\n- Example 6 (AMD): 2.0 bps width, actual +6.4 bps, both sides hit, skill -0.25\n- Example 7 (GS): 5.9 bps width, actual -6.1 bps, bid hit, skill -0.34\n- Example 8 (GOOG): 4.2 bps width, actual +9.1 bps, ask hit, skill -0.42\n\n**Six examples used 2.0 bps width (Examples 1, 3, 4, 6, and implicitly others). Four got run over (both sides filled or one side filled), two scored barely positive.**\n\n**Three examples used 4-6 bps width (Examples 2, 5, 7, 8). All four got filled on one side, three scored negative.**\n\nThe pattern is clear: **the harness is systematically underestimating width.** Even 5-6 bps is insufficient when the realized move is 6-53 bps.\n\n---\n\n## Width rules: 8 bps minimum, scale to uncertainty\n\n**The no-change error floor is 5 bps, but that is not your width floor.** Width is insurance against getting run over. The floor-of-5 means that if you predict 0 bps and miss by 3 bps, you score +0.40 skill (1 - 3/5). But if your quote is 2 bps wide and the stock moves 3 bps, you get filled and now P&L matters.\n\n**New width rules:**\n\n1. **Minimum 8 bps for any forecast.** Never go below 8 bps unless the tape is dead flat (< 5 bps range over 30+ minutes), volume is under 50% of normal, and the headline is pure noise.\n\n2. **10-15 bps for multi-stock stories (3-6 symbols) where your symbol is mentioned but not the subject.** You're predicting near-zero or small continuation, but the market can drift 5-15 bps on unrelated factors.\n\n3. **12-18 bps for stock-specific news with clear direction** (rating change, procedural update, secondary mention in a deal). You know direction, not magnitude.\n\n4. **15-25 bps for material catalysts** (large fundraise, middle-market deal expansion, exclusive partnership, portfolio concentration story). These move stocks 10-30+ bps, but exact size is uncertain.\n\n5. **15-25 bps when tape is choppy or conflicting with headline.** Uncertainty is high; cover both directions.\n\n6. **20-30 bps in the first 15 minutes of trading (minutes_since_open < 15).** Opening volatility is high; stocks swing 20-50 bps on noise.\n\n**Examples re-evaluated:**\n\n- Example 1 (AAPL, 3-symbol story, actual -15 bps): Should have used 12-15 bps width, not 2.0 bps.\n- Example 2 (GOOGL, 5-symbol AI story, first 10 mins, actual -47 bps): Opening volatility + multi-stock story. Should have used 20-25 bps width, not 5.9 bps.\n- Example 3 (GOOG, 7-symbol Oracle story, actual -53 bps): Multi-stock story, GOOG mentioned re: AI partnership. Should have used 15-20 bps width, not 2.0 bps.\n- Example 4 (NOW, 7-symbol open-weight AI letter, actual +3 bps): Multi-stock story, NOW one of 25 signatories. Should have used 10-15 bps width, not 2.0 bps.\n- Example 5 (GOOG, 3-symbol Reddit/AI deal, actual -3 bps): GOOG is a subject (Reddit deal partner). Should have used 12-18 bps width, not 5.8 bps.\n- Example 6 (AMD, 34-symbol macro story, actual +6 bps): Background mention in market-wide rally. Should have used 10-15 bps width, not 2.0 bps.\n- Example 7 (GS, 1-symbol fundraise story, actual -6 bps): Stock-specific material news (raised $11.7B). Should have used 15-20 bps width, not 5.9 bps.\n- Example 8 (GOOG, 3-symbol SpaceX portfolio story, actual +9 bps): GOOG is the subject (Alphabet's portfolio). Should have used 15-20 bps width, not 4.2 bps.\n\n---\n\n## Story classification: subject vs. mention vs. background\n\n**The number of symbols is a heuristic, but what matters is your symbol's role.**\n\n**1-2 symbols: Your symbol is almost always the subject**\n- The story is *about* your stock. Treat as stock-specific news.\n- **Material catalyst (deal, fundraise, expansion):** Predict direction based on catalyst tone, width 15-25 bps.\n- **Descriptive (price action recap, procedural update):** Predict based on tape, width 12-18 bps.\n- **Example 7 (GS fundraise):** 1 symbol, material news (raised $11.7B for middle-market deals). Stock-specific. Width should be 15-20 bps, not 5.9 bps.\n\n**3-6 symbols: Check if your symbol is a subject, co-subject, or mention**\n- **Subject/co-subject:** Named in headline or first sentence of summary as a key participant, deal partner, or direct focus.\n  - Example 5 (GOOG in Reddit AI deal): Headline names Reddit, Google, OpenAI. GOOG is a co-subject (deal partner). Width 12-18 bps.\n  - Example 8 (GOOG in SpaceX portfolio story): Headline is about GOOG's portfolio exposure to SpaceX. GOOG is the subject. Width 15-20 bps.\n- **Mention:** Named as supporting detail, peer, context, or one of many signatories/participants.\n  - Example 1 (AAPL in CNBC final trades): 3 symbols, all equally mentioned. Width 12-15 bps.\n  - Example 4 (NOW in 25-company AI letter): NOW is one of 25 signatories. Width 10-15 bps.\n\n**7+ symbols: Your symbol is almost always background**\n- The story is thematic, sector-focused, or a list. Your symbol is one of many.\n- **Default:** Predict near-zero or tape continuation, width 10-15 bps minimum.\n- **Exception:** If the headline or first sentence specifically discusses your symbol's action or role, treat as mention, width 12-18 bps.\n- Examples: \n  - Example 3 (GOOG in 7-symbol Oracle story): Width should be 15-20 bps, not 2.0 bps.\n  - Example 6 (AMD in 34-symbol macro rally): Width should be 10-15 bps, not 2.0 bps.\n\n---\n\n## Direction: tape-first, then interpret the headline\n\n**The tape shows what is happening; the headline is commentary.** Read the tape first.\n\n**Tape analysis (use candlesticks tool, last 30-45 minutes of 1-min bars):**\n\n1. **Steady trend:** 15-30+ bps in one direction over 20-30 minutes, consistent closes.\n   - If headline describes this move (\"stock gaining,\" \"rally,\" \"sliding\"), the move is done. Predict stabilization (0-5 bps) or small mean reversion (-3 to -8 bps opposite to trend), width 10-15 bps.\n   - If headline is neutral or forward-looking, predict continuation (5-12 bps same direction), width 12-18 bps.\n\n2. **Flat/range-bound:** Oscillating within 8-12 bps, no clear direction over 30 mins.\n   - If headline is a catalyst (deal, fundraise, upgrade), predict catalyst direction (8-20 bps), width 15-25 bps.\n   - If headline is noise, predict 0-3 bps, width 10-12 bps.\n\n3. **Choppy/volatile:** Swings of 20-40+ bps in both directions, high volume.\n   - Uncertainty is high. Predict based on most recent 5-10 min direction (5-15 bps), width 18-25 bps.\n\n4. **Reversal:** Direction change in last 10-15 minutes (climbed then dropped, or vice versa).\n   - If headline explains the reversal, the move is done. Predict stabilization (0-5 bps), width 12-18 bps.\n   - If headline is unrelated, predict continuation of the reversal direction (5-12 bps), width 15-20 bps.\n\n**Example tape reads:**\n\n- Example 1 (AAPL): Tape ranged 330.43-331.73 over 45 mins (+39 bps), then dropped to 330.53 in last minute. Choppy, no clear trend. Width should be 12-15 bps.\n- Example 2 (GOOGL): Tape dropped from 347.22 to 345.57 over 9 minutes (-48 bps). Sharp decline, first 10 mins of trading. Width should be 20-25 bps (opening volatility + declining tape).\n- Example 3 (GOOG): Tape climbed from 339.31 to 345.48 over 10 minutes (+182 bps), then dropped to 343.0 in last minute (-71 bps). Extreme volatility, opening minutes. Width should be 20-30 bps.\n- Example 7 (GS): Tape climbed from 959.0 to 964.41 over 45 minutes (+56 bps), very thin (sparse bars). Thin tape + material news. Width should be 15-20 bps.\n- Example 8 (GOOG): Tape ranged 353.12-355.73 over 45 mins, oscillating. Choppy. Width should be 15-20 bps.\n\n---\n\n## Opening volatility (minutes_since_open < 15)\n\n**The first 15 minutes of trading are systematically more volatile.** Stocks swing 20-50 bps on noise, spreads are wider, and the tape is less informative.\n\n**Examples 2 and 3 were both in the first 10-15 minutes:**\n- Example 2 (GOOGL at 9:39, 9.3 mins in): Dropped -47 bps in 5 minutes. Width should have been 20-25 bps, not 5.9 bps.\n- Example 3 (GOOG at 9:40, 10.3 mins in): Dropped -53 bps in 5 minutes. Width should have been 20-30 bps, not 2.0 bps.\n\n**Rule: If minutes_since_open < 15, add 8-12 bps to your baseline width.** Opening moves are large and unpredictable.\n\n---\n\n## Predicting near-zero: when and how\n\n**Predict 0-5 bps when:**\n- Multi-stock story (7+ symbols) and your symbol is background.\n- Story is about a different stock; your symbol mentioned as peer or context.\n- Headline describes a move the tape has already made (recap, \"stock gaining/sliding\").\n- Tape is flat (< 10 bps range over 30 mins) and headline is noise.\n\n**Width must be at least 10 bps, preferably 12-15 bps.** The no-change floor is 5 bps, but noise can move the stock 5-15 bps in any 5-minute window. Use 10-15 bps width to cover it.\n\n**Example 6 (AMD in 34-symbol macro rally):** Predicted -1.6 bps (near-zero), width 2.0 bps. Actual +6.4 bps, both sides filled, skill -0.25. Should have predicted +5 bps (tape continuation, market rally), width 12-15 bps.\n\n---\n\n## Material catalysts: width scales to magnitude uncertainty\n\n**Material catalysts** (fundraise, deal, exclusive partnership, portfolio concentration, rating change):\n- **You can predict direction** (bullish/bearish based on headline tone).\n- **You cannot predict exact magnitude.** These move stocks 10-30 bps regularly, sometimes 50+ bps, but the exact number is uncertain.\n- **Width must be 15-25 bps** to cover the range. If the catalyst is especially large or your symbol is illiquid, use 20-30 bps.\n\n**Example 7 (GS fundraise):** \"Raised $11.7B\" for middle-market deals. Bullish catalyst, thin tape (only 122 shares in last bar). Predicted +2.1 bps, width 5.9 bps. Actual -6.1 bps (wrong direction, but acceptable). Width should have been 18-25 bps to cover both directions (catalyst may not move stock immediately, or may be priced in).\n\n**Example 8 (GOOG SpaceX portfolio):** \"SpaceX accounts for 95% of its public equity portfolio.\" Material concentration risk story. Predicted -3.8 bps, width 4.2 bps. Actual +9.1 bps. Width should have been 15-20 bps (material news + uncertain direction).\n\n---\n\n## Multi-stock stories: background mentions need wide quotes\n\n**When your symbol is one of 5-34 in a story, you are background.** The story is not about you. But that does not mean the stock will not move 10-20 bps on unrelated factors (market drift, tape momentum, other news).\n\n**Examples:**\n- Example 3 (GOOG in 7-symbol Oracle story): GOOG mentioned re: Google Cloud AI partnership expansion. Tape was extremely volatile (opening minutes, \u00b1180 bps swings). Predicted -0.3 bps, width 2.0 bps. Actual -53.4 bps. Width should have been 20-25 bps (opening volatility + multi-stock story).\n- Example 4 (NOW in 7-symbol AI letter): NOW one of 25 signatories. Predicted -0.0 bps, width 2.0 bps. Actual +3.1 bps. Width should have been 10-15 bps (multi-stock, near-zero prediction).\n- Example 6 (AMD in 34-symbol macro rally): AMD mentioned in \"Dow smashes record highs\" story. Predicted -1.6 bps, width 2.0 bps. Actual +6.4 bps. Width should have been 12-15 bps (background mention in market rally).\n\n**Rule: Multi-stock stories (5+ symbols) where your symbol is background require 10-15 bps width minimum, 15-20 bps if opening volatility or choppy tape.**\n\n---\n\n## Co-subject stories (3-6 symbols): wider than you think\n\n**When your symbol is named in the headline or first sentence as a key participant, deal partner, or focus, it is a co-subject.** The story is partly about you.\n\n**Examples:**\n- Example 1 (AAPL in CNBC final trades): 3 symbols, all co-subjects. Predicted -2.8 bps, width 2.8 bps. Actual -15.0 bps. Width should have been 12-15 bps.\n- Example 5 (GOOG in Reddit AI deal): GOOG is a deal partner (Reddit landed deals from OpenAI and Google). Predicted +2.2 bps, width 5.8 bps. Actual -3.2 bps. Width should have been 12-18 bps (co-subject in material deal story).\n- Example 8 (GOOG in SpaceX portfolio): GOOG (Alphabet) is the subject; story is about its portfolio exposure. Predicted -3.8 bps, width 4.2 bps. Actual +9.1 bps. Width should have been 15-20 bps (subject, material concentration story).\n\n**Rule: Co-subject stories (3-6 symbols, your symbol in headline or first sentence) require 12-18 bps width, 15-25 bps if material catalyst.**\n\n---\n\n## Final checklist\n\nBefore submitting your forecast:\n\n1. **What is minutes_since_open?**\n   - If < 15, add 8-12 bps to baseline width. Opening volatility is extreme.\n\n2. **What does the tape show over the last 30-45 minutes?**\n   - Steady trend (15-30+ bps): If headline describes it, predict stabilization; if not, predict continuation.\n   - Flat (< 10 bps range): Predict catalyst direction if headline is material, else 0-3 bps.\n   - Choppy (swings of 20-40+ bps): High uncertainty, wide width (18-25 bps).\n   - Reversal in last 10 mins: Predict stabilization or continuation of reversal.\n\n3. **How many symbols, and what is my role?**\n   - 1-2: Subject. Width 15-25 bps (material catalyst) or 12-18 bps (descriptive).\n   - 3-6: Check if subject/co-subject (in headline) or mention. Width 12-18 bps (subject), 10-15 bps (mention).\n   - 7+: Background. Width 10-15 bps minimum, 15-20 bps if opening or choppy.\n\n4. **Is my width less than 10 bps?**\n   - If yes, raise to 10 bps minimum. Only use 8 bps if tape is dead flat (< 5 bps range over 30+ mins) and headline is pure noise.\n\n5. **Is this a material catalyst (deal, fundraise, partnership, concentration)?**\n   - If yes, width 15-25 bps. Predict direction, but magnitude is uncertain.\n\n6. **Am I predicting near-zero (< 5 bps)?**\n   - Width must be at least 10 bps, preferably 12-15 bps. Noise can move stocks 5-15 bps.\n\n7. **Is the tape choppy or conflicting with headline?**\n   - Width 18-25 bps. Uncertainty is high.\n\n8. **Am I using 2 bps width?**\n   - Stop. This failed in 6 out of 8 examples. Use 10 bps minimum, 12-25 bps for most cases.\n\n---\n\n**Width is insurance against getting run over. 2 bps width fails systematically. Use 10 bps minimum for background mentions, 12-18 bps for co-subjects, 15-25 bps for material catalysts. Opening volatility (first 15 minutes) requires 20-30 bps width. Read the tape first: it shows what is happening, the headline is commentary. The no-change floor is 5 bps for skill scoring, but your width floor is 8-10 bps to avoid getting filled and run over.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
