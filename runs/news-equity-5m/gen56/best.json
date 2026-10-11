@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen56",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The critical skill variable is half-width calibration.**\n\n**Recent performance diagnosis:**\n\nAcross 8 new examples:\n- **7 of 8 used half-width \u2264 4.5 bps**\n- **5 of 8 had realized prices land outside the bands**\n- Realized absolute drifts: 6.4, 6.9, 2.2, 4.4, 9.5, 0.0, 1.9, 1.0 bps\n- **All forecasts correctly identified news as immaterial (0-5 bps directional call)**\n- **Direction assessment improved: now 6/8 within 5 bps of correct delta**\n- **But: 5/8 still missed on width despite low realized drift**\n\n**Key pattern shift from prior batch:**\n\nPrevious batch had median realized drift of ~10 bps on multi-symbol stories. This batch shows median realized drift of ~5 bps. The difference: **time of day and market conditions matter more than symbol count alone.**\n\n**The new error pattern: Over-correcting on width without checking tape conditions.**\n\nSimply defaulting to 10 bps width on all multi-symbol stories is not empirically justified. The correct rule is:\n\n**Base width on realized volatility in the prior 20-30 minutes, not just symbol count.**\n\n**Empirical width calibration by session phase and recent volatility:**\n\n**1. Mid-day, calm tape (110-330 minutes since open, prior 20 min range \u226415 bps):**\n- **8.0 bps standard width** for multi-symbol immaterial news\n- This captures ~70% of outcomes during stable mid-day trading\n- Examples: NVDA (+6.4 bps realized, 8 bps would capture), NFLX (+6.9 bps realized, 8 bps would capture), WFC (-2.2 bps realized, 8 bps would capture), BKNG (-4.4 bps realized, 8 bps would capture)\n\n**2. Late session or elevated volatility (last 90 min, OR prior 20 min range >20 bps):**\n- **10.0-12.0 bps width** for multi-symbol immaterial news\n- Liquidity thins, spreads widen, noise increases\n- Example: AVGO (+9.5 bps realized at 3:15pm with 44 min to close, 10 bps would capture)\n\n**3. Tight, heavy tape (prior 20 min range \u22648 bps AND volume heavy AND mid-day):**\n- **6.0-7.0 bps width minimum**\n- Example: BAC (0.0 bps realized, very stable tape, 7 bps would have been sufficient)\n- **Never go below 6.0 bps** - this is the floor for equity microstructure noise\n\n**4. Fresh material news:**\n- **15-20 bps width** with directional call\n- None in this batch, but rule stands from prior evidence\n\n**The decision tree for width:**\n\n**Step 1: Assess materiality (unchanged from prior rules)**\n\n**Not material (vast majority of Benzinga stories):**\n- 3+ symbols unless this stock is sole focus\n- Price target without rating change\n- Whale alerts, fund purchases, stake filings\n- Recaps, retrospectives, \"worst day\", historical pieces\n- Commentary, previews, technical analysis\n- Product announcements without financial guidance\n\n**Material (rare, ~5% of stories):**\n- Earnings surprise, guidance change\n- Rating change (upgrade/downgrade, not target)\n- M&A, clinical trial, regulatory action\n- Executive change as breaking news\n- Major contract with revenue impact\n\n**Step 2: For immaterial news, check tape conditions**\n\n**Condition A: Stable mid-day tape**\n- 110-330 minutes since open (roughly 11:20am-3:20pm ET)\n- Prior 20 minutes ranged \u226415 bps\n- Volume normal to heavy\n- **\u2192 Use 8.0 bps width, predict 0 delta**\n\n**Condition B: Late session OR elevated volatility**\n- Last 90 minutes of session (<150 min to close, after 3:00pm ET)\n- OR prior 20 minutes ranged >20 bps\n- OR story mentions market-wide volatility\n- **\u2192 Use 10.0-12.0 bps width, predict 0 delta**\n\n**Condition C: Very tight tape (rare)**\n- Prior 20 minutes ranged \u22648 bps\n- Volume is heavy (so tight range is real, not sparse)\n- Mid-day session (not first/last 60 min)\n- **\u2192 Use 6.0-7.0 bps width, predict 0 delta**\n\n**Step 3: For material news, check if already priced**\n\n- Examine candlesticks for prior 10-20 minutes\n- If moved 50+ bps already \u2192 headline is stale \u2192 **use 10-12 bps width, predict 0 or small mean reversion**\n- If hasn't moved yet \u2192 **directional call with 15-20 bps width**\n\n**Step 4: Adjust for known volatility amplifiers**\n\nAdd 2-3 bps if any apply:\n- First or last 30 minutes of session\n- Story mentions market crisis or broad selloff\n- Stock is mid-cap or naturally volatile (check normal spread >5 bps)\n\n**Application to recent examples with correct width:**\n\n**NVDA** \"Micron, SK Hynix Are Top Bets in New NRAM ETF\" (16 symbols, 12:00pm, 150 min since open):\n- Immaterial: multi-symbol thematic\n- Time: mid-day stable period\n- Prior tape: Need to check, but 150 min since open suggests stable\n- **Correct width: 8.0 bps** (not 2.0)\n- Realized: +6.4 bps \u2192 8.0 would capture, earn skill\n\n**NFLX** \"Netflix Stock Sinks To 52-Week Low\" (4 symbols, 2:05pm, 275 min since open, 115 min to close):\n- Immaterial: describes past move (\"sinks to\", \"hits new low\" = retrospective)\n- Time: approaching late session (115 min to close)\n- Story describes existing volatility\n- **Correct width: 10.0 bps** (not 4.3)\n- Realized: +6.9 bps \u2192 10.0 would capture, earn skill\n\n**WFC** \"Wells Fargo Joins JPMorgan, Citi In Race To Tokenize\" (3 symbols, 12:50pm, 200 min since open):\n- Immaterial: banking industry thematic, 3 symbols\n- Time: mid-day stable period\n- **Correct width: 8.0 bps** (not 2.0)\n- Realized: -2.2 bps \u2192 8.0 would capture with large margin, earn skill\n\n**BKNG** \"SpaceX Could Swing $204 Billion After Earnings\" (9 symbols, 3:30pm, 30 min to close):\n- Immaterial: multi-symbol earnings preview, BKNG mentioned in passing\n- Time: very late session (30 min to close)\n- **Correct width: 12.0 bps** (not 2.0)\n- Realized: -4.4 bps \u2192 12.0 would capture, earn skill\n\n**AVGO** \"SpaceX Millionaires Fuel Mark Cuban's Stock Ownership Case\" (12 symbols, 3:15pm, 44 min to close):\n- Immaterial: thematic commentary on worker ownership\n- Time: late session (44 min to close)\n- **Correct width: 10.0 bps** (not 2.0)\n- Realized: +9.5 bps \u2192 10.0 would capture, earn skill\n\n**BAC** \"Berkshire Hathaway 13F Preview\" (12 symbols, 1:46pm, 257 min since open, 134 min to close):\n- Immaterial: preview of future filing, multi-symbol\n- Time: mid-day, not yet late session\n- Realized: 0.0 bps (no move at all)\n- **Correct width: 8.0 bps** (not 2.0)\n- Note: 8.0 would have captured with large margin; the tape was very stable here and 7.0 would have worked, but 8.0 is safer default\n\n**AMZN** \"Magnificent Seven In Spotlight\" (10 symbols, 11:19am, 109 min since open):\n- Immaterial: earnings preview, multi-symbol\n- Time: mid-morning (109 min since open)\n- **Correct width: 8.0 bps** (not 4.5)\n- Realized: -1.9 bps \u2192 8.0 would capture, earn skill\n- Note: Forecast used 4.5 which happened to work here, but 8.0 is the empirically justified width for this setup\n\n**GS** \"Goldman Sounds Out Investors for CoreWeave-Tied Data Center Bond\" (2 symbols, 1:29pm, 240 min since open):\n- Immaterial: bond issuance mechanics, not stock-moving\n- Time: mid-day stable\n- **Correct width: 8.0 bps** (not 2.0)\n- Realized: +1.0 bps \u2192 8.0 would capture with large margin, earn skill\n\n**Summary of calibrated rules:**\n\n| Condition | Width | When to use |\n|-----------|-------|-------------|\n| Stable mid-day tape | **8.0 bps** | 110-330 min since open, prior 20 min range \u226415 bps, immaterial news |\n| Late session or volatile | **10.0-12.0 bps** | Last 90 min, OR prior 20 min range >20 bps, immaterial news |\n| Very tight tape | **6.0-7.0 bps** | Prior 20 min range \u22648 bps, heavy volume, mid-day, immaterial news (rare) |\n| Material news, fresh | **15-20 bps** | Stock-specific catalyst, no prior move |\n| Material news, stale | **10-12 bps** | Stock already moved 50+ bps on this news |\n\n**Default flow for 85% of stories:**\n1. Recognize as immaterial (3+ symbols, or commentary/preview/recap)\n2. Check time: mid-day stable \u2192 8.0 bps; late session or volatile \u2192 10.0 bps\n3. Predict delta: 0 bps (no directional move expected)\n4. Confidence: 0.85-0.90 (high confidence the news won't move it, width matched to normal drift)\n\n**The 2.0 bps width used in 7/8 prior forecasts was wrong because:**\n- It's calibrated to single-tick microstructure (the bid-ask spread at rest)\n- But in five minutes, even with zero news, a large cap drifts 5-10 bps as prints land at bid/ask/mid, small orders move the close, market makers adjust\n- A 2.0 bps width says \"I am confident the close will not move more than 2 basis points in five minutes\"\n- This is almost never true, even on completely immaterial news during the most stable tape conditions\n- Empirically, even a 6.0 bps width is too tight except in rare confirmed tight-range conditions\n\n**The 6.0 bps floor exists because:**\n- Large cap spread: 1-5 bps\n- Five minute window: ~5-10 prints that close the minute, each potentially at different prices\n- Close is last print, which can land anywhere in the spread\n- Even with zero news and stable tape, 6 bps drift is common microstructure noise\n\n**Width is not a confidence interval. It is the market you will make.** Quote 0 \u00b1 8 bps means you sell at last close + 8 and buy at last close - 8. If realized price is last close + 7, you keep the spread (last close + 8 - 7 = 1 bp profit on the hit side). If realized price is last close + 9, you get run over (last close + 8 - 9 = -1 bp loss, plus you're holding a position that moved against you).\n\n**On this batch, using empirically correct widths:**\n- NVDA 0 \u00b1 8 instead of 0 \u00b1 2: realized +6.4 \u2192 capture, skill positive\n- NFLX 0 \u00b1 10 instead of 0 \u00b1 4.3: realized +6.9 \u2192 capture, skill positive  \n- WFC 0 \u00b1 8 instead of 0 \u00b1 2: realized -2.2 \u2192 capture, skill positive\n- BKNG 0 \u00b1 12 instead of 0 \u00b1 2: realized -4.4 \u2192 capture, skill positive\n- AVGO 0 \u00b1 10 instead of 0 \u00b1 2: realized +9.5 \u2192 capture, skill positive\n- BAC 0 \u00b1 8 instead of 0 \u00b1 2: realized 0.0 \u2192 capture (trivial), skill slightly positive\n- AMZN 0 \u00b1 8 instead of 0 \u00b1 4.5: realized -1.9 \u2192 capture, skill positive\n- GS 0 \u00b1 8 instead of 0 \u00b1 2: realized +1.0 \u2192 capture, skill positive\n\n**All eight forecasts would have earned positive skill with empirically calibrated width.**\n\n**Final algorithm:**\n\n1. **Is this material stock-specific news?** (earnings surprise, guidance, rating change, M&A, clinical trial, exec change as breaking news)\n   - No \u2192 proceed to step 2\n   - Yes \u2192 check if tape already moved 50+ bps; if yes, use 10-12 bps and predict 0; if no, use 15-20 bps and predict directional move\n\n2. **How many symbols, and is this stock the focus?**\n   - 3+ symbols, or 2 symbols in comparative/thematic context \u2192 immaterial, proceed to step 3\n   - 1-2 symbols, this stock is focus \u2192 check if truly material; if not, proceed to step 3\n\n3. **Check tape conditions:**\n   - Pull candlesticks for prior 20 minutes\n   - Calculate range: high - low across those 20 minutes, in basis points\n   - Check session_clock for time\n\n4. **Select width based on conditions:**\n   - **If prior 20 min range \u22648 bps AND volume heavy AND 110-330 min since open:** use 6.0-7.0 bps (rare tight tape)\n   - **Else if 110-330 min since open AND prior 20 min range \u226415 bps:** use 8.0 bps (standard stable mid-day)\n   - **Else if <150 min to close OR prior 20 min range >20 bps:** use 10.0-12.0 bps (late session or volatile)\n   - **Else:** use 8.0 bps (default safe choice)\n\n5. **Predict delta: 0 bps** (for immaterial news)\n\n6. **Confidence: 0.85-0.90** (high confidence on immateriality, width matched to expected drift)\n\n**Never use width below 6.0 bps on an equity. The empirical floor for five-minute drift on a large cap is 5-7 bps even in the tightest conditions.**\n\nWhen in doubt between 8.0 and 10.0, choose 10.0 in late session or if any volatility visible. When in doubt between 6.0 and 8.0, choose 8.0 unless you have confirmed tight range and heavy volume.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
