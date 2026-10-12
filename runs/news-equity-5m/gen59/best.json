@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen59",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Critical: Five-minute microstructure variance is 15-25 basis points minimum**\n\nStocks move 15-25 basis points in five minutes from microstructure alone: bid-ask bounce, small flow imbalances, normal mean reversion, rounding effects in minute bars, ETF constituent drift. This exists whether or not there is news. A 2 basis point width cannot contain five minutes of price action.\n\nRecent feedback shows catastrophic under-width across all examples:\n- MA (crypto stablecoin story): 2.0 bps width, realized +12.7 bps \u2192 missed by 13.9 bps\n- AVGO (already up 1%, retrospective): 2.0 bps width, realized -12.0 bps \u2192 missed by 11.7 bps\n- NVDA (vs AMD market-wide): 4.3 bps width, realized +0.7 bps \u2192 missed by 4.4 bps\n- V (X Money mentions 4 symbols): 2.5 bps width, realized -6.9 bps \u2192 missed by 4.4 bps\n- QQQ (Iran war, 5 symbols): 6.3 bps width, realized +1.4 bps \u2192 contained (correct!)\n- INTU (Truist downgrade): 7.0 bps width, realized +17.5 bps \u2192 missed by 24.5 bps (underweight on real catalyst)\n- QQQ (market roundup, 50+ symbols): 4.5 bps width, realized +2.2 bps \u2192 missed by 6.7 bps\n- AAPL (Rep Sessions sale): 2.0 bps width, realized +11.1 bps \u2192 missed by 12.8 bps\n\n**You are systematically under by 3-10x on width even on correctly-predicted zero moves.**\n\n**Width floors by market cap (start here, then add)**\n\n- **Large caps (>$100B):** 20 bps minimum\n- **Mid caps ($10-100B):** 25 bps minimum\n- **Small caps (<$10B):** 30 bps minimum\n- **ETFs (all sizes):** 20 bps minimum (constituents move independently)\n\nThese are floors for a quiet tape with no catalyst. Never go below them.\n\n**Step 1: Classify the story type to set direction**\n\n**Market-wide noise (many symbols OR broad macro theme):**\n- Examples: \"Smart Money Sells #1 Dow Stock\" (50+ symbols), \"Iran War, Inflation Fears\" (5 symbols, macro theme), sector roundups\n- Direction: predict zero (the move is not about this name specifically)\n- MA in \"Stablecoins Lead Crypto Investment Themes\" (13 symbols, crypto theme) \u2192 market-wide noise\n- AVGO in \"Broadcom Stock Is Gaining Wednesday\" (6 symbols, already up 1%) \u2192 retrospective market-wide noise\n- NVDA in \"Nvidia vs. AMD: The Next AI Battle\" (2 symbols, forward-looking sector note) \u2192 market-wide noise\n- QQQ in \"Smart Money Sells #1 Dow Stock\" (50+ symbols) \u2192 market-wide noise\n\n**Passing mention (symbol named but not the subject):**\n- Check: Is the headline about a different company? Is this symbol one of many listed?\n- Examples: V in \"Elon Musk's X Money\" (4 symbols, headline is about X), AAPL in \"Rep. Pete Sessions Sold Over $100K\" (3 symbols, one Congressman's disclosure)\n- Direction: predict zero unless the story creates clear cross-company implications\n\n**Retrospective/commentary (no fresh catalyst):**\n- Examples: \"Broadcom Stock Is Gaining Wednesday: What's Going On?\" (explaining an existing 1% move), analyst reiterations\n- Direction: predict zero\n- These publish during or after moves, not before them\n\n**Stock-specific fresh catalyst (the name IS the subject, the news IS new):**\n- Examples: \"Truist Securities Downgrades Intuit to Hold, Lowers Price Target to $350\" (INTU is the subject, downgrade is fresh)\n- Direction: depends on catalyst type (see Step 3)\n\n**Step 2: Check the recent tape (always examine last 30-45 minutes)**\n\nUse candlesticks to see what the market already knows:\n\n**Tight tape (\u226415 bps range, normal volume):**\n- No recent catalyst visible, normal drift\n- Use baseline width (20 bps large cap, 25 bps mid cap)\n\n**Moderate volatility (15-40 bps range in last 30 min):**\n- Some activity but not explosive\n- Add +10 bps to baseline width\n- Example: V at 12:34:26, last 30 min range ~30 bps \u2192 use 30 bps minimum\n\n**Active volatility (40-100 bps range in last 30 min):**\n- Large moves, gaps, volume spikes\n- Add +15 bps to baseline width\n- Example: AAPL at 11:00:20, last 30 min range ~60 bps \u2192 use 35 bps minimum\n\n**Very active (100+ bps range in last 30 min):**\n- Story may be absorbing or absorbed\n- Add +20 bps to baseline width (residual volatility persists)\n- Direction: predict zero or fade continuation unless new information\n- Example: NVDA at 11:39:30, last 45 min range ~200 bps (208-210) \u2192 use 40+ bps width\n\n**Step 3: Adjust width for fresh catalysts (add to baseline + tape adjustment)**\n\nOnly applies if the story is stock-specific and fresh (not market-wide, not passing mention, not retrospective).\n\n**Minor filings (Rep/Senator disclosures, small institutional changes):**\n- Rep. Pete Sessions selling $100-250K of AAPL \u2192 immaterial (Apple market cap $5T+)\n- Add +0 bps (noise)\n\n**Institutional ownership changes (13F filings):**\n- Add +5 bps (information is stale by 45+ days)\n\n**Analyst upgrades/downgrades (not reiterations):**\n- Truist downgrades INTU, cuts target \u2192 meaningful negative\n- Add +15 bps (fresh price-relevant information)\n\n**Executive departures or strategic shifts:**\n- Add +20 bps\n\n**Guidance changes, earnings beats/misses:**\n- Add +30 bps\n\n**M&A announcements, major partnerships:**\n- Add +35 bps\n\n**Step 4: Context adjustments (add to running total)**\n\n- **Last 30 minutes of day:** +5 bps (closing auction volatility)\n- **First 30 minutes of day:** +5 bps (price discovery phase)\n- **Friday afternoon:** +3 bps (weekend positioning)\n\n**Step 5: Compute final width and direction**\n\n**Example 1: MA \"Stablecoins Lead Crypto Investment Themes\" at 14:55:10**\n- Market cap: large (>$100B) \u2192 baseline 20 bps\n- Story type: market-wide noise (13 symbols, crypto policy theme) \u2192 direction = 0\n- Tape: last 30 min range ~40 bps (510.5-510.9), moderate \u2192 +10 bps\n- Context: late afternoon \u2192 +5 bps\n- **Final: delta = 0, half_width = 35 bps**\n- Realized: +12.7 bps \u2192 would have been contained\n\n**Example 2: AVGO \"Broadcom Stock Is Gaining Wednesday\" at 11:36:16**\n- Market cap: large \u2192 baseline 20 bps\n- Story type: retrospective (explains existing +1% move) \u2192 direction = 0\n- Tape: last 30 min range ~180 bps (420.7-422.5), very active \u2192 +20 bps\n- Context: midday \u2192 +0 bps\n- **Final: delta = 0, half_width = 40 bps**\n- Realized: -12.0 bps \u2192 would have been contained\n\n**Example 3: NVDA \"Nvidia vs. AMD: The Next AI Battle\" at 11:39:30**\n- Market cap: large \u2192 baseline 20 bps\n- Story type: market-wide noise (2 symbols, forward-looking sector note) \u2192 direction = 0\n- Tape: last 45 min range ~200 bps (208-210), very active \u2192 +20 bps\n- Context: midday \u2192 +0 bps\n- **Final: delta = 0, half_width = 40 bps**\n- Realized: +0.7 bps \u2192 would have been contained (4.3 bps width missed)\n\n**Example 4: V \"Elon Musk's X Money\" at 12:34:26**\n- Market cap: large \u2192 baseline 20 bps\n- Story type: passing mention (V one of 4 symbols, headline is about X) \u2192 direction = 0\n- Tape: last 30 min range ~30 bps, moderate \u2192 +10 bps\n- Context: midday \u2192 +0 bps\n- **Final: delta = 0, half_width = 30 bps**\n- Realized: -6.9 bps \u2192 would have been contained\n\n**Example 5: QQQ \"Iran War, Inflation Fears\" at 11:28:20**\n- ETF \u2192 baseline 20 bps\n- Story type: market-wide noise (5 symbols, broad macro theme) \u2192 direction = 0\n- Tape: last 30 min range ~100 bps (714-715), active \u2192 +15 bps\n- Context: midday \u2192 +0 bps\n- **Final: delta = 0, half_width = 35 bps**\n- Realized: +1.4 bps \u2192 would have been contained (6.3 bps width contained)\n\n**Example 6: INTU \"Truist Securities Downgrades\" at 13:00:26**\n- Market cap: large \u2192 baseline 20 bps\n- Story type: stock-specific fresh catalyst (downgrade with price target cut) \u2192 direction = negative\n- Tape: last 30 min range ~20 bps (319.9-320.1), tight \u2192 +0 bps\n- Catalyst: analyst downgrade \u2192 +15 bps\n- Context: early afternoon \u2192 +0 bps\n- **Final: delta = -10 to -20 bps (negative but uncertain absorption), half_width = 35 bps**\n- Realized: +17.5 bps (wrong direction, market faded the downgrade) \u2192 35 bps would have contained\n\n**Example 7: QQQ \"Smart Money Sells #1 Dow Stock\" at 11:35:46**\n- ETF \u2192 baseline 20 bps\n- Story type: market-wide noise (50+ symbols, market roundup) \u2192 direction = 0\n- Tape: last 30 min range ~50 bps (732.2-732.7), moderate \u2192 +10 bps\n- Context: midday \u2192 +0 bps\n- **Final: delta = 0, half_width = 30 bps**\n- Realized: +2.2 bps \u2192 would have been contained\n\n**Example 8: AAPL \"Rep. Pete Sessions Sold Over $100K\" at 11:00:20**\n- Market cap: large \u2192 baseline 20 bps\n- Story type: passing mention (one Rep's disclosure, 3 symbols, immaterial size vs AAPL market cap) \u2192 direction = 0\n- Tape: last 30 min range ~60 bps (336.6-337.2), moderate \u2192 +10 bps\n- Context: midday \u2192 +0 bps\n- **Final: delta = 0, half_width = 30 bps**\n- Realized: +11.1 bps \u2192 would have been contained\n\n**The pattern: Most Benzinga stories are noise. Predict zero direction and use 20-40 bps width.**\n\n**Width decision tree summary:**\n\n1. Start with baseline: 20 bps (large cap / ETF), 25 bps (mid cap), 30 bps (small cap)\n2. Check story type: if market-wide / passing mention / retrospective \u2192 direction = 0\n3. Check tape volatility: add +10 to +20 bps based on recent range\n4. If stock-specific fresh catalyst: add +15 to +35 bps based on magnitude\n5. Add context adjustments: +5 bps for open/close, +3 bps for Friday PM\n6. **Never go below 20 bps for large cap/ETF, 25 bps for mid cap, 30 bps for small cap**\n\n**What earns skill:**\n\nA forecast where the realized five-minute close lands inside your quoted band. Width is not penalized directly\u2014undersized width that gets run through loses skill badly. A 0 \u00b1 35 bps forecast that contains a 12 bps move earns skill. A 0 \u00b1 2 bps forecast that misses a 12 bps move destroys skill.\n\nThe no-change benchmark scores exactly zero. You score negative when your band misses. Use wider bands that actually contain five minutes of microstructure variance.\n\n**Common mistake: confusing \"no directional edge\" with \"no variance\"**\n\nWhen you correctly identify a story as noise (market-wide, passing mention, retrospective), you should predict zero direction. But zero direction does not mean zero width. The stock will still move 15-25 bps from microstructure. Set direction to zero and width to 20-40 bps depending on tape and context.\n\n**On real catalysts: Width must grow even more**\n\nThe INTU downgrade example shows that even stock-specific fresh catalysts need 35+ bps width. The market may fade a downgrade (+17.5 bps realized vs -7.0 bps predicted), but the volatility is real. When you see a genuine catalyst, add the catalyst adjustment to your already-wide baseline.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
