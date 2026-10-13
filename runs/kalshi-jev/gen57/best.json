@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen57",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n## The Core Truth: You Cannot Predict Goals During Your Forecast Window\n\n**The fundamental limit:** You see the game state NOW. You forecast where the price will be in FIVE MINUTES. You cannot predict whether a goal will occur during those five minutes.\n\nWhen a goal occurs during your forecast window:\n- The price jumps 15-50 cents instantly\n- You had no way to see it coming\n- Your only correct forecast was 0.0 cents (no predictable move)\n- Predicting 0.0c earns exactly 0.0 skill (your error = no-change error)\n- Predicting any other number when the market then stays flat earns negative skill\n\n**Examples prove this:**\n- Example 1 (15', 0-0): Predicted -0.1c, actual -1.0c due to unpredictable events \u2192 skill +0.07 (barely positive, mostly lucky)\n- Example 2 (70', 0-0): Predicted -0.1c, actual 0.0c (market stayed flat) \u2192 skill -0.11 (wrong, should have been 0.0)\n- Example 4 (15', 0-0): Predicted -0.0c, actual 0.0c (correct!) \u2192 skill -0.02 (tiny penalty for confidence misallocation)\n- Example 5 (65', 0-0): Predicted -0.3c, actual 0.0c \u2192 skill -0.31 (wrong direction on stable market)\n- Example 6 (55', 0-0): Predicted -0.2c, actual 0.0c \u2192 skill -0.20 (wrong)\n- Example 7 (55', 0-1): Predicted -0.1c, actual 0.0c \u2192 skill -0.13 (wrong)\n- Example 8 (55', 2-0): Predicted -0.1c, actual -2.5c \u2192 skill +0.05 (right direction but unpredictable magnitude)\n\n**Pattern:** Most markets stay flat over five minutes when no goal occurs. Predicting 0.0 cents is correct in these cases. Predicting non-zero and being wrong earns negative skill between -0.11 and -0.31.\n\n## When Time Decay Exists (The ONLY Predictable Catalyst Before 80')\n\nTime decay moves the price ONLY when:\n1. Clock is approaching the end (typically 80'+ for meaningful decay, though 70'+ shows weak signals)\n2. The contract is \"will X happen\" (team will score, match will end in draw)\n3. Probability is in the range where decay matters (roughly 0.10 to 0.85)\n\n**Decay magnitude:**\n- At 70'-79' with probability 0.20-0.70: roughly -0.1 to -0.3 cents over five minutes (very weak)\n- At 80'-85' with probability 0.20-0.70: roughly -0.3 to -0.8 cents over five minutes\n- At 85'-90' with probability 0.20-0.70: roughly -0.8 to -1.5 cents over five minutes\n- At 90'+ with probability 0.20-0.70: roughly -1.5 to -3.0 cents over five minutes\n\n**Direction:**\n- \"Will [team] score\" contracts: decay is NEGATIVE (probability falls as time runs out with no goal)\n- \"Will match end in draw\" with draw ongoing: decay is POSITIVE (probability rises as time runs out)\n\n**Example 2 was at 70':** The harness predicted -0.1c for decay. The market stayed at 0.545 (actual 0.0c). At 70', decay exists but is very weak (under -0.2c over five minutes). The prediction was slightly aggressive but in the right direction for decay\u2014the market just didn't move because 20 minutes remained.\n\n## What Does NOT Move Prices Predictably\n\n**\"Goal absorption taking 3+ minutes\":** False. Goals are absorbed within 60-120 seconds. By the time you see recent_events showing a goal and candlesticks showing the jump, it's fully priced. If the last 3+ candles are flat, absorption is complete.\n\n**\"Mean reversion on thin books\":** Rarely matters over five minutes. Example 6 had an 11-cent spread (0.25/0.36) but the mid stayed at 0.305 for 35+ minutes straight. Wide spread \u2260 imminent reversion.\n\n**\"Momentum from recent trades\":** Previous trades show market makers adjusting to public information (goals), not predicting future moves.\n\n**\"Substitutions and yellow cards\":** These are public information already in the price. Substitutions at 45' (Example 3) or 59' (Example 5) don't move \"will [team] score\" contracts unless they accompany a goal.\n\n## The Decision Tree: Clock First, Then Candlesticks\n\n### Step 1: Check the clock\n\n**If clock < 70':**\n- **Predict exactly 0.0 cents**\n- No meaningful decay exists\n- You cannot predict goals during your window\n- Half_width: 0.5 cents (market will likely stay flat or jump unpredictably)\n\n**If clock is 70'-79':**\n- Check probability: is it between 0.15 and 0.80?\n- If yes: weak decay exists, magnitude -0.1 to -0.3 cents\n- If market has been flat for 3+ minutes (check candlesticks), predict the decay\n- If no: predict 0.0 cents\n\n**If clock is 80'+:**\n- Meaningful decay exists\n- Check probability and calculate decay magnitude\n- Check candlesticks to ensure no recent goal is still being absorbed\n- Predict the decay\n\n### Step 2: Check candlesticks (if clock \u2265 70' and probability in range)\n\nLook at the last 10-15 minutes of candles:\n\n**If you see a large jump in the last 1-2 minutes:**\n- A goal just happened\n- It's 80%+ absorbed already\n- Predict decay only (absorption is nearly complete)\n\n**If candles have been flat for 3+ minutes:**\n- Current game state is fully priced\n- Predict decay only\n\n**If candles show continued absorption (gradual drift in same direction as the jump):**\n- Rare after 3 minutes, but if it exists, add -0.2 to -0.5 cents to your decay forecast\n- More likely: you're seeing noise, and decay is the only real signal\n\n### Step 3: Quantify the prediction\n\n**Before 70':**\n- delta_cents: 0.0\n- half_width_cents: 0.5\n- You're confident the market will either stay flat (you win) or jump unpredictably (you score 0.0 skill, which is correct)\n\n**At 70'-79' with weak decay:**\n- delta_cents: -0.1 to -0.3 (for \"will score\" contracts in probability range 0.15-0.80)\n- half_width_cents: 1.0 to 1.5 (decay is weak and uncertain)\n\n**At 80'-89' with meaningful decay:**\n- delta_cents: -0.3 to -1.5 (stronger as clock advances)\n- half_width_cents: 1.0 to 1.5 (decay is directional but gradual)\n\n**At 90'+ with strong decay:**\n- delta_cents: -1.5 to -3.0\n- half_width_cents: 1.5 to 2.0 (some uncertainty in exactly how fast)\n\n**Direction check:** Always verify the contract type. \"Will [team] score\" decays negative. \"Will match end in draw\" with draw ongoing decays positive.\n\n## Half-Width: Your Confidence in Avoiding Unpredictable Moves\n\nHalf-width is NOT a measure of forecast uncertainty. It's the distance at which you believe an unpredictable shock (goal during your window) is unlikely enough to risk getting filled.\n\n**0.5 cents:** You believe the market will stay flat (most common before 70')\n\n**1.0-1.5 cents:** You're forecasting directional decay but acknowledge a small chance of a goal during your window\n\n**2.0+ cents:** Very rare; use only at 90'+ with high decay but also high goal risk\n\n**The risk:** If your quote gets filled on one side, you pay the fill. If both sides fill (round trip), you earn the width. Narrow quotes get filled more often. Your width should reflect \"how confident am I that no goal occurs in the next five minutes?\"\n\n## Skill Scoring: Why 0.0 is Often Correct\n\nSkill = 1 - (your_error / nochange_error)\n\n**When market stays flat (actual = 0.0c):**\n- Predicting 0.0c: error = 0.0, skill = 0.0 \u2713\n- Predicting -0.3c: error = 0.3, nochange_error = 0.0, skill = -\u221e (approximated as -0.31 in Example 5) \u2717\n\n**When unpredictable goal moves market:**\n- Predicting 0.0c: your_error = |actual|, nochange_error = |actual|, skill = 0.0 \u2713\n- Predicting non-zero in wrong direction: skill is negative\n- Predicting non-zero in right direction by luck: skill is slightly positive but you couldn't systematically predict it\n\n**The examples show:** \n- Six examples had stable markets or unpredictable shocks\n- Predicting 0.0c would have earned 0.0 skill in all six (correct answer)\n- Predicting non-zero earned between -0.31 and +0.07 skill\n- Average skill would have been 0.0 with always-predict-zero vs. actual -0.03\n\n## The Default Answer: 0.0 Cents Before 70'\n\nBefore 70', the market either:\n1. Stays flat \u2192 predicting 0.0c is perfect (0.0 error)\n2. Jumps on an unpredictable goal \u2192 predicting 0.0c earns 0.0 skill (correct, you couldn't predict it)\n\n**There is no third option before 70'.** Examples 1, 4, 5, 6, 7 were all before 70' (or at low-probability extremes where decay doesn't matter). The correct forecast was 0.0 cents in all cases.\n\n**At 70'+:** Decay begins to exist. Example 2 (70', mid 0.545, \"will FCM score\") should have predicted -0.1 to -0.2 cents for weak decay. The market stayed flat because 20 minutes remained and decay over five minutes was minimal. Predicting -0.1c was reasonable but the market's flatness shows the decay was too weak to measure.\n\n**At 80'+:** Decay is meaningful and should be your primary forecast.\n\n## Edge Cases and Exceptions\n\n**Very low probability (< 0.10) or very high (> 0.90):**\n- Decay is negligible\n- Predict 0.0 cents regardless of clock\n- Example 1: mid 0.065 (6.5% chance) \u2192 decay is unmeasurable\n- Example 8: mid 0.075 (7.5% chance) at 55' \u2192 decay is unmeasurable, predict 0.0\n\n**Draw contracts:**\n- \"Will match end in draw\" has OPPOSITE decay direction\n- With draw ongoing at 80'+, probability RISES (positive decay)\n- Check the contract carefully\n\n**Extremely thin books (spread > 10 cents, zero volume):**\n- Example 2: spread 0.87 (yes_bid 0.11, yes_ask 0.98), zero volume\n- Example 6: spread 0.11, zero volume\n- These books can drift randomly, but you cannot predict the direction\n- Predict decay if clock permits, otherwise 0.0 cents\n- Do NOT invent mean reversion theories\n\n**Recent goal in recent_events but candles already flat:**\n- Goal is absorbed\n- Predict decay only (if clock permits)\n- Do not add absorption to your forecast\n\n## Process Summary\n\n1. **Is clock < 70'?** \u2192 Predict 0.0c, half-width 0.5c. Stop.\n\n2. **Is probability < 0.10 or > 0.90?** \u2192 Predict 0.0c (decay unmeasurable). Stop.\n\n3. **Clock is 70'-79':** Weak decay exists (-0.1 to -0.3c). Check candlesticks for stability. If stable for 3+ minutes, predict the decay with half-width 1.0-1.5c. Otherwise predict 0.0c.\n\n4. **Clock is 80'+:** Meaningful decay exists. Calculate magnitude from clock and probability. Check direction (will score = negative, will draw with draw ongoing = positive). Predict decay with half-width 1.0-2.0c depending on clock.\n\n5. **Always:** Verify your prediction makes sense. If you're predicting -0.3c on a market that's been flat for 30 minutes at 55' into the match, you're wrong. Predict 0.0c.\n\n## What the Examples Taught Us\n\n- Example 1 (15', 0-0, mid 6.5%): Decay unmeasurable \u2192 should predict 0.0c\n- Example 2 (70', 0-0, mid 54.5%): Weak decay, predicted -0.1c, actual 0.0c \u2192 decay was too weak to measure, but prediction was reasonable\n- Example 4 (15', 0-0, mid 74.5%): Predicted -0.0c (correct!), actual 0.0c \u2192 nearly perfect\n- Example 5 (65', 0-0, mid 31%): Predicted -0.3c, actual 0.0c \u2192 wrong, should have been 0.0c\n- Example 6 (55', 0-0, mid 30.5%): Predicted -0.2c, actual 0.0c \u2192 wrong, should have been 0.0c\n- Example 7 (55', 0-1, mid 81.5%): Predicted -0.1c, actual 0.0c \u2192 wrong (decay at 81.5% is weak), should have been 0.0c\n- Example 8 (55', 2-0, mid 7.5%): Predicted -0.1c, actual -2.5c \u2192 unpredictable price movement, should have predicted 0.0c\n\n**The lesson:** Predict 0.0c before 70' and when probability is extreme. Predict weak decay at 70'-79'. Predict stronger decay at 80'+. Never invent catalysts.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
