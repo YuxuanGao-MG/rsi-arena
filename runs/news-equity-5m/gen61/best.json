@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen61",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: The previous context systematically overestimated required half-widths.**\n\nAnalysis of eight new forecasts:\n\n1. MA (21 symbols, Bill Ackman picks): predicted 0 \u00b1 2.0 bps, realized +2.0 bps (INSIDE, skill +0.09)\n2. GOOGL (5 symbols, Tesla/Cybercab commentary): predicted -3.1 \u00b1 3.1 bps, realized -8.0 bps (BROKE by 4.9 bps, skill +0.39)\n3. ORCL (1 symbol, \"Should you buy this dip?\" analysis): predicted -3.9 \u00b1 4.1 bps, realized +16.5 bps (BROKE by 20.4 bps, skill -0.24)\n4. GOOG (6 symbols, SpaceX 13F disclosures): predicted -1.8 \u00b1 2.0 bps, realized +9.8 bps (BROKE by 11.6 bps, skill -0.19)\n5. META (6 symbols, MANGOS ETF commentary): predicted -3.6 \u00b1 4.4 bps, realized -24.2 bps (BROKE by 20.6 bps, skill +0.15)\n6. TLT (2 symbols, 10Y yield at 4.8%): predicted -6.2 \u00b1 6.2 bps, realized -7.3 bps (INSIDE, skill +0.85)\n7. GOOGL (7 symbols, Nvidia GPU demand): predicted -2.0 \u00b1 2.0 bps, realized +1.9 bps (BROKE by 3.9 bps, skill -0.39)\n8. INTC (1 symbol, Northland upgrade to Outperform, $120 PT): predicted +8.7 \u00b1 16.3 bps, realized +16.3 bps (INSIDE, skill +0.53)\n\n**Results: 3 of 8 inside bands (37.5%), 5 of 8 broke bands.**\n\n**Pattern 1: The previous context's minimum widths were far too large**\n\nPrevious guidance called for:\n- 1-2 symbols material: 40 bps minimum\n- 3-5 symbols: 30 bps minimum\n- 6-15 symbols: 35 bps minimum\n- 16-30 symbols: 30 bps minimum\n\nActual results:\n- MA (21 symbols): 2.0 bps realized, would have been inside \u00b12.0 bps\n- GOOGL Tesla (5 symbols): 8.0 bps realized, would have been inside \u00b110 bps\n- GOOGL Nvidia (7 symbols): 1.9 bps realized, would have been inside \u00b15 bps\n- TLT (2 symbols material): 7.3 bps realized, inside \u00b16.2 bps (correctly sized)\n- INTC (1 symbol upgrade): 16.3 bps realized, inside \u00b116.3 bps (correctly sized at 16 bps vs. 40 bps guidance)\n\nThe 30-40 bps minimums from previous context were 3-5x too wide. Most multi-symbol stories realize 2-10 bps moves, not 20-30 bps.\n\n**Pattern 2: Single-symbol material catalysts still require careful sizing**\n\n- ORCL (1 symbol, \"buy the dip\" think piece): predicted \u00b14.1 bps, realized +16.5 bps\n- INTC (1 symbol, upgrade to Outperform + $120 PT): predicted \u00b116.3 bps, realized +16.3 bps (perfect)\n\nThe ORCL story is NOT a material catalyst - it's a Benzinga think piece asking \"should you buy?\" after a bad week. This is commentary, not news. Realized +16.5 bps because ORCL was in a volatile session (183 \u2192 181.7 \u2192 182.5 in prior 45 minutes, ~150 bps range).\n\nThe INTC story IS a material catalyst: a named analyst (Northland) upgraded to Outperform with a $120 price target. Stock was also in a volatile session (102.9 \u2192 103.4 \u2192 104.3 in prior 45 minutes, ~140 bps range). Realized exactly +16.3 bps.\n\nKey insight: Material catalyst = specific actionable news (upgrade/downgrade with price target, earnings, guidance, M&A). \"Should you buy?\" articles are NOT catalysts, they're commentary. But both can move 15-20 bps in volatile sessions.\n\n**Pattern 3: Multi-symbol stories (3-21 symbols) realize much smaller moves than previous context suggested**\n\n- MA (21 symbols): 2.0 bps\n- GOOGL Tesla (5 symbols): 8.0 bps\n- GOOG SpaceX (6 symbols): 9.8 bps\n- META MANGOS (6 symbols): 24.2 bps (outlier)\n- GOOGL Nvidia (7 symbols): 1.9 bps\n\nFour of five were under 10 bps. The META outlier at 24.2 bps occurred during a 587 \u2192 581 decline (~100 bps) in the prior 45 minutes. This was a volatile session where META was already selling off before the story.\n\n**Pattern 4: Recent volatility is the primary driver of realized five-minute moves**\n\nCheck 45-minute ranges:\n\n- ORCL: 183.07 \u2192 181.01 \u2192 182.47 \u2192 181.79 (~200 bps range), realized +16.5 bps\n- INTC: 103.17 \u2192 102.85 \u2192 104.31 (~140 bps range), realized +16.3 bps\n- META: 587.07 \u2192 584.12 \u2192 581.12 (~600 bps range), realized -24.2 bps\n- GOOG: 341.13 \u2192 341.53 \u2192 341.07 (~40 bps range), realized +9.8 bps\n- MA: 561.33 \u2192 561.91 \u2192 562.97 (~160 bps range), realized +2.0 bps (tight last 5 minutes)\n- TLT: 82.0 \u2192 82.24 (~24 bps range), realized -7.3 bps\n- GOOGL Tesla: 343.57 \u2192 343.155 \u2192 343.55 (~40 bps range), realized -8.0 bps\n- GOOGL Nvidia: 344.45 \u2192 345.24 \u2192 343.76 (~150 bps range), realized +1.9 bps (tight last 5 minutes)\n\nHigh 45-minute volatility (100+ bps) predicts 15-25 bps five-minute moves. Low 45-minute volatility (under 50 bps) predicts 2-10 bps five-minute moves.\n\n**Revised decision tree:**\n\n**Step 1: Check recent 45-minute volatility from candlesticks**\n\nCalculate: high - low over last 45 minutes (or since open if less than 45 minutes into session).\n\n- **High volatility: 100+ bps range** \u2192 Base half-width 15-20 bps\n- **Medium volatility: 50-100 bps range** \u2192 Base half-width 10-15 bps  \n- **Low volatility: 20-50 bps range** \u2192 Base half-width 5-10 bps\n- **Very low volatility: under 20 bps range** \u2192 Base half-width 3-5 bps\n\n**Step 2: Count symbols and classify story type**\n\n**2a. Single-symbol stories (1-2 symbols):**\n\nCheck if material catalyst:\n- Analyst rating change WITH price target (e.g., \"Northland upgrades to Outperform, $120 PT\")\n- Earnings announcement, guidance, financial results\n- M&A announcement, deal signed\n- Product launch, regulatory approval, legal ruling\n\nIf YES (material catalyst with 100+ bps recent volatility): **Use 15-20 bps half-width, predict direction from news**\n\nExample: INTC upgrade to Outperform + $120 PT, 140 bps recent range \u2192 16.3 bps half-width captured the move.\n\nIf YES (material catalyst with under 100 bps recent volatility): **Use 10-15 bps half-width, predict direction from news**\n\nIf NO (not material - think pieces, \"should you buy?\", retrospectives): **Predict 0 delta, use volatility-based half-width from Step 1**\n\nExample: ORCL \"Should you buy this dip?\" with 200 bps recent range should have been 0 \u00b1 20 bps, not -3.9 \u00b1 4.1 bps.\n\n**2b. Multi-symbol stories (3-10 symbols):**\n\nThese mention your stock alongside a handful of others (sector peers, competitive landscape, thematic groupings).\n\n**Always predict 0 delta.** Use volatility-based half-width from Step 1, add 2-3 bps buffer.\n\nExamples:\n- GOOGL Tesla (5 symbols, 40 bps recent range): should be 0 \u00b1 8 bps (5-10 base + 2-3 buffer)\n- GOOG SpaceX (6 symbols, 40 bps recent range): should be 0 \u00b1 10 bps\n- META MANGOS (6 symbols, 600 bps recent range): should be 0 \u00b1 20 bps\n- GOOGL Nvidia (7 symbols, 150 bps recent range): should be 0 \u00b1 15 bps\n\nMulti-symbol stories do NOT create stock-specific directional moves. They may correlate with ongoing session volatility, but you cannot predict direction.\n\n**2c. High multi-symbol stories (11-30 symbols):**\n\nBroad market commentary, sector roundups, whale alerts across many names.\n\n**Always predict 0 delta.** Use volatility-based half-width from Step 1, no buffer needed.\n\nExample: MA (21 symbols, 160 bps recent range, but last 5 minutes tight): should be 0 \u00b1 5 bps. The recent range matters, but if last 5-10 minutes are tight (under 30 bps), reduce to lower end of volatility band.\n\n**2d. Very high multi-symbol stories (31+ symbols):**\n\nMarket-wide aggregations where your symbol appears in a massive list.\n\n**Always predict 0 \u00b1 5 bps** unless recent volatility is extreme (200+ bps recent range), then use 0 \u00b1 10 bps.\n\nThese stories are background noise with minimal realized impact.\n\n**Step 3: Check last 5 minutes for quieting down**\n\nIf recent 45-minute range is high (100+ bps) but last 5 minutes traded in a tight range (under 30 bps), reduce half-width by 30-40%.\n\nExamples:\n- MA: 160 bps recent range, but 562.9-563.1 last 5 minutes (20 bps) \u2192 realized +2.0 bps\n- GOOGL Nvidia: 150 bps recent range, but 343.7-343.9 last 5 minutes (20 bps) \u2192 realized +1.9 bps\n\nWhen volatility is fading, the five-minute window will continue the quiet period, not revert to the earlier volatility.\n\n**Step 4: Direction calls**\n\n**Only call direction on single-symbol material catalysts:**\n- Upgrade/positive PT raise \u2192 positive\n- Downgrade/PT cut \u2192 negative\n- Strong earnings/guidance \u2192 positive\n- Weak earnings/guidance cut \u2192 negative\n\nCheck if move already priced: If stock moved significantly (50+ bps) in direction of news in prior 10 minutes, predict 0 (news is leaked/priced).\n\n**Never call direction on:**\n- Multi-symbol stories (3+ symbols) - always 0 delta\n- Single-symbol commentary pieces (\"should you buy?\", retrospectives) - always 0 delta\n- Stories about other companies that mention yours in passing - always 0 delta\n\n**Width guidelines table (updated):**\n\n| Symbol Count | Story Type | Recent 45min Range | Base Half-Width | Example |\n|--------------|------------|-------------------|-----------------|---------|\n| 1-2 | Material catalyst | 100+ bps | 15-20 bps | INTC upgrade, 140 bps range: 16 bps worked |\n| 1-2 | Material catalyst | 50-100 bps | 10-15 bps | TLT yield news, 24 bps range: 6 bps worked |\n| 1-2 | Material catalyst | under 50 bps | 8-12 bps | - |\n| 1-2 | Non-material | any | Use Step 1 volatility | ORCL \"buy dip?\", 200 bps range: needed 20 bps |\n| 3-10 | Any | 100+ bps | 15-20 bps | META MANGOS, 600 bps range: needed 20+ bps |\n| 3-10 | Any | 50-100 bps | 10-12 bps | GOOG SpaceX, 40 bps range: needed 10 bps |\n| 3-10 | Any | under 50 bps | 5-8 bps | GOOGL Tesla, 40 bps range: needed 8 bps |\n| 11-30 | Any | 100+ bps | 10-15 bps | - |\n| 11-30 | Any | under 100 bps | 5-8 bps | MA, 160 bps range but tight last 5: needed 5 bps |\n| 31+ | Any | any | 5 bps | - |\n\n**If last 5 minutes are quiet (under 30 bps range) despite high 45-minute volatility: reduce by 30-40%.**\n\n**Key corrections from previous context:**\n\n1. **Widths were 3-5x too large.** Previous minimums of 30-40 bps broke badly on stories that realized 2-10 bps. Most multi-symbol stories need 5-12 bps, not 30+ bps.\n\n2. **Recent volatility is the primary predictor.** A stock trading in a 150 bps range will realize 15-20 bps moves on any story; a stock in a 30 bps range will realize 5-8 bps moves. Symbol count is secondary.\n\n3. **Last 5 minutes matter more than last 45 minutes.** If volatility is fading (tight last 5 minutes despite wide 45-minute range), use the tighter forecast.\n\n4. **Material catalyst = actionable news with specifics.** \"Northland upgrades to Outperform, $120 PT\" is material. \"Should you buy this dip?\" is not. Only material catalysts justify directional calls.\n\n5. **Never call direction on multi-symbol stories.** Even 3-5 symbol stories should be 0 delta. The previous context was correct that these are unpredictable, but wrong about the required widths.\n\n**Summary of typical moves:**\n\n- Quiet session (under 50 bps recent range), multi-symbol story: 2-5 bps realized \u2192 5 bps half-width\n- Moderate session (50-100 bps recent range), multi-symbol story: 5-10 bps realized \u2192 10 bps half-width\n- Volatile session (100+ bps recent range), multi-symbol story: 10-20 bps realized \u2192 15 bps half-width\n- Volatile session (100+ bps recent range), material catalyst: 15-25 bps realized \u2192 18 bps half-width\n- Quiet session (under 50 bps recent range), material catalyst: 8-15 bps realized \u2192 12 bps half-width\n\nThe lesson: Width follows recent realized volatility, not symbol count. Check the 45-minute range first, then check if the last 5 minutes are quieting down. Only add width for material single-symbol catalysts; subtract width when stories mention 10+ symbols. Never use minimums above 20 bps except in extreme intraday volatility (200+ bps recent ranges).",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
