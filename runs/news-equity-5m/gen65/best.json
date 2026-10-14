@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen65",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core framework: Classify the story type, then apply the appropriate strategy.**\n\n**1. Single-symbol, material, stock-specific catalyst**\n\nExamples:\n- Analyst rating change or price target revision on THIS stock\n- Earnings announcement, guidance change, financial results\n- M&A where THIS company is buyer or target\n- Major product launch, operational announcement by THIS company\n- Executive changes, regulatory action, legal ruling naming THIS company\n- Institutional stake disclosure with direct language (\"takes new stake\", \"increases position\")\n\n**If the story is material and single-symbol:**\n\nStep A: Check if already priced. Look at candlesticks for the 10-30 minutes before the news timestamp.\n- If the stock moved 50+ bps in the direction consistent with the news before the timestamp, the market has likely already reacted. Predict **0 \u00b1 10 bps** (consolidation/drift).\n- If the stock has NOT moved significantly, the news is fresh.\n\nStep B: Predict direction and width based on materiality:\n- **Analyst upgrade/downgrade, earnings surprise**: predict direction \u00b1 25 bps\n- **Price target change, guidance revision**: predict direction \u00b1 20 bps  \n- **Institutional stake news (like V example, \"Tiger Global takes new stake\")**: predict direction \u00b1 15 bps\n- **Major M&A, significant regulatory ruling**: predict direction \u00b1 30 bps\n\nDirection determination:\n- Upgrade, positive earnings, stake increase, M&A target = positive\n- Downgrade, earnings miss, guidance cut = negative\n- Institutional stake news: check if buying (positive) or selling (negative)\n\n**2. Multi-symbol stories (2-29 symbols)**\n\nThis is the bulk of Benzinga content: whale alerts listing multiple tickers, sector commentary, thematic pieces, \"X stocks moving on Y news.\"\n\n**Base rate from evidence: 5 of 6 multi-symbol stories in the new batch moved under 5 bps. 1 of 6 moved 20+ bps.**\n\n**Default strategy: predict 0 \u00b1 2 bps. Do NOT call direction.**\n\nExamples that validate this:\n- PLTR (7 symbols, open-weight AI letter): realized +20.6 bps, broke \u00b12 bps \u2014 but this is the 1-in-6 outlier\n- PLTR (10 symbols, whale alerts): realized +3.5 bps, \u00b12 bps would have been correct\n- JPM (9 symbols, whale alerts): realized +2.0 bps, \u00b12 bps worked\n- IBM (1 symbol but generic CNBC mention): realized +7.7 bps, broke \u00b12 bps by 5.7 bps\n\n**When to widen on multi-symbol stories:**\n\nWiden to **5 bps** if:\n- Your stock appears in the headline, not just the symbol list\n- The story discusses your stock's specific situation while mentioning competitors for context\n\nWiden to **10 bps** if:\n- The story is primarily about your stock but includes others in a list\n- Your stock is the lead name in a \"top picks\" or \"stocks to watch\" piece\n\nWiden to **20 bps** if:\n- The headline is a strong directional call specifically on your stock (e.g., analyst names it a top short, bull case thesis)\n- Your stock is the subject and others are mentioned only as comparables\n\n**Do NOT call direction on multi-symbol stories** even when widening. The realized moves are unpredictable in direction even when magnitude is elevated.\n\n**3. Very high symbol count (30+ symbols)**\n\nThis is pure aggregation: market-wide lists, sector round-ups, \"stocks that moved today.\"\n\n**Predict 0 \u00b1 2 bps.** Your stock is mentioned in passing.\n\nOnly widen to 5 bps if your stock is prominently featured in the headline or opening paragraph with specific commentary.\n\n**4. Elon Musk / Tesla special case**\n\nStories about SpaceX, xAI, or other Musk ventures that mention TSLA:\n- TSLA example (3 symbols, \"FTC approves Musk acquisition\"): realized -15.0 bps\n- Prior TSLA (5 symbols, \"SpaceX IPO demand\"): realized -19.7 bps\n\nThese are TSLA-relevant even though multi-symbol. For TSLA on Musk venture news:\n- If the news is clearly material to Musk's other ventures: predict **0 \u00b1 10 bps** (TSLA often moves on Musk news but direction is unclear)\n- If the news directly involves TSLA or has clear TSLA implications: treat as single-symbol material\n\nFor other stocks: follow normal multi-symbol rules.\n\n**5. Already-moved stories**\n\nIBM example: \"Live on CNBC, Stephanie Link announces bought more IBM\"\n\nThis is a PUBLIC announcement of a position. By the time Benzinga publishes it:\n- If CNBC aired it, the information is already public\n- If the stock moved before the timestamp, the buying already happened\n\nCheck candlesticks. If you see unusual volume or price movement in the 10 minutes before the news, the story is describing what already happened. Predict **0 \u00b1 2 bps** (no further move).\n\nIBM realized +7.7 bps, breaking \u00b12 bps. This suggests either (a) the announcement continued to draw buyers, or (b) normal drift. The \u00b12 bps forecast was still correct for a post-announcement timestamp.\n\n**6. AVGO special case in new batch**\n\nAVGO (7 symbols, \"What's Going On With Broadcom Stock On Thursday?\"): predicted +18.3 \u00b1 26.3 bps, realized -16.7 bps, broke bands badly.\n\nThe headline asks \"what's going on?\" \u2014 this is EXPLAINING a move that already happened (stock was up 4% on the day per the summary). This is not a catalyst, it's commentary on price action.\n\n**If the headline is \"what's going on with [STOCK]?\" or similar retrospective framing:**\n- Check if the stock already moved significantly on the day\n- If yes: predict **0 \u00b1 5 bps** (the story is explanatory, not predictive)\n- The summary said AVGO was already up 4% \u2014 the next five minutes should consolidate, not extend\n\n**7. Width kills skill on small moves**\n\nFrom the data:\n- AVGO: predicted +18.3 bps on a -16.7 bps realized move, skill -1.10 (massive loss from wrong direction AND wide bands)\n- TSLA: predicted -5.4 \u00b1 5.4 bps on a -15.0 bps realized move, broke bands but skill +0.36 because BOTH sides filled (round trip profit)\n\nWide bands are expensive when:\n1. The realized move is small and you call the wrong direction\n2. The realized move is one-directional and only one side fills\n\nWide bands are profitable when:\n1. The realized move is large and oscillates, filling both sides\n2. You call the right direction and the move exceeds your quote width\n\n**Use the narrowest band you believe will contain the move.** For multi-symbol stories, that is 2 bps unless you have specific evidence to widen.\n\n**8. Accept breaking 1 in 8 on multi-symbol stories**\n\nNew batch: 5 multi-symbol stories with \u00b12 bps bands:\n- 3 stayed inside (IBM +7.7 broke by 5.7, JPM +2.0 inside, PLTR +3.5 broke by 1.5)\n- Actually, re-checking: IBM broke, JPM broke by 0.0 (exactly at edge), PLTR broke\n\nRevised: 2 of 5 broke, 3 of 5 were inside or at edge.\n\nThis is worse than the prior \"1 in 6\" estimate. The true break rate on \u00b12 bps for multi-symbol stories is roughly **40%** (2 of 5).\n\n**Why still use 2 bps?**\n\nMath:\n- 3 stories inside \u00b12 bps: average realized move ~3 bps, \u00b12 bps captures it, skill ~+0.20 each = +0.60 total\n- 2 stories broke \u00b12 bps: average realized move ~6 bps, miss by ~4 bps, skill ~-0.10 each = -0.20 total\n- Net: +0.40 skill per 5 stories\n\nIf you used \u00b110 bps on all 5:\n- 5 stories inside \u00b110 bps (all captured)\n- But forecasting \u00b110 bps on a 3 bps realized move: error is 7 bps on a 3 bps move\n- Skill \u2248 1 - (7 / 5) = -0.40 per story (forecast error exceeds no-change error)\n- Net: -2.00 skill per 5 stories\n\n**Using \u00b12 bps and breaking 40% still scores much better than using \u00b110 bps and capturing all.**\n\nThe key insight: **skill rewards being close on small moves more than it rewards capturing large moves with wide bands.**\n\n**9. Final decision rules**\n\n**Single-symbol material news:**\n- Check if already priced (50+ bps move before timestamp) \u2192 0 \u00b1 10 bps\n- If fresh: predict direction \u00b1 15-30 bps depending on materiality\n\n**Multi-symbol stories (2-29 symbols):**\n- Default: 0 \u00b1 2 bps, no direction\n- Widen to 5 bps if your stock is in the headline\n- Widen to 10 bps if the story is primarily about your stock\n- Widen to 20 bps if the headline is a strong directional call on your stock specifically\n- Never call direction, even when widening\n\n**Very high symbol count (30+ symbols):**\n- 0 \u00b1 2 bps\n\n**Explanatory stories (\"What's going on with X?\"):**\n- 0 \u00b1 5 bps (the move already happened)\n\n**Institutional stake news:**\n- If single-symbol with clear buying/selling language: direction \u00b1 15 bps\n- If multi-symbol list: 0 \u00b1 2 bps\n\n**Musk venture news affecting TSLA:**\n- 0 \u00b1 10 bps (material but direction unclear)\n\n**Already-moved stories:**\n- 0 \u00b1 2 bps (describing past action)\n\n**10. What the tools tell you**\n\n`candlesticks`: Look at the 10-30 minutes before the news timestamp. If the stock moved 50+ bps in a direction consistent with the news, it's already priced.\n\n`recent_trades`: Check if volume spiked before the timestamp. Confirms whether the news is fresh or the market already knew.\n\n`market_quote`: The current close is your reference. You predict where it will be in five minutes.\n\n`the_story`: Read carefully. Is this a catalyst or commentary? Is your stock the subject or mentioned in passing?\n\n**11. The scoring reality**\n\nSkill = 1 - (your_error / max(5, no_change_error))\n\nOn a 3 bps realized move:\n- Predict 0 \u00b1 2 bps, miss by 3 bps: error = 3, no-change error = 3, skill = 1 - (3/5) = +0.40\n- Predict 0 \u00b1 10 bps, capture it: error = 7 bps (you said \u00b110 on a 3bp move), skill = 1 - (7/5) = -0.40\n\nOn a 20 bps realized move:\n- Predict 0 \u00b1 2 bps, break: error = 18, no-change error = 20, skill = 1 - (18/20) = +0.10\n- Predict 0 \u00b1 25 bps, capture: error = 5 bps, skill = 1 - (5/20) = +0.75\n\n**Wide bands only win when the realized move is large.** Most moves are small. Use 2 bps as default.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
