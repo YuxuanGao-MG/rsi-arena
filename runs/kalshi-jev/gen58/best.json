@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen58",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\nCRITICAL BOUNDS AND UNCERTAINTY:\n\nA contract near 0c or 100c has almost nowhere to go. If mid is 0.5c, it can only fall 0.5c to zero or rise at most 0.5c to 1c; if mid is 99c, it can only rise 1c to 100 or fall modestly. Your delta_cents must respect these physical limits. Predicting +2c movement from 99c mid or -2c from 1c mid is impossible. At extreme prices, either predict the small move that's possible (-0.3c from 2.5c mid toward zero) or stand aside with very tight half_width (0.3c) if you expect no change.\n\nMost five-minute windows see moves of 0-3 cents. **The core lesson from feedback: default half_width should be 2.0-2.5 cents.** Use narrower widths ONLY when you have strong evidence of stability across multiple factors. The old harness used 0.5c in seven of eight examples and was run over in three (Examples 6, 8 moved significantly; Example 1 had early volatility absorbed).\n\nMANDATORY FIRST STEP - READ CANDLESTICKS:\n\n**ALWAYS check candlesticks for the last 15 minutes FIRST, before reading recent_events.** Candlesticks are ground truth for what moved the market and when. Recent_events may be empty, incomplete, or lag reality.\n\n**What to look for in candlesticks:**\n\n1. **Sharp jumps (10+ cents in 1-3 minutes)**: A goal or major event occurred. Check if:\n   - Jump finished 5+ minutes ago AND price now flat (< 0.5c/min) for 5+ min \u2192 absorption complete, predict \u00b10c, half_width 2.0c\n   - Jump finished 2-4 minutes ago AND still moving 2-5c/min \u2192 absorption ongoing, predict continuation same direction +2 to +5c, half_width 2.5-3.5c\n   - Jump incomplete (< 10c total) OR erratic \u2192 slow absorption, predict remaining move, half_width 3.5-4.5c\n\n2. **Choppy/erratic moves (2-5c per minute, irregular)**: Thin book or uncertain absorption. Half_width 3.0-4.0c minimum.\n\n3. **Flat candlesticks (< 0.5c per minute for 10+ minutes)**: Suggests stability BUT:\n   - Example 2: Flat 15+ min at clock 55', then moved +0c (correctly stable)\n   - Example 1: Flat 14+ min at clock 75', then moved +0c (correctly stable)\n   - Late match (70'+) can still break with +4-5c moves (desperate attacks)\n   - Use half_width 2.0-2.5c minimum even when flat\n\n4. **Gradual drift (0.5-1.5c per minute, steady direction)**: Time decay or thin book rebalancing. Continue the trend, half_width 2.0-2.5c.\n\n**Example patterns from feedback:**\n\n- **Example 1**: Clock 75', 0-0 tie. Candlesticks showed mid dropped 26.5c\u219219c from :41 to :01 (20 min ago), then stable 18.5-19c from :01 to :15 (14 min flat). Recent_events had only substitutions (no goals listed). Market moved +0c. **Lesson**: 14 minutes of flat candlesticks at 18.5-19c meant absorption was complete.\n\n- **Example 2**: Clock 55', 3-1 lead. Candlesticks showed massive drop 48.5c\u219233.5c at :45-:50 (halftime/restart, 5 min ago), then choppy 33-38c from :50 to :10, then flat 35-36c from :10 to :25. Recent_events showed halftime and yellow card only. Market moved +0c. **Lesson**: 15 minutes post-halftime, price stabilized.\n\n- **Example 6**: Clock 25', 0-1 score. Goal at 17' (8 min ago). Candlesticks showed drop 32.5c\u219231.5c at :20 (goal time), then stable 31.5c from :20 to :55 (35 min flat). Market moved +1c. **Lesson**: Even 35 minutes of stability can break with +1c - used 0.5c half_width, should have been 2.0c.\n\n- **Example 8**: Clock 75', 1-1 tie. Candlesticks showed wild swings 25c\u219222c\u219221c\u219220c\u219221.5c\u219219c\u219212.5c from :30 to :15 (choppy, thin book). Recent_events showed only substitution. Market moved **+20.5c** in next 5 minutes. **Lesson**: Late match 1-1 tie + choppy book = extreme volatility risk. A goal happened in the next window (not in recent_events at forecast time).\n\n**Understanding contract direction:**\n\nCheck the ticker to identify what the contract represents:\n- **KXLEAGUEGAME-DATEHOMEAWAY-XXX**: XXX is the team code (first 3 letters) or TIE\n- Home team is first in the pair, away team is second\n- \"Will team X win\" contracts: rise when X scores/ahead, fall when opponent scores\n- \"TIE\" contracts: rise when score is equal or close, fall when either team scores to take/extend lead\n\n**Examples from feedback:**\n- KXEPLGAME-26SEP05HULAVL-HUL: HUL is home team Hull, score 0-0, mid dropped from 26.5c to 19c \u2192 Hull's win odds decreased (maybe Villa pressure or time running out)\n- KXMLSGAME-26SEP12STLMIN-STL: STL is home team St. Louis, score 3-1 St. Louis ahead, mid 90.5c \u2192 St. Louis win very likely\n- KXLALIGAGAME-26AUG28ALAVIL-TIE: TIE contract, score 1-0 Alaves ahead, mid 28.5c \u2192 Tie becoming less likely as clock runs\n- KXUSLGAME-26SEP12OAKLEX-OAK: OAK is home team Oakland, score 1-1 tie, mid 12.5c \u2192 Oakland win unlikely unless they score\n\n**Time decay is real and directional:**\n\nA \"will team X win\" contract decays toward zero as the clock runs down IF team X is not ahead:\n- Before minute 30: decay slow, typically -0.1 to -0.5c per 5 minutes depending on price\n- Minutes 30-60: decay moderate, -0.3 to -1.0c per 5 minutes\n- Minutes 60-75: decay accelerating, -0.5 to -2.0c per 5 minutes\n- Minutes 75-85: decay strong, -1.0 to -3.0c per 5 minutes\n- After minute 85: decay extreme, -2 to -7c per 5 minutes as time runs out\n\n**Contract price matters for decay:**\n- A contract at 50c can decay faster than one at 10c (more room to fall)\n- A contract at 5c can only decay -5c maximum total to zero\n- A contract at 95c (team ahead) may rise slightly +0.5 to +2c as win becomes certain\n\n**BUT: Late match (70'+) is MORE volatile, not less:**\n- Example 8: Clock 75', 1-1 tie, Oakland win contract at 12.5c moved **+20.5c** in 5 minutes (a goal happened)\n- Teams trailing by 1 goal push desperately for an equalizer (high event rate)\n- Teams tied push for a winning goal (high event rate)\n- Only blow-outs (3+ goal lead) are truly stable in late match\n\n**Thin books are dangerous:**\n\n- **Volume < 100**: Extremely thin, half_width 3.5-4.5c minimum\n- **Volume < 500**: Thin, half_width 2.5-3.5c minimum\n- **Volume > 2000**: Moderate liquidity, half_width 2.0-2.5c possible if other factors stable\n- **Volume > 5000**: Liquid, half_width 1.5-2.0c possible if other factors very stable\n\n**Spread matters too:**\n- Spread > 5c: Very illiquid, half_width 3.5-4.5c\n- Spread 2-5c: Thin, half_width 2.5-3.5c\n- Spread < 2c: Normal, use volume to decide\n\n**Early match (before 30'):**\n\nGoals are possible any minute. Higher baseline volatility.\n- Use half_width 2.5-3.5c minimum\n- If thin book (volume < 500), use 3.5-4.5c\n- Example 8 (clock 5'): Even with volume 1109, late tie \u2192 extreme risk\n\n**Mid-match (30' to 70'):**\n\nStill volatile, goals remain common.\n- Use half_width 2.0-2.5c baseline if moderate volume and stable candlesticks\n- Use 2.5-3.5c if volume < 2000 or any uncertainty\n- Examples 2, 3, 4: All mid-match, all moved \u00b10c, all had some stability signal in candlesticks\n\n**Late match (70'+):**\n\n**CRITICAL INSIGHT FROM EXAMPLE 8**: Late match is HIGH VOLATILITY when score is close, NOT low volatility.\n\n- **If score is close (tied or 1-goal difference)**: Teams are desperate. Half_width 3.5-4.5c minimum. Example 8: clock 75', 1-1 tie, moved +20.5c.\n- **If leading team ahead by 2+ goals**: Time decay dominates. Predict decay -1 to -3c for trailing team's win contract, half_width 2.0-2.5c.\n- **If leading team ahead by 3+ goals (blow-out)**: Very stable, predict \u00b10 to small decay, half_width 1.5-2.0c.\n\n**DO NOT assume late match = stable.** Check the score. Tied or close score = maximum volatility.\n\n**Recent_events interpretation:**\n\n- **Goal listed with minute (e.g., \"17' goal\")**: Calculate time since goal = current_clock - goal_minute. Check candlesticks: did price jump 10-30c around that time? If jump finished 5+ min ago and now flat, absorption complete.\n- **Substitutions, yellow cards, delays**: Usually minor, but check candlesticks for any correlated moves.\n- **Empty recent_events**: Does NOT mean nothing happened. Example 8 had empty events but a goal occurred in the forecast window (causing +20.5c move). Check candlesticks for unexplained sharp moves in last 10 min.\n\n**DECISION RULES ON HALF_WIDTH:**\n\n**Never use < 1.5c.** The old harness used 0.5-0.8c and was run over in Examples 6 (+1c realized) and 8 (+20.5c realized).\n\n**Use 1.5-2.0c ONLY when ALL of:**\n- Volume > 5000 (liquid book)\n- Spread < 2c\n- Candlesticks flat (< 0.5c/min) for 15+ minutes\n- No recent events or events fully absorbed (10+ min ago, candlesticks show complete jump then flat)\n- Clock 30-70' (mid-match, not early or late)\n- Mid 20-60c (not near extremes)\n- Score is blow-out (3+ goal lead) OR mid-match with no recent action\n\n**Use 2.0-2.5c as DEFAULT when:**\n- Mid-match (30-70') with moderate volume (500-5000)\n- Candlesticks stable or gently drifting (< 1c/min) for 10+ minutes\n- No recent goal (5+ min) or recent goal fully absorbed (flat candlesticks 10+ min)\n- Score not close (2+ goal difference) OR early/mid-match 0-0\n- Spread < 3c\n- **This should be your baseline assumption unless risk factors present**\n\n**Use 2.5-3.5c when:**\n- Volume 100-500 (thin-ish)\n- Candlesticks show moderate chop (1-2c/min variation) in last 10 min\n- Recent goal 2-5 minutes ago with ongoing absorption (price still moving 1-2c/min)\n- Spread 3-5c\n- Early match (< 30') with moderate volume\n- Late match (70'+) with 2-goal lead (some time decay expected but not blow-out stable)\n\n**Use 3.5-4.5c when:**\n- Volume < 100 (extremely thin) OR spread > 5c\n- Candlesticks choppy in last 10 min (> 2c/min, erratic)\n- Recent_events empty BUT candlesticks show sharp moves (5+ cents) in last 10 min\n- Early match (< 30') AND thin book (volume < 500)\n- **Late match (70'+) AND score is tied or 1-goal difference** \u2190 Critical from Example 8\n- Recent goal but candlesticks show incomplete/slow absorption (< 10c jump total or still jumping erratically)\n- Multiple risk factors present\n- High uncertainty about timing or direction\n\n**Use 4.5-6.0c when:**\n- Late match close score (Example 8 scenario: clock 70'+, tied or 1-goal diff, thin book)\n- Volume < 50 AND spread > 10c\n- Extreme chop in candlesticks (wild swings 5+ cents per minute)\n- Very early match (< 15') AND tied AND thin book\n\n**Extreme prices (< 10c or > 90c):**\n\n- At 99c: Can only rise +1c to 100c or fall modestly. Predict \u00b10 with half_width 0.5-1.0c.\n- At 5c: Can only fall -5c to zero or rise modestly. If stable, predict \u00b10 with half_width 1.0-1.5c. If volatile, predict the direction but cap delta at the physical limit.\n- At 90-95c: Still has 5-10c room. Use normal half_width rules but cap delta at the boundary.\n- At 5-10c: Still has 5-10c room down. Use normal half_width rules but cap delta at zero.\n\n**Workflow:**\n\n1. **Read candlesticks for last 15 minutes**: Any sharp moves? Flat? Choppy? When did moves occur?\n2. **Check current mid and boundaries**: Is price near 0c or 100c? How much room to move?\n3. **Read recent_events**: Any goals/cards? How long ago (current_clock - event_minute)?\n4. **Match events to candlesticks**: Did price jump when event occurred? Jump complete (flat 5+ min) or ongoing (still moving)?\n5. **Identify the contract**: Parse ticker for home/away/tie. Check score. Is this team ahead/behind/tied?\n6. **Check volume and spread**: Thin or liquid book?\n7. **Check clock and score**: Early/mid/late match? Is score close (tied or 1-goal diff) or blow-out?\n8. **Decide direction**:\n   - If recent goal ongoing absorption: predict continuation same direction, +2 to +5c\n   - If recent goal complete absorption (flat 10+ min): predict \u00b10c\n   - If no recent event and stable candlesticks: predict time decay (negative for losing/trailing team, \u00b10 for winner)\n   - If late match close score: predict high volatility, \u00b10c but WIDE half_width 3.5-4.5c\n   - If thin book choppy: predict continuation of drift, but WIDE half_width 3.0-4.0c\n9. **Decide half_width**: Start at 2.0-2.5c, widen to 3.5-4.5c if any risk factors (thin book, late close score, choppy candlesticks, early match, incomplete absorption), only narrow to 1.5-2.0c if strong multi-factor stability evidence.\n10. **Respect boundaries**: If mid is 5c and you predict -2c, that's fine (moves to 3c). If mid is 99c and you predict +2c, cap at +1c (moves to 100c). If mid is 2c and you predict -3c, cap at -2c (moves to 0c).\n\n**The harness is punished for bad fills (being run over), not for declining to trade.** Err on the side of width. A 0.5c half_width gets you run over (Examples 6, 8). A 2.0-2.5c half_width is safe for most situations. A 3.5-4.5c half_width protects you in high-risk situations like late close scores or thin choppy books.\n\n**Key lesson from Example 8**: Clock 75', score 1-1 (tie), Oakland win contract at 12.5c, thin book (volume 0, spread 3c), choppy candlesticks (wild swings 25c\u219212.5c over 20 min). Predicted -0.2c with 0.8c half_width. Market moved **+20.5c** (Oakland scored). Should have predicted \u00b10c with 4.5-5.0c half_width to account for late-match close-score extreme volatility. The 0.8c width was far too narrow for this situation.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
