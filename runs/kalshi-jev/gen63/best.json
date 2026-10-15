@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen63",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n**The default prediction is zero.** Most five-minute windows do not move. The feedback shows the harness loses skill by predicting small non-zero moves when the market stays flat.\n\n**Process for every forecast:**\n\n1. **Check candlesticks for recent price stability**\n   - Look at the last 5-10 minutes of candlestick data\n   - If the mid has been stable (within 1 cent) for 5+ minutes, the market has absorbed all recent information\n   - Stable price \u2192 predict zero unless a new catalyst is imminent\n\n2. **Check recent_events for unabsorbed catalysts**\n   - Goals: A goal 5+ minutes old is fully absorbed. A goal 1-3 minutes old may still be absorbing if candlesticks show continued drift\n   - Red cards: Can have delayed effects, but these are unpredictable\n   - Substitutions: Generally absorbed immediately, not a catalyst for future moves\n   - Yellow cards: No predictive value for price movement\n\n3. **Check the game clock for time decay relevance**\n   - Time decay is negligible until 80'+ (last 10 minutes)\n   - At early and mid-match times, time decay over five minutes is under 0.5 cents\n   - **Critical lesson from feedback**: Predicting small time-decay moves at 5', 15', 35', 55', 65', 75' consistently scores negative skill\n   - Only predict time decay moves in the final 10 minutes of a match\n\n4. **Recognize when to predict zero**\n   - **Predict zero when the price has been stable for 5+ minutes**, even early in the match\n   - Example 3: 20+ minutes of stability \u2192 predicted -0.1c \u2192 actual 0.0c \u2192 skill -0.06\n   - Example 6: Stable throughout, early match (15') \u2192 predicted +0.0c \u2192 actual 0.0c \u2192 skill -0.03 (tiny penalty for trading costs)\n   - Example 7: 55' into match, stable \u2192 predicted -0.3c \u2192 actual 0.0c \u2192 skill -0.25\n   - Example 8: Stable at 0.01 \u2192 predicted +0.0c \u2192 actual 0.0c \u2192 skill +0.00 (perfect)\n   - **The pattern is clear**: When the market is stable for 5+ minutes, predict zero regardless of match time\n\n5. **When to predict non-zero moves**\n   - **Only when there is clear evidence of ongoing price movement in the candlesticks**\n   - Example 1: Early match (5') but some instability in recent candles \u2192 predicted -0.2c \u2192 actual 0.0c \u2192 skill -0.20\n   - Example 2: Wide spread (3 cents), volatile book \u2192 predicted -0.6c \u2192 actual +2.0c \u2192 skill -0.28 (wrong direction)\n   - Example 4: Goal at 72', now 75' (3 minutes old), stable since \u2192 predicted -0.3c \u2192 actual -1.0c \u2192 skill +0.30 (correct direction)\n   - Example 5: Stable market \u2192 predicted -0.3c \u2192 actual +1.0c \u2192 skill -0.31 (wrong direction)\n\n6. **The key insight from feedback**\n   - **Stability trumps all other factors**: If the price has been stable for 5+ minutes, predict zero\n   - **Do not predict time decay moves except in final 10 minutes**: Every example of predicting small decay moves at 5'-75' scored negative skill\n   - **Getting direction right matters, but only if the market actually moves**: \n     - Example 4 shows +0.30 skill for predicting -0.3c when actual was -1.0c (correct direction, move actually happened)\n     - Example 1 shows -0.20 skill for predicting -0.2c when actual was 0.0c (predicted move that didn't happen)\n   - **The cost of predicting a move when market stays flat is worse than the benefit of getting direction partially right**\n\n7. **Revised decision framework**\n   - **Market stable 5+ minutes**: Predict zero, period. No exceptions for match time, score state, or recent events that are already absorbed.\n   - **Market showing active drift in last 2-3 minutes**: Predict continuation of the drift (0.5-1.0c in the direction of movement)\n   - **Goal under 3 minutes old AND price still moving**: Predict continued absorption in the expected direction\n   - **Final 10 minutes (80'+) with time-limited contract**: Consider small time decay prediction (0.3-0.5c)\n   - **All other cases**: Predict zero\n\n8. **Half-width strategy**\n   - If predicting zero: 0.5c half-width is standard\n   - If predicting a move: 0.5-1.0c half-width depending on confidence\n   - Wider spreads in the market quote suggest lower liquidity and more noise\n\n9. **What the feedback teaches about catalysts**\n   - **Substitutions are not predictive**: Examples 2, 3, 5 all had recent substitutions, all stable markets, predicting moves scored negative\n   - **Yellow cards are not predictive**: Example 4 had a yellow card, Example 8 had two, neither caused moves\n   - **Red cards are unpredictable**: No examples with red cards in the feedback set\n   - **Goals are absorbed within 3-5 minutes**: If price is stable 5+ minutes after a goal, it's fully absorbed\n   - **Time alone does not move prices until 80'+**: This is the clearest pattern in the feedback\n\n10. **Core principle**\n    - **The harness's main error is over-prediction**: It predicts small moves when it should predict zero\n    - **Stability is the strongest signal**: 5+ minutes of stable price means predict zero\n    - **Match time is not a catalyst by itself**: Do not predict decay moves at 5', 15', 35', 55', 65', 75'\n    - **Better to predict zero and score 0.00 than predict a small move and score negative when wrong**\n    - **Only predict moves when there is active price movement visible in recent candlesticks**\n\n**Round-trip costs are 2-3 cents on Kalshi.** A forecast must be confident enough to justify trading through fees. The feedback shows the harness has been trading too often on marginal predictions that don't materialize.\n\n**Practical checklist before predicting non-zero:**\n1. Has the price moved in the last 3 minutes? (Check candlesticks)\n2. Is there a goal less than 3 minutes old with continued drift?\n3. Are we in the final 10 minutes (80'+) with a time-limited contract?\n\nIf all three answers are no \u2192 predict zero.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
