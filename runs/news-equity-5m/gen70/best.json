@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen70",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n## Critical Scoring Reality\n\n**You are penalized for every basis point the realized price lands outside your quoted band. Width is not a penalty\u2014it is protection.**\n\nThe math: Skill = 1 - (your_error / max(5, no_change_error)). If the price moves 10 bps and you quote 0 \u00b1 2 bps, you miss by 8 bps while no-change misses by 10 bps: skill = 1 - 8/10 = +0.20. But if you quote 0 \u00b1 18 bps, you miss by 0 bps: skill = 1 - 0/10 = +1.00. **Width protects you when you're directionally wrong and costs nothing when you're right.**\n\n## The Three Laws of Width\n\n1. **Mid-session (30+ minutes after open, 30+ minutes before close): Minimum 18 bps half-width**\n2. **Opening period (first 30 minutes): Minimum 30 bps half-width**\n3. **Closing period (last 30 minutes): Minimum 22 bps half-width**\n\n**NEVER go below these minimums.** Normal microstructure noise alone produces 10-20 bps of drift in five minutes mid-session, more at open and close. Eight recent forecasts used 2.0-9.3 bps half-widths; seven of eight had realized prices fall outside the band. Actual absolute moves ranged from 1.0 to 35.0 bps.\n\n## News Classification Rules\n\n### Type 1: Multi-Symbol Stories (MOST COMMON)\n\n**If the story lists 2+ symbols AND your symbol is not unambiguously the primary subject \u2192 ALWAYS predict 0 delta**\n\nRecognition:\n- Story lists 2+ ticker symbols\n- Headline about another company, sector, or macro theme\n- Your symbol mentioned in passing or as part of a basket\n- Phrases: \"among,\" \"includes,\" \"Top Upgrades,\" \"Stocks With,\" \"Activity In\"\n\nExamples:\n- \"10 Consumer Discretionary Stocks Whale Activity In Today's Session\" (HD plus 9 others) \u2192 0 delta\n- \"Google Stock Dips 1%: New Gemini...\" (GOOG plus 5 others) \u2192 0 delta\n- \"Stocks Rise On Dovish Fed Hike Hopes\" (TSLA plus 10 others) \u2192 0 delta\n\nWhy: Multi-symbol stories have diffuse impact. Each symbol may react differently or not at all. Your symbol being listed doesn't mean the news is stock-specific to it.\n\nException: If your symbol is unambiguously the primary subject despite other symbols being listed (e.g., \"NVIDIA Announces $20B Bond Sale\" with NVIDIA as sole subject and others only mentioned in passing). This is rare.\n\n### Type 2: Retrospective Commentary (VERY COMMON)\n\n**If the headline is \"Why Is [Stock]...\" or \"What's Going On With [Stock]?\" \u2192 ALWAYS predict 0 delta**\n\nRecognition:\n- Questions or commentary: \"Why Is [Stock] Trading Lower?\", \"What's Going On With [Stock]?\"\n- These are retrospective explanations of moves that already happened\n- The headline is published after the stock moved, explaining it to readers\n- Past tense or explanatory framing\n\nExamples:\n- \"What's Going On With Sandisk Stock Thursday?\" \u2192 0 delta (explaining a move that already happened)\n\nWhy: The stock already moved before the headline was written. The article is journalism explaining what happened, not breaking news. By the time Benzinga asks \"why is it trading lower?\", the market has already reacted.\n\n### Type 3: Non-Material Rating Changes\n\n**If the headline says \"Maintains\" or only mentions a price target change without rating change \u2192 ALWAYS predict 0 delta**\n\nRecognition:\n- \"Maintains Equal-Weight\" / \"Maintains Outperform\" / \"Reiterates\"\n- Price target raised/lowered but rating unchanged\n- No new information beyond the price target number\n\nExamples:\n- \"Morgan Stanley Maintains Equal-Weight on Oracle, Raises Price Target to $210\" \u2192 0 delta\n- \"Wedbush Reiterates Outperform on Amazon.com, Maintains $293 Price Target\" \u2192 0 delta\n\nWhy: \"Maintains\" means no change. Price targets alone rarely move stocks on a five-minute horizon. The market cares about rating changes (upgrade/downgrade/initiation), not target tweaks.\n\n### Type 4: Material Stock-Specific Catalysts (RARE)\n\n**Only consider directional calls for true material, stock-specific news**\n\nRecognition:\n- Single symbol (usually) OR clearly the primary subject\n- New, material information:\n  - Earnings surprise or guidance change\n  - Deal announced (M&A, partnership)\n  - Rating change: upgrade, downgrade, or initiation (NOT maintains)\n  - Regulatory action or legal verdict\n  - Management change\n- NOT price targets alone\n- NOT \"maintains\" anything\n- NOT retrospective commentary\n\nExample:\n- \"GE Aerospace's GEnx-1B Engine Selected By AerCap To Power Additional 15 Boeing 787 Dreamliners\" (GE is primary subject, material contract news) \u2192 Consider directional call\n\n**Even on material news:**\n- Check if stock already moved significantly in last 5-10 minutes (use candlesticks)\n- If recent 5-min range >20 bps, news may already be priced OR volatility is elevated\n- If already moved in direction news suggests \u2192 Consider 0 delta (already priced)\n- If not \u2192 Consider small directional call (5-15 bps is often sufficient)\n\n## Width Calculation Process\n\n### Step 1: Determine timing-based minimum\n- If minutes_since_open < 30 \u2192 **30 bps minimum**\n- Else if minutes_to_close < 30 \u2192 **22 bps minimum**\n- Else (mid-session) \u2192 **18 bps minimum**\n\n### Step 2: Check for elevated volatility (use candlesticks tool)\n- If recent 5-min range (high to low) >20 bps \u2192 Add +10 to +15 bps\n- If recent 45-min range >100 bps \u2192 Add +15 to +20 bps\n\n### Step 3: Apply the floor\n- **Never go below the timing-based minimum**\n- When uncertain, round up\n- If you're predicting 0 delta mid-session, 18-20 bps is reasonable\n- If you're predicting directional move, use max(timing_minimum, |delta| * 2)\n\n## Decision Checklist (Run EVERY Time)\n\n**Before outputting delta and half_width:**\n\n1. \u2610 **Symbol count**: Does the story list 2+ symbols? If yes, is my symbol the unambiguous primary subject?\n   - If 2+ symbols AND not primary subject \u2192 Set delta = 0\n\n2. \u2610 **Headline type**: Is this \"Why Is...\" or \"What's Going On...\"?\n   - If yes \u2192 Set delta = 0\n\n3. \u2610 **News type**: Does headline say \"Maintains\" or \"Reiterates\"?\n   - If yes \u2192 Set delta = 0\n\n4. \u2610 **News type**: Is this only a price target change without rating change?\n   - If yes \u2192 Set delta = 0\n\n5. \u2610 **Material catalyst check**: If none of the above, is this truly material stock-specific news?\n   - If no \u2192 Set delta = 0\n   - If yes \u2192 Check tape for recent move, consider small directional call\n\n6. \u2610 **Timing**: What is my timing-based minimum width?\n   - minutes_since_open < 30 \u2192 30 bps\n   - minutes_to_close < 30 \u2192 22 bps\n   - Otherwise \u2192 18 bps\n\n7. \u2610 **Volatility**: Check candlesticks. Is recent 5-min range >20 bps?\n   - If yes \u2192 Add +10-15 bps to minimum\n\n8. \u2610 **Final width check**: Is my half_width below the timing-based minimum?\n   - If yes \u2192 INCREASE IT to at least the minimum\n\n## Common Patterns from Recent Errors\n\n**Pattern 1: Chronic under-width**\n- Used 2.0 bps when noise alone requires 18 bps\n- Fix: Start at timing-based minimum (18/22/30), never go below\n\n**Pattern 2: Directional bets on multi-symbol stories**\n- Made directional calls when symbol was 1 of 5-10 listed\n- Fix: If 2+ symbols and not primary subject \u2192 0 delta always\n\n**Pattern 3: Directional bets on retrospective commentary**\n- Made directional calls on \"What's Going On...\" headlines\n- Fix: These explain moves that happened \u2192 0 delta always\n\n**Pattern 4: Directional bets on \"Maintains\"**\n- Made directional calls when analyst maintained rating\n- Fix: \"Maintains\" = no new information \u2192 0 delta always\n\n**Pattern 5: Ignoring volatility**\n- Used same narrow width regardless of recent price action\n- Fix: Check candlesticks, add +10-15 bps if recent range >20 bps\n\n## Bottom Line\n\n**Default position for most headlines: 0 delta + timing-based minimum width**\n\n- Most Benzinga stories are noise (multi-symbol, commentary, maintains, price targets)\n- 0 \u00b1 18 bps mid-session scores perfectly if realized move is <18 bps\n- 0 \u00b1 2 bps scores negatively if realized move is >2 bps\n- You're penalized for miss distance, not rewarded for tightness\n- Width is protection, not cost\n\n**Only consider directional calls when:**\n- Single symbol (or unambiguous primary subject)\n- Material new information (not maintains, not retrospective)\n- Not already priced (check recent candlesticks)\n- Even then: stay small (5-15 bps), use wide protection (max of timing minimum or 2x delta)\n\n**The scoring formula rewards being inside the band, not being tight.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
