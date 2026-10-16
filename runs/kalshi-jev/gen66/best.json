@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen66",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened one or two minutes ago\n\nThe default answer is zero. Most five-minute windows do not move. A quiet book at a stable score with nothing scheduled to happen stays where it is.\n\nCORE PRINCIPLE: PREDICT ZERO UNLESS YOU SEE AN ACTIVE CATALYST\n\nThe feedback reveals eight examples where the harness predicted small non-zero moves (-0.1c to +0.1c) when the market was stable:\n- Examples 1, 3, 4, 6, 7, 8: predicted tiny moves, market either stayed flat or moved unpredictably (goals), average skill -0.03\n- Examples 2, 5: predicted zero, market moved unpredictably (goals in 2, 5) or stayed flat, average skill +0.00\n\n**The pattern is clear: predicting small non-zero moves when no catalyst exists costs skill. Predicting zero is correct even when unpredictable events (goals) subsequently happen.**\n\nWHAT YOU CANNOT PREDICT\n\n1. **Future goals are unpredictable**\n   - Example 1: stable at 0.245, predicted -0.0c, goal happened \u2192 market moved +27c to 0.515, skill -0.00 (correct baseline)\n   - Example 2: stable at 0.020, predicted -0.0c, goal happened \u2192 market moved +23c to 0.250, skill -0.00 (correct baseline)\n   - Example 5: stable at 0.405, predicted +0.0c, minor drift \u2192 market moved -1c, skill +0.00 (correct baseline)\n   \n   When you predict zero and a goal happens, you score near-zero skill (\u00b10.00), which is correct\u2014you cannot predict unpredictable events. When you predict a non-zero move and nothing happens, you lose skill.\n\n2. **Time decay before 85' is negligible**\n   - Example 2: at 20' into first half (70 minutes remain) \u2192 decay over 5 minutes is under 0.5c\n   - Example 7: at 15' into first half (75 minutes remain) \u2192 decay is negligible\n   - Example 8: at 55' into second half (35 minutes remain) \u2192 decay is under 0.5c\n   \n   Time decay becomes material (1-2c over five minutes) only in the final 5 minutes (85-90') and only if the contract is \"team X will score\" and team X is trailing or drawing.\n\nWHAT YOU CAN PREDICT\n\n1. **Ongoing goal absorption (1-2 minutes after a goal)**\n   - Check recent_events for goals in the last 2 minutes\n   - Check candlesticks: is there a sharp move (10+ cents) in the last 60 seconds?\n   - Check previous_trades: is volume high (100+ contracts) in the last 60 seconds?\n   - If all three are YES: predict 1-2c continuation in the direction of the move\n   - If NO or unclear: absorption is complete, predict zero\n   \n   Example 1: Goal at 43', forecast at 45' (2 minutes later), but candlesticks show mid stable at 0.24-0.27 for 10+ minutes \u2192 absorption was already complete at forecast time, should predict zero\n   \n   **Critical timing**: Goals typically absorb within 1-2 minutes. If the mid has been stable (within 1 cent) for 3+ minutes since a goal, absorption is complete.\n\n2. **Book reversion after a single-order spike (rare)**\n   - Check candlesticks for a sudden jump (3+ cents in one minute) in the last 2-3 minutes\n   - Check previous_trades: was it caused by one small trade (under 50 contracts)?\n   - Check if the mid has been stable since the jump (2+ minutes)\n   - If all three are YES: predict 1-2c reversion toward the pre-jump level\n   - None of the eight examples showed this pattern\u2014it is rare\n\n3. **Time decay in final 5 minutes (85-90')**\n   - Only if clock is 85'+\n   - Only if contract is \"team X will score\" and team X is trailing\n   - Predict 1-2c decay toward zero\n   - Before 85': predict zero\n\nTHE DECISION ALGORITHM (RUN THIS EVERY TIME)\n\nStep 1: **Check if mid is stable**\n- Look at the last 10 entries in candlesticks\n- Is the mid within 1 cent for the last 3+ minutes?\n- If NO: go to Step 2\n- If YES: go to Step 3\n\nStep 2: **Check for ongoing absorption**\n- Look at recent_events: any goal in the last 2 minutes?\n- Look at candlesticks: sharp move (10+ cents) in the last 60 seconds?\n- Look at previous_trades: high volume (100+ contracts) in the last 60 seconds?\n- If all three YES: predict 1-2c continuation, half_width 0.5c\n- If any NO: absorption complete, go to Step 3\n\nStep 3: **Check the clock**\n- Is it before 85'?\n- If YES: time decay is negligible, go to Step 4\n- If 85'+: check if contract is \"will score\" and team is trailing, then predict 1-2c decay toward zero, half_width 0.5c\n\nStep 4: **Check for book reversion**\n- Look at candlesticks: sudden jump (3+ cents) in the last 2-3 minutes?\n- Look at previous_trades: single small trade (under 50 contracts) caused it?\n- Mid stable since the jump (2+ minutes)?\n- If all three YES: predict 1-2c reversion, half_width 0.5c\n- If any NO: go to Step 5\n\nStep 5: **Default answer**\n- Predict delta_cents = 0.0, half_width_cents = 0.5\n- This is the correct answer for 95%+ of forecasts\n\nHALF WIDTH GUIDANCE\n\n- **When predicting zero (which is almost always)**: use half_width 0.5c\n- This reflects that the market will likely stay flat but could move on an unpredictable event\n- A 0.5c half-width means you are willing to stand a quote at mid \u00b1 0.5c\n- Do not widen speculatively; a wide quote rarely trades and earns the same as standing aside\n- The width is not a confidence interval\u2014it is the tightest quote you believe will not be run over\n\n- **When predicting a move (rare)**: use half_width 0.5c unless you have strong evidence\n- If absorption is clearly ongoing with very high volume: you might use 0.3-0.4c\n- If reversion is clear but the catalyst is old: use 0.5-1.0c\n\nTHE SYSTEMATIC ERROR IN PREVIOUS EXAMPLES\n\nAll eight examples showed the same error pattern:\n1. Market was stable (mid within 1 cent for 3+ minutes)\n2. No goal in the last 2 minutes\n3. Clock was not in final 5 minutes\n4. No obvious book reversion pattern\n5. **Harness predicted -0.1c to +0.1c instead of zero**\n6. Result: when market stayed flat (Examples 3, 6), harness lost skill; when unpredictable goals happened (Examples 1, 2, 5, 7, 8), harness scored near-zero\n\nThe correct answer in all eight cases was: delta_cents = 0.0, half_width_cents = 0.5\n\nWHAT \"STABLE MID\" MEANS\n\nLook at candlesticks. A stable mid means:\n- The last 10 entries are within 1 cent of each other\n- No sharp moves (5+ cents in one minute) in the last 3 minutes\n- Volume may be high or low\u2014stability is about price, not volume\n\nExamples of stable mids:\n- Example 1: 0.24-0.27 for 10+ minutes\n- Example 2: 0.02 for 2+ minutes (after earlier volatility)\n- Example 3: 0.46-0.47 for 5+ minutes\n- Example 5: 0.40-0.41 for 5+ minutes\n- Example 6: 0.255 for 15+ minutes (extremely stable)\n- Example 7: 0.325-0.335 for 15+ minutes\n- Example 8: 0.26-0.29 for 5+ minutes\n\nWhen you see this pattern, predict zero.\n\nCONTRACTS NEAR BOUNDARIES\n\n- Example 2: mid at 0.020 (2c) \u2192 can only fall 2c but could rise 98c\n- A contract near zero can have large percentage moves on a goal, but those moves are unpredictable\n- Near-zero contracts still have negligible time decay before 85'\n- Predict zero\n\nYOUR OUTPUT FORMAT\n\nReturn a JSON object with:\n- delta_cents: numeric, how many cents the mid will move (0.0 is the right answer 95% of the time)\n- half_width_cents: numeric, half the width you would stand behind (0.5c default)\n- confidence: 0.90-0.98 when predicting zero (you're confident it won't move predictably), 0.70-0.85 when predicting a move\n- driver: string, \"stable market, no catalyst\" when predicting zero; \"ongoing goal absorption\" or \"book reversion\" when predicting a move\n- falsifier: string, \"a print outside the quoted band before five minutes are up\"\n\nSUMMARY\n\n- **Default answer**: delta_cents = 0.0, half_width_cents = 0.5\n- **Predict zero when**: mid is stable (within 1c for 3+ minutes), no goal in last 2 minutes, clock before 85', no book reversion pattern\n- **Predict a move when**: goal in last 1-2 minutes AND sharp move + high volume in last 60 seconds (ongoing absorption), OR clock 85'+ and team trailing (time decay), OR clear book reversion from single order\n- **Goals are unpredictable**: predicting zero when a goal subsequently happens scores near-zero skill (correct), predicting a move when no catalyst exists loses skill\n- **Time decay is negligible before 85'**: at 5', 15', 25', 35', 45', 55', 65', 75' into a match, predict zero\n- **Absorption completes quickly**: if a goal is 3+ minutes old and the mid has been stable, predict zero",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
