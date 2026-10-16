@@ -1,0 +1,156 @@
+{
+  "name": "crypto-horizon-1m-jev+gen44",
+  "description": "The one-minute forecast asked of a decisions model: the same frozen tools, one paragraph of state, and one typed question - a distribution over basis-point moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium snapping back through it\n- the US cash open (13:30-14:30 UTC), and the first minutes after it\n- a liquidation cascade: taker selling surging on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or extending\n\nMost minutes do not move. A quiet tape at a quiet hour stays within a couple of basis points, and saying so is the right answer.\n\nReading recent price action (critical calibration facts):\n- After a large recent move (change_5m_bps beyond \u00b18), the most common next outcome is consolidation or partial mean reversion, not extension. The probability of continuing in the same direction falls sharply.\n- When change_1m_bps shows a 3+ bp move AND change_5m_bps is large with the same sign, the move is typically exhausting. Expect mean reversion of 1-3 bps, not continuation.\n- A sharp drop with heavy taker selling (share < 0.2) often bounces 1-3 bps in the next minute as selling exhausts.\n- Example: if change_1m_bps = -4 and change_5m_bps = -10, predict a small bounce (+1 to +2 bps), not further decline.\n- Example: if change_1m_bps = +9 and change_5m_bps = +38, the move has exhausted; predict mean reversion (-2 to -4 bps).\n\nReading the tape (taker_buy_share):\n- Above 0.7 is aggressive buying; below 0.3 is aggressive selling\n- A single-minute extreme (>0.75 or <0.25) accompanying a large move typically signals exhaustion, not the start of a trend\n- When the last bar shows taker_buy_share > 0.75 with change_1m_bps > +3, the next minute often consolidates or retraces\n- When the last bar shows taker_buy_share < 0.25 with change_1m_bps < -3, expect a bounce\n- Sustained imbalance across 3-5 minutes is a stronger signal than a single spike\n\nYour forecast has two parts: delta_bps (direction and size) and half_width_bps (your uncertainty). \n\nCritical half_width calibration:\n- Use half_width = 1.0 bp ONLY when you are very confident the next minute will stay within \u00b11 bp (quiet tape, quiet hour, no recent volatility)\n- After any move where |change_5m_bps| > 8, uncertainty rises: use half_width \u2265 2.5 bps to avoid being run over by mean reversion or continued chop\n- After a large single-minute move (|change_1m_bps| > 3), use half_width \u2265 2.0 bps even if you expect mean reversion, because the reversal size is uncertain\n- When tape flow is mixed or choppy (taker_buy_share between 0.35-0.65 for multiple bars), use half_width \u2265 2.0 bps\n- Default safe width for uncertain minutes: 2.5-3.5 bps. This avoids being run over while still capturing edge.\n- Narrow quotes (half_width < 1.5) should be rare: only when the tape is quiet, the hour is dead, and recent 5m change is under \u00b15 bps\n\nCommon mistakes to avoid:\n1. Predicting continuation after a large 5m move: if change_5m_bps is beyond \u00b110 bps, default to expecting consolidation/reversion unless there's a clear driver (funding in 2 min, US open)\n2. Using half_width = 1.0 after recent volatility: if |change_5m_bps| > 5 or |change_1m_bps| > 2, widen to at least 2.0 bps\n3. Calling a directional move when the tape is mixed: when uncertain, predict delta \u2248 0 with width 2.5-3.5 bps\n\nSkill comes from:\n1. Staying silent (delta near zero, width 2-3 bps) when the market will chop\n2. Calling mean reversion after large moves (this is more common than continuation)\n3. Widening your spread after volatility - a wide quote that avoids fills is better than a tight quote that gets run over\n\nRound-trip trading costs are 20 bps. Only a very confident forecast justifies acting. Most of your forecasts should predict small moves (delta within \u00b12 bps) with modest uncertainty (half_width 2-3 bps).",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "funding_rate",
+    "cross_asset",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.5,
+          "interval": "1m"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 3,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "funding",
+        "output_key": "funding",
+        "skip_if": null,
+        "tool": "funding_rate",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "others",
+        "output_key": "others",
+        "skip_if": null,
+        "tool": "cross_asset",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nState: {{summary.summary}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.",
+            "criteria": [
+              "down 10 bps or more",
+              "down 4 to 9 bps",
+              "down about 2 bps",
+              "unchanged, within a basis point either way",
+              "up about 2 bps",
+              "up 4 to 9 bps",
+              "up 10 bps or more"
+            ],
+            "values": [
+              -15,
+              -6,
+              -2,
+              0,
+              2,
+              6,
+              15
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 1
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a close outside the quoted band when the minute prints"
+          }
+        }
+      }
+    ]
+  }
+}
