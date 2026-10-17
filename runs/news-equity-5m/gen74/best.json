@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen74",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## Core Decision Framework\n\n### Step 1: Is the story ABOUT this symbol?\n\nRead the headline carefully. Ask: \"Is this symbol the grammatical subject or direct object of the action described?\"\n\n**ABOUT the symbol (consider predicting directionally):**\n- \"Walmart Stock Gains on Broad Market Rally and New Delivery Partnership\" + WMT \u2192 WMT is the subject\n- The story must name a specific catalyst or action involving this symbol\n\n**NOT about the symbol (predict near-zero with appropriate width):**\n- \"7 Communication Services Stocks With Whale Alerts In Today's Session\" + GOOG \u2192 Listicle format, no single subject\n- \"Why Is CrowdStrike Stock Falling on Thursday?\" + GOOGL \u2192 Story is about CRWD, GOOGL is mentioned as context\n- \"9 Of 11 Sectors Fall In Friday Trading As Cyclicals Lead\" + AAPL \u2192 Market commentary, AAPL is one of many\n- \"Uber Earnings Prediction Market Preview\" + NVDA \u2192 Story about UBER, NVDA mentioned in passing\n- \"Why Is SanDisk Stock Surging On Thursday?\" + MSFT \u2192 Story is about SNDK (memory shortage), MSFT is context\n\n**Critical distinction:** A story can mention your symbol without being about it. If the headline asks \"Why is [Company A] doing X?\" and your symbol is Company B, the story is about A, not B.\n\n### Step 2: Count the symbols and assess story type\n\n- **1 symbol:** If headline is about that symbol, predict directionally. If headline is market commentary mentioning it, predict near-zero.\n- **2-5 symbols:** Check headline. If one symbol is clearly the subject, it may be about that one. Otherwise, thematic.\n- **6-9 symbols:** Almost always thematic/sector story. Predict near-zero unless symbol is unmistakably the headline's focus.\n- **10+ symbols:** Listicle or market commentary. Always predict near-zero. These never move individual stocks materially.\n\n### Step 3: Check the tape for realized volatility\n\nPull candlesticks for the last 45 minutes (or since open). Calculate the **15-minute high-low range** ending at the current bar.\n\nThis range determines your MINIMUM width:\n- Range < 15 bps: minimum width 5 bps\n- Range 15-30 bps: minimum width 6 bps\n- Range 30-50 bps: minimum width 7-8 bps\n- Range 50-100 bps: minimum width 9-12 bps\n- Range > 100 bps: minimum width 12-15 bps\n\n**The tape's recent behavior is the floor for your width, regardless of story type.**\n\n### Step 4: For stories clearly ABOUT the symbol, assess catalyst strength\n\nOnly proceed here if Step 1 confirmed the story is about this symbol.\n\n**Strong catalysts (consider \u00b110 to \u00b125 bps):**\n- Company-specific delivery partnership: \"New Delivery Partnership\" (Example 8, WMT)\n- Major product announcements\n- M&A with specific terms\n- Regulatory actions directly targeting the company\n\n**Medium catalysts (consider \u00b15 to \u00b115 bps):**\n- Broad market rally mentioned with company: \"Gains on Broad Market Rally\" (Example 8)\n- Partnership expansions\n- Analyst upgrades with new price targets\n\n**Weak catalysts (predict \u00b11 to \u00b15 bps):**\n- Fed commentary on general conditions (Example 4, SPY)\n- Opinion pieces\n- Reiterated ratings\n\n**Check for prior absorption:**\n- If stock has already moved >20 bps in the catalyst's direction before the story, scale your prediction down 50-70%\n- The tape may have already priced the news\n\n### Step 5: For stories NOT about the symbol (most cases), predict near-zero\n\nWhen the symbol is mentioned but not the subject:\n- **Base delta:** 0-2 bps\n- **Direction:** Slight preference toward recent momentum if any, otherwise 0\n- **Do not predict a material move** just because the symbol is mentioned\n\nExamples of correct near-zero predictions:\n- Example 1 (MSFT): \"Why Is SanDisk Stock Surging\" - MSFT mentioned in context, predicted -0.7 bps, actual +5.3 bps. Miss but correct approach.\n- Example 2 (GOOG): \"7 Communication Services Stocks\" - listicle, predicted 0 bps, actual -8.5 bps. Correct approach.\n- Example 3 (WFC): \"10 Financials Stocks\" - listicle, predicted 0 bps, actual 0 bps. Perfect.\n- Example 5 (GOOGL): \"Why Is CrowdStrike Stock Falling\" - about CRWD not GOOGL, predicted -0.8 bps, actual +13.3 bps. Correct approach, unlucky.\n- Example 6 (NVDA): \"Uber Earnings Preview\" - about UBER not NVDA, predicted 0 bps, actual +10.8 bps. Correct approach.\n\n### Step 6: Set width based on realized volatility, not story type\n\n**The 2 bp width is too tight.** Recent feedback shows it fails in 7 of 8 examples.\n\n**Width formula:**\n1. Calculate 15-minute high-low range from tape\n2. Set minimum width from range (see Step 3)\n3. If predicting directionally (|delta| > 3 bps): width = max(minimum, 0.7 \u00d7 |delta|)\n4. If predicting near-zero (|delta| \u2264 3 bps): width = minimum from tape\n\n**Never use 2 bp width unless:**\n- 15-minute range < 10 bps AND\n- Predicting |delta| \u2264 1 bp AND\n- Confidence \u2265 0.95\n\n**Examples of width errors:**\n- Example 1 (MSFT): 15-min range ~48 bps (377.06 to 377.53), used 2 bp width, should have used 7-8 bps\n- Example 2 (GOOG): 15-min range ~47 bps (352.0 to 352.46), used 2 bp width, should have used 7-8 bps\n- Example 4 (SPY): 15-min range ~126 bps (753.19 to 754.46), used 2 bp width, should have used 10-12 bps\n- Example 5 (GOOGL): 15-min range ~132 bps (319.62 to 320.88), used 2 bp width, should have used 10-12 bps\n- Example 6 (NVDA): 15-min range ~77 bps (211.05 to 211.8), used 2 bp width, should have used 9-10 bps\n- Example 7 (AAPL): 15-min range ~157 bps (335.40 to 336.97), used 2 bp width, should have used 12-15 bps\n- Example 8 (WMT): 15-min range ~21 bps (108.83 to 109.04), used 2 bp width, should have used 6 bps\n\n### Step 7: When the headline suggests a move but the symbol is not the subject\n\nThis is the most common trap. The headline sounds directional but it's about a different company.\n\n**Pattern:** \"Why Is [Company A] Doing X?\" + your symbol Company B\n**Correct response:** Predict near-zero with width based on tape volatility\n\nDo NOT:\n- Predict a directional move because the headline sounds important\n- Use 2 bp width because you're \"confident\" it won't move\n- Ignore the tape's realized volatility\n\nDO:\n- Predict 0-2 bps delta\n- Set width = minimum from 15-minute range\n- Accept that noise can cause \u00b110 bp moves even when story is irrelevant\n\n### Step 8: Confidence calibration\n\nConfidence reflects certainty about the delta, not about volatility.\n\n- **0.90-1.00**: Listicle with 10+ symbols, or market commentary clearly not about this symbol\n- **0.80-0.89**: Stock-specific story with clear catalyst that you've verified is about this symbol\n- **0.70-0.79**: Ambiguous catalyst or uncertain whether story is about this symbol\n- **0.60-0.69**: Conflicting signals or weak catalyst\n- **< 0.60**: High uncertainty\n\nHigh confidence does NOT justify tight width. They are independent.\n\n---\n\n## Process Summary\n\n1. **Read the headline.** Is your symbol the grammatical subject of the action? Or is it mentioned as context/in a list?\n\n2. **Count symbols.** 7+ symbols \u2192 almost certainly not about any single one.\n\n3. **If story is NOT about your symbol (most cases):**\n   - Predict delta: 0-2 bps (slight preference to recent momentum)\n   - Pull tape: calculate 15-min high-low range\n   - Set width: minimum from range table (5-15 bps depending on range)\n   - Confidence: 0.85-0.98\n\n4. **If story IS about your symbol (rare):**\n   - Assess catalyst strength\n   - Pull tape: check if move already happened\n   - Predict delta: scale based on catalyst and prior absorption\n   - Set width: max(minimum from range, 0.7 \u00d7 |delta|)\n   - Confidence: 0.70-0.90\n\n5. **Width setting is mechanical:**\n   - Calculate 15-min high-low range\n   - Use the range table for minimum width\n   - Never go below that minimum\n   - Only use 2 bp if range < 10 bps AND |delta| \u2264 1 bp AND confidence > 0.95\n\n6. **Key insight:** On a five-minute horizon, realized volatility from the last 15 minutes is a better predictor of width than story content. The tape tells you how much noise to expect.\n\n**Default answer for most stories: delta 0-2 bps, width 6-10 bps based on tape.** Only predict a material move when the headline unambiguously states an action taken by or about your specific symbol, and even then, widen for tape volatility.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
