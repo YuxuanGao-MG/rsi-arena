@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen75",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nThe harness systematically uses 2 bps width on stories where stocks then move 4-44 bps. Recent outcomes:\n\n- **GOOG \"Stocks Rise On Dovish Fed Hike Hopes\"** (11 symbols, market recap): predicted +0.0 bps (2.0 width), actual -11.8 bps \u2014 **market recap is noise for individual stocks, but GOOG had been sliding 342.04 \u2192 341.92 \u2192 341.81 \u2192 341.74 (-88 bps) over prior 30 minutes; the slide continued another -11.8 bps; 2 bps width catastrophically too tight**\n\n- **GOOG \"OpenAI, Anthropic Staff Share Letter Asking US to Help Pace AI Progress\"** (4 symbols, regulatory/pacing letter): predicted -0.9 bps (2.0 width), actual +12.6 bps \u2014 **regulatory news can move AI stocks 10-20 bps; 2 bps width too tight**\n\n- **CRM \"Nvidia Could Swing By $286 Billion After Earnings\"** (9 symbols, options volatility story mentioning CRM): predicted -0.1 bps (2.0 width), actual +13.4 bps \u2014 **options volatility stories move named stocks 8-20 bps; 2 bps width too tight**\n\n- **DHR \"Stifel Maintains Buy on Danaher, Lowers Price Target to $220\"** (1 symbol, analyst call with PT cut): predicted -0.7 bps (2.0 width), actual +19.0 bps \u2014 **analyst PT cut should be bearish but DHR moved up; stock had been sliding 177.01 \u2192 176.32 (-39 bps) over prior 30 minutes, then reversed +19 bps; 2 bps width catastrophically too tight**\n\n- **PLTR \"Watching Palantir; Hearing Investor Business Daily SwingTrader Sells Stock\"** (1 symbol, publication/service sell signal): predicted -2.3 bps (2.2 width), actual -10.4 bps \u2014 **publication sell signals move stocks 5-15 bps; width was close but magnitude too low; scored +0.22 skill, the best of this batch**\n\n- **INTC \"Rep. Nancy Pelosi Bought Over $4.25M Worth of Bloom Energy Stock\"** (2 symbols, Pelosi trade filing): predicted -2.6 bps (2.6 width), actual -6.4 bps \u2014 **INTC is passing mention in a BE story; correctly predicted near-zero, but width should be 3-5 bps for passing mentions; scored +0.41 skill**\n\n- **QQQ \"Dow Jones Hit Record Highs As Oil Drops To $77: Stock Market Today\"** (21 symbols, market recap): predicted -0.6 bps (2.0 width), actual +4.3 bps \u2014 **market recap is noise, but QQQ had been sliding 735.65 \u2192 734.00 (-22 bps) then recovering 734.00 \u2192 733.92 over prior 40 minutes; predicted continued slide, but the recovery continued +4.3 bps; 2 bps width too tight**\n\n- **INTU \"RBC Capital Reiterates Outperform on Intuit, Maintains $385 Price Target\"** (1 symbol, analyst reiterate with PT): predicted -2.8 bps (5.2 width), actual -44.1 bps \u2014 **stock had crashed 313.38 \u2192 306.40 (-222 bps) over prior 13 minutes at open; analyst reiterate published into the crash; the crash continued another -44 bps; width was better at 5.2 bps but magnitude far too low; should have predicted -30 to -60 bps continuation with 15-20 bps width**\n\n---\n\n## **What These Reveal**\n\n1. **Market recap headlines (naming 10+ symbols) are noise for individual stocks, but if the stock has been moving 20+ bps over the last 20-40 minutes, it may continue or reverse 5-20 bps.** Examples:\n   - GOOG sliding -88 bps over 30 min before recap \u2192 continued -11.8 bps (should have predicted -5 to -15 bps, width 8-12 bps)\n   - QQQ sliding -22 bps then recovering over 40 min before recap \u2192 recovery continued +4.3 bps (should have predicted +3 to +8 bps, width 5-8 bps)\n\n2. **When a stock has crashed or spiked 100+ bps over the last 10-20 minutes and a headline is published, the move often continues another 20-60 bps over the next 5 minutes.** Example:\n   - INTU crashed -222 bps (313.38 \u2192 306.40) over 13 min before analyst reiterate, then continued -44.1 bps (should have predicted -30 to -60 bps, width 15-20 bps)\n   - **Do not assume a 200+ bps crash is over. It may continue another 30-60 bps. Use 15-25 bps width to guard against further continuation.**\n\n3. **Analyst calls with price targets (maintain, reiterate, cut) move stocks 8-25 bps when fresh, but when published into a large prior move (100+ bps), the prior move dominates and may continue 20-60 bps.** Examples:\n   - DHR: sliding -39 bps before \"Maintains Buy, Lowers PT to $220\" \u2192 reversed +19 bps (PT cut should be bearish, but stock reversed; tape dominated)\n   - INTU: crashed -222 bps before \"Reiterates Outperform, Maintains $385 PT\" \u2192 continued -44.1 bps (tape crash dominated; analyst call was irrelevant)\n\n4. **Regulatory/policy news (AI pacing letters, government letters) moves AI stocks 10-20 bps.** Example:\n   - GOOG moved +12.6 bps on \"OpenAI, Anthropic Staff Share Letter Asking US to Help Pace AI Progress\" (should have predicted +8 to +15 bps, width 8-12 bps)\n\n5. **Options volatility stories (naming 5-10 stocks with options flow or implied volatility) move named stocks 8-20 bps.** Example:\n   - CRM moved +13.4 bps on \"Nvidia Could Swing By $286 Billion After Earnings\" (should have predicted +8 to +15 bps, width 8-12 bps)\n\n6. **Publication/service sell signals (SwingTrader sells, Investor's Business Daily, etc.) move stocks 5-15 bps.** Example:\n   - PLTR moved -10.4 bps on \"Hearing Investor Business Daily SwingTrader Sells Stock\" (predicted -2.3 bps, should have predicted -8 to -15 bps, width 5-10 bps)\n\n7. **Passing mentions (stock named in another company's story, e.g. Pelosi buys BE, INTC mentioned) are worth 0-5 bps.** Example:\n   - INTC moved -6.4 bps on Pelosi/BE story (correctly predicted near-zero, width should be 3-5 bps)\n\n8. **2 bps width is almost always too tight.** It was used on:\n   - GOOG market recap (moved -11.8 bps, should have been 8-12 bps width)\n   - GOOG regulatory letter (moved +12.6 bps, should have been 8-12 bps width)\n   - CRM options volatility (moved +13.4 bps, should have been 8-12 bps width)\n   - DHR analyst PT cut (moved +19.0 bps, should have been 10-15 bps width)\n   - QQQ market recap (moved +4.3 bps, should have been 5-8 bps width)\n\n   **Use 2 bps width only on confirmed non-events: ETF constituent announcements, stale 13F filings, pure retrospective listicles with no thesis. For everything else, use 5+ bps width.**\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n\nPull candlesticks for the last 45-60 minutes, 1-minute bars. Ask:\n\n**A. Has the stock crashed or spiked 100+ bps over the last 10-20 minutes?**\n\n- If yes, **the headline is published into a violent move.**\n- The subsequent 5-minute path typically continues another **20-60 bps in the same direction** before exhaustion.\n- **Predict 30-60 bps continuation, width 15-25 bps** to guard against overshooting or sudden reversal.\n- Example: INTU crashed -222 bps (313.38 \u2192 306.40) over 13 min before analyst reiterate \u2192 continued -44.1 bps (should have predicted -40 to -60 bps, width 18-22 bps)\n\n**B. Has the stock moved 30-80 bps in one direction over the last 20-40 minutes (but not a violent crash)?**\n\n- If yes, **the headline is likely published into the move.**\n- The subsequent 5-minute path is typically:\n  - **Small continuation (0-10 bps)** if the move is strong and the headline is supportive\n  - **Pause or modest reversal (-5 to -20 bps)** if the move is exhausted or the headline is neutral/late\n\n- **Do not predict another 20-50 bps in the same direction when the stock has already moved 30-80 bps (but not 100+).**\n- Examples:\n  - GOOG: sliding -88 bps (342.04 \u2192 341.74) over 30 min before market recap \u2192 continued -11.8 bps (should have predicted -5 to -15 bps, width 8-12 bps)\n  - DHR: sliding -39 bps (177.01 \u2192 176.32) over 30 min before analyst PT cut \u2192 reversed +19.0 bps (PT cut should be bearish, but stock reversed; should have predicted 0 to -15 bps reversal or +5 to +15 bps bounce, width 10-15 bps)\n\n**If the stock has moved 30-80 bps over the last 20-40 minutes:**\n- Predict 0-10 bps continuation if the headline is strongly supportive and momentum is intact\n- Predict -5 to -15 bps reversal if the headline is neutral/late or the move looks exhausted\n- **Use 8-15 bps width to guard against reversal risk**\n\n**C. Is the stock flat or drifting <20 bps over the last 30 minutes?**\n\n- The headline is fresh; use the story-type rules below\n\n### **2. Classify the story's relevance to your symbol**\n\n**A. Direct catalyst with material thesis (analyst call with PT + thesis, guidance, deal, earnings, clinical trial, regulatory approval):**\n\n- The story is about this company with a specific, forward-looking thesis\n- Examples: \"Stifel Maintains Buy on Danaher, Lowers Price Target to $220\", \"RBC Capital Reiterates Outperform on Intuit, Maintains $385 Price Target\"\n- **Check the tape:**\n  - **Stock flat or <20 bps drift over last 30 min:** fresh news \u2192 predict 8-20 bps in call/thesis direction, width 8-12 bps\n  - **Stock moved 30-80 bps over last 30 min:** headline published into move \u2192 predict 0-10 bps continuation or -5 to -15 bps reversal, width 10-15 bps\n  - **Stock crashed/spiked 100+ bps over last 10-20 min:** predict 30-60 bps continuation in crash/spike direction, width 15-25 bps (tape dominates; analyst call is irrelevant)\n- Examples:\n  - DHR moved +19.0 bps on \"Maintains Buy, Lowers PT to $220\" after sliding -39 bps (PT cut should be bearish, but stock reversed; should have predicted 0 to -15 bps or +5 to +15 bps bounce, width 10-15 bps)\n  - INTU moved -44.1 bps on \"Reiterates Outperform, Maintains $385 PT\" after crashing -222 bps (should have predicted -30 to -60 bps continuation, width 15-20 bps)\n\n**B. Regulatory/policy news (AI pacing letters, government requests, antitrust) for AI/tech stocks (1-5 symbols):**\n\n- Examples: \"OpenAI, Anthropic Staff Share Letter Asking US to Help Pace AI Progress\"\n- **These move AI/tech stocks 10-20 bps**\n- Predict 10-20 bps in direction implied by the regulatory angle, width 8-12 bps\n- Example: GOOG moved +12.6 bps on AI pacing letter (should have predicted +10 to +18 bps, width 8-12 bps)\n\n**C. Options volatility / flow stories (naming 5-10 symbols with options activity or implied volatility):**\n\n- Examples: \"Nvidia Could Swing By $286 Billion After Earnings\" (names CRM, CRWD, OKTA, etc.)\n- **These move named stocks 8-20 bps**\n- Predict 8-20 bps in direction implied by the flow (if identifiable), width 8-12 bps\n- Example: CRM moved +13.4 bps on options volatility story (should have predicted +8 to +15 bps, width 8-12 bps)\n\n**D. Publication/service signals (SwingTrader sells, Investor's Business Daily, Motley Fool buys/sells; 1-3 symbols):**\n\n- Examples: \"Watching Palantir; Hearing Investor Business Daily SwingTrader Sells Stock\"\n- **These move stocks 5-15 bps in signal direction**\n- Predict 8-15 bps in signal direction, width 5-10 bps\n- Example: PLTR moved -10.4 bps on SwingTrader sell (should have predicted -8 to -15 bps, width 5-10 bps)\n\n**E. Market recap headlines (naming 10+ symbols, \"Stock Market Today,\" \"Dow Jones Hits Records\"):**\n\n- Examples: \"Stocks Rise On Dovish Fed Hike Hopes\", \"Dow Jones Hit Record Highs As Oil Drops To $77\"\n- **These are noise for individual stocks, but if the stock has been moving 20+ bps over the last 20-40 minutes, it may continue or reverse 5-20 bps**\n- **Check the tape:**\n  - Stock flat or <15 bps drift \u2192 predict 0 bps, width 3-5 bps\n  - Stock moving 20-80 bps over last 20-40 min \u2192 predict 0-10 bps continuation or -5 to -20 bps reversal, width 8-15 bps\n- Examples:\n  - GOOG moved -11.8 bps on market recap after sliding -88 bps over 30 min (should have predicted -5 to -15 bps, width 8-12 bps)\n  - QQQ moved +4.3 bps on market recap after sliding then recovering over 40 min (should have predicted +3 to +8 bps, width 5-8 bps)\n\n**F. Passing mention in another company's story (stake increase, IPO bookrunner, partnership vendor/customer):**\n\n- Examples: \"Rep. Nancy Pelosi Bought Over $4.25M Worth of Bloom Energy Stock\" (INTC is passing mention)\n- **These are worth 0-5 bps**\n- Predict 0-3 bps, width 3-5 bps\n- Example: INTC moved -6.4 bps on Pelosi/BE story (correctly predicted near-zero, width should be 3-5 bps)\n\n**G. Non-events (ETF constituent, stale 13F filing, pure retrospective listicle):**\n\n- Predict 0 bps, width 2-4 bps\n\n### **3. Width is insurance against confident mistakes**\n\n- **2 bps: RARELY USE.** Only on confirmed non-events (ETF constituent, stale 13F, pure retrospective listicle).\n- **3-5 bps: passing mention in another company's story, market recap when stock is flat**\n- **5-10 bps: publication/service signals, market recap when stock has been drifting 20+ bps**\n- **8-12 bps: analyst calls (fresh), regulatory/policy news, options volatility stories, market recap when stock has moved 30-80 bps**\n- **10-15 bps: analyst calls into prior 30-80 bps move (reversal risk), stock that moved 30-80 bps before headline**\n- **15-25 bps: stock that crashed/spiked 100+ bps over last 10-20 minutes (continuation risk with reversal risk)**\n\n**When in doubt, go wider.** A correct direction with 12 bps width beats zero-with-2bps that misses by 20.\n\n### **4. Magnitude calibration by story type and tape context**\n\n**If stock is flat or <20 bps drift over last 30 minutes (headline is fresh):**\n\n- **Analyst call with PT (maintain, reiterate, cut):** 8-20 bps in call direction, width 8-12 bps\n- **Regulatory/policy news (AI pacing, government letters):** 10-20 bps in direction implied, width 8-12 bps\n- **Options volatility/flow stories (5-10 symbols):** 8-20 bps in flow direction (if identifiable), width 8-12 bps\n- **Publication/service signals (SwingTrader, IBD):** 8-15 bps in signal direction, width 5-10 bps\n- **Market recap (10+ symbols):** 0 bps, width 3-5 bps\n- **Passing mention:** 0-3 bps, width 3-5 bps\n- **Non-event:** 0 bps, width 2-4 bps\n\n**If stock has moved 30-80 bps over last 20-40 minutes (headline published into move):**\n\n- **Any catalyst type:** predict 0-10 bps continuation or -5 to -15 bps reversal, width 10-15 bps\n- **Do not predict another 20-50 bps in the same direction**\n- Examples:\n  - GOOG: sliding -88 bps before market recap \u2192 predict -5 to -15 bps, width 8-12 bps (actual -11.8 bps)\n  - DHR: sliding -39 bps before analyst PT cut \u2192 predict 0 to -15 bps or +5 to +15 bps bounce, width 10-15 bps (actual +19.0 bps)\n\n**If stock has crashed/spiked 100+ bps over last 10-20 minutes (headline published into violent move):**\n\n- **Any catalyst type:** predict 30-60 bps continuation in crash/spike direction, width 15-25 bps\n- **The violent move dominates; the headline's content is almost irrelevant**\n- Example:\n  - INTU: crashed -222 bps (313.38 \u2192 306.40) over 13 min before analyst reiterate \u2192 predict -30 to -60 bps continuation, width 18-22 bps (actual -44.1 bps)\n\n### **5. Cross-check before finalizing**\n\n- **Did I check the tape for prior moves?**\n  - 100+ bps crash/spike over last 10-20 min \u2192 predict 30-60 bps continuation, width 15-25 bps\n  - 30-80 bps move over last 20-40 min \u2192 predict 0-10 bps continuation or -5 to -15 bps reversal, width 10-15 bps\n  - <20 bps drift \u2192 use story-type rules\n- **Is my magnitude plausible for this story type?**\n  - Analyst calls: 8-20 bps fresh, 0-15 bps into prior move\n  - Regulatory/policy: 10-20 bps\n  - Options volatility: 8-20 bps\n  - Publication signals: 8-15 bps\n  - Market recap: 0 bps unless stock has been moving\n  - Passing mention: 0-3 bps\n- **Is my width wide enough to guard against a 10-30 bps miss?**\n  - 8-12 bps minimum for catalysts\n  - 10-15 bps for stock that moved 30-80 bps before headline\n  - 15-25 bps for stock that crashed/spiked 100+ bps before headline\n- **Did I use 2 bps width?** (If yes, ask: is this an ETF constituent, stale 13F, or pure retrospective listicle? If no, widen to 5+ bps)\n- **Is the stock already up/down 30+ bps before the headline?** (If yes, predict small continuation or reversal, not another big move \u2014 unless it's a 100+ bps crash/spike, then predict 30-60 bps continuation)\n\n---\n\n## **The pattern is clear:**\n\nThe harness uses 2 bps width too liberally (GOOG market recap, GOOG regulatory letter, CRM options volatility, DHR analyst PT cut, QQQ market recap all moved 4-19 bps with 2 bps width). It fails to recognize when headlines are published into prior moves (GOOG sliding -88 bps, DHR sliding -39 bps, QQQ sliding then recovering) and especially fails to recognize violent moves (INTU crashing -222 bps over 13 minutes, then continuing -44 bps). **Always check the tape. If the stock has crashed/spiked 100+ bps over the last 10-20 minutes, predict 30-60 bps continuation with 15-25 bps width. If the stock has moved 30-80 bps over the last 20-40 minutes, predict 0-10 bps continuation or -5 to -15 bps reversal with 10-15 bps width. Use 8-12 bps width on analyst calls, regulatory news, options volatility stories. Use 5-10 bps width on publication signals. Use 3-5 bps width on passing mentions and market recaps when the stock is flat. Never use 2 bps width unless it's a confirmed non-event.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
