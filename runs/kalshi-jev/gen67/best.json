@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen67",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n## The Default Answer Is Exactly Zero\n\n**Predict exactly 0.0 unless you have identified a specific, measurable catalyst.**\n\nThe feedback is clear:\n- Example 2 (5' into match, flat candlesticks): Predicted -0.0c, market moved +1.0c \u2192 skill -0.01\n- Example 3 (5' into match, flat candlesticks): Predicted -0.0c, market moved +0.0c \u2192 skill -0.02\n- Example 4 (55' into match, stable mid): Predicted -0.0c, market moved +0.0c \u2192 skill -0.01\n- Example 8 (15' into match, stable mid): Predicted -0.1c, market moved +2.0c \u2192 skill -0.04\n\n**Even predicting exactly 0.0 when no catalyst exists earns small negative skill (-0.01 to -0.02).** This appears to be a measurement artifact or the cost of posting quotes. The key learning: predicting small non-zero moves (-0.1c) when no catalyst exists earns worse skill (-0.04) than predicting exactly zero (-0.01).\n\nWhen you predict exactly 0.0 and the market moves unpredictably (a goal during the forecast window), your skill = 0.00 (neutral). This is correct\u2014you cannot and should not try to predict random goals (Example 6: predicted 0.0c, market moved +1.0c from unpredictable event, skill +0.00).\n\n## Check Candlesticks First\n\nThe game state shows the current score but not when goals happened. **You must check candlesticks to see recent price movements.**\n\nA goal causes an immediate jump: the mid moves 10-50 cents in one minute.\n- Away team scores: mid drops sharply (e.g., 0.46 \u2192 0.22)\n- Home team scores: mid rises sharply (e.g., 0.27 \u2192 0.58)\n\n**If candlesticks show:**\n1. **Flat for 5+ minutes:** No recent catalyst. The current score is fully reflected. Predict exactly 0.0 unless another catalyst exists.\n2. **Sharp move 3+ minutes ago:** The event is fully absorbed. Predict exactly 0.0.\n3. **Sharp move in last 1-2 minutes:** Usually already fully priced (80-95% absorbed within one minute). Only predict a small continuation (0.5-1c) if candlesticks show clear continued drift. Otherwise predict exactly 0.0.\n\n## Catalysts That Justify Non-Zero Predictions\n\n### 1. Time decay on \"will X team score\" contracts\n\n**Meaningful at 75'+ with mid in decay range:**\n\nThe contract type matters. The question format tells you:\n- **\"KXLEAGUE-DATE-TEAM1TEAM2-TEAM1\"** = \"Will TEAM1 score?\" \u2192 decays toward 0.0 as time runs down if team hasn't scored\n- **\"KXLEAGUE-DATE-TEAM1TEAM2-TIE\"** = \"Will match end in tie?\" \u2192 decays if one team is ahead, or toward 1.0 if tied late\n\n**Before 70':** Time decay is negligible over five minutes. Predict exactly 0.0.\n\n**At 75'+** with mid 0.20-0.70 on \"will team score\" contracts:\n- **At 75'+ with mid 0.25-0.65:** Five minutes decays ~0.5-1.0c (Example 1: at 75' mid 0.54, some decay expected)\n- **At 80'+ with mid 0.25-0.65:** Five minutes decays ~1.0-1.5c\n- **At 85'+ with mid 0.30-0.60:** Five minutes decays ~1.5-2.0c\n- **At 90'+ with mid 0.30-0.55:** Five minutes decays ~2.0-3.5c\n\n**Extreme probabilities (>0.75 or <0.15) decay very slowly.** Predict exactly 0.0.\n\nExample 1 shows time decay works but other events dominate:\n- At 75' second half with mid 0.54, predicted -0.2c\n- Market moved -3.5c (likely an away goal during the forecast window)\n- Skill +0.05 (slightly positive, suggesting the decay component was real)\n- The decay was ~0.5-1.0c; the rest was an unpredictable event\n\nExample 7 shows late-match decay:\n- At 75' with mid 0.085 on a TIE contract (home leading 2-0)\n- Predicted -0.3c (tie becomes less likely as time runs out)\n- Market moved -2.0c, skill +0.16 (strong positive skill)\n- Decay prediction was in right direction but underestimated\n\n**At 75'+, goals and other events can still happen during your five-minute window. Predict only the decay component. You will earn skill on the decay and neutral skill (0.00) on unpredictable goals.**\n\n### 2. Recent goal still absorbing (very rare)\n\n- Candlesticks show sharp jump in last 1-2 minutes\n- AND price still drifting in same direction (not stabilized)\n- Then predict small continuation (0.5-2c in same direction)\n\n**This is extremely rare\u2014initial moves capture 80-95% immediately. Default to exactly 0.0.**\n\n### 3. Book mean reversion after thin-volume spike\n\nConditions (all must be true):\n- Mid was stable for 10+ minutes, then sudden 2+ cent jump in last 1-2 minutes\n- Spread unusually wide (>5 cents, indicating thin book)\n- Volume low in minute of move (suggests single large order, not new information)\n- Mid may drift back 1-2c as book rebalances\n\n**If the mid has been at the new level for 3+ minutes, predict exactly 0.0 (reversion already happened or won't happen).**\n\nThis is subtle and rare. When in doubt, predict exactly 0.0.\n\n### 4. Goals during the forecast window are unpredictable\n\nExamples show large unpredictable moves during forecast windows:\n- Example 1: Predicted -0.2c, market moved -3.5c (likely goal)\n- Example 2: Predicted -0.0c, market moved +1.0c (unpredictable)\n- Example 6: Predicted +0.0c, market moved +1.0c (unpredictable, skill 0.00 - correct)\n- Example 8: Predicted -0.1c, market moved +2.0c (unpredictable)\n\n**You cannot predict when goals will happen.** When you predict exactly 0.0 and a goal occurs, your skill = 0.00 (neutral, correct).\n\n## Patterns That Mean \"Predict Exactly 0.0\"\n\n**Flat candlesticks (no catalyst):**\n- Examples 2, 3, 4: early or mid-match with stable mid \u2192 predict exactly 0.0\n- Example 8: 15' into match, stable mid around 0.235-0.245 \u2192 predict exactly 0.0\n\n**Early in match (no time decay):**\n- Before 70': no meaningful time decay catalyst exists\n- Examples 2, 3, 8: all before 70' \u2192 must predict exactly 0.0\n\n**Extreme probabilities (minimal decay):**\n- Mid >0.75 or <0.15: time decay is negligible even late in match\n- Predict exactly 0.0\n\n**Old moves (goal already priced):**\n- If you see a sharp move 3+ minutes ago followed by stability, the event is fully absorbed\n- Predict exactly 0.0\n\n**Period transitions:**\n- Halftime, start of second half, etc. do not cause predictable moves\n- Example 4: Recent events show substitutions at halftime, mid stable \u2192 predict 0.0\n- Predict exactly 0.0\n\n**Yellow cards or substitutions:**\n- These do not cause predictable price movements\n- Examples 4, 7: substitutions and yellow cards in recent events \u2192 predict 0.0\n- Predict exactly 0.0\n\n## Process\n\n1. **Check candlesticks:**\n   - Flat for 5+ minutes? \u2192 Go to step 2\n   - Sharp move 3+ minutes ago? \u2192 Goal fully priced, predict exactly 0.0\n   - Sharp move in last 1-2 minutes with continued drift? \u2192 Rare; usually predict 0.0\n\n2. **Check for time decay catalyst:**\n   - Clock < 70'? \u2192 No meaningful time decay, predict exactly 0.0\n   - Clock \u2265 75' AND mid 0.15-0.75? \u2192 Calculate decay based on contract type:\n     - **\"Will team score\" contract:** Team hasn't scored yet \u2192 -0.5c to -2.0c depending on time and mid\n     - **\"Tie\" contract:** Team is ahead \u2192 -0.5c to -2.0c (tie less likely as time runs out)\n     - **\"Tie\" contract:** Currently tied \u2192 +0.5c to +2.0c (tie more likely as time runs out)\n   - Mid > 0.85 or < 0.10? \u2192 Minimal decay, predict exactly 0.0\n\n3. **Check for book distortion (rare):**\n   - All true: spread >5 cents, mid moved 2+ cents in last 2 minutes on thin volume, move was <3 minutes ago?\n   - Then: predict 1-2c reversion back toward pre-move level\n   - Otherwise: predict exactly 0.0\n\n4. **If no catalyst exists, output exactly 0.0:**\n   ```json\n   {\"delta_cents\": 0.0, \"half_width_cents\": 0.4}\n   ```\n\n5. **If a catalyst exists, quantify it:**\n   - **Time decay at 75'-80'** with mid 0.25-0.70: predict -0.5 to -1.0c\n   - **Time decay at 80'-85'** with mid 0.25-0.70: predict -1.0 to -1.5c\n   - **Time decay at 85'-90'** with mid 0.30-0.65: predict -1.5 to -2.0c\n   - **Time decay at 90'+ (stoppage time)** with mid 0.30-0.60: predict -2.0 to -3.5c\n   - **Book reversion:** predict 1-2c back toward pre-move level\n   - Set half_width_cents to 0.5-1.0 depending on uncertainty\n\n## Half Width\n\n- **If predicting exactly zero:** half_width 0.4-0.5c (tight, confident nothing significant will happen)\n- **If predicting time decay:** half_width 0.5-0.8c (decay is fairly predictable, but goals can still happen)\n- **If predicting book reversion:** half_width 0.8-1.2c (book dynamics are less certain)\n\n## Common Mistakes to Avoid\n\n**Do not predict non-zero for:**\n- Flat candlesticks with no catalyst (Examples 2, 3, 4, 8: all earned negative or near-zero skill)\n- Early match time with no time decay (Examples 2, 3, 8: before 70', no decay exists)\n- Period transitions like halftime or start of second half\n- Yellow cards or substitutions (Examples 4, 7)\n- Old goals that already moved the price (3+ minutes ago)\n- General \"momentum\" when candlesticks are stable\n- Mid in extreme ranges (>0.80 or <0.10) where decay is negligible\n\n**Do not confuse small non-zero with zero:**\n- Predicting -0.1c when market is flat earns negative skill (Example 8: skill -0.04)\n- Either predict meaningful decay (\u22650.5c at 75'+) or predict exactly 0.0\n\n**Do predict time decay at 75'+ with mid 0.15-0.75:**\n- Example 1 at 75' with mid 0.54: earned skill +0.05 despite unpredictable goal\n- Example 7 at 75' with mid 0.085: predicted -0.3c, earned skill +0.16\n- At 75'+ with mid 0.15-0.75 on score/tie contracts, predict the decay component\n\n**Understand the contract type from the ticker:**\n- **\"-TEAM\"** at end = \"Will TEAM score?\" \u2192 decays down if team hasn't scored yet\n- **\"-TIE\"** at end = \"Will match tie?\" \u2192 decays based on current score\n- The direction of decay depends on both the contract type and current game state\n\n## Scoring\n\nSkill = 1 - (your_error / no_change_error), pooled over windows.\n\n- **Predicting exactly 0.0 when market stays flat:** Skill \u2248 -0.01 to -0.02 (small negative, likely measurement artifact)\n- **Predicting exactly 0.0 when market moves unpredictably:** Skill = 0.00 (neutral, correct\u2014you can't predict random events)\n- **Predicting small non-zero when market flat:** Skill more negative (Example 8: -0.04)\n- **Predicting time decay in correct direction at 75'+:** Skill positive (Examples 1: +0.05, 7: +0.16)\n\n**The default answer is exactly 0.0. Only deviate when you have identified and quantified a specific catalyst: time decay at 75'+ with mid 0.15-0.75, or book reversion after thin-volume spike.**\n\n## Time Decay Formula\n\nFor \"will X team score\" contracts (team hasn't scored yet) OR \"will match tie\" contracts (team is ahead) at 75'+:\n\n**At 75'-80' with mid 0.20-0.70:** predict -0.5 to -1.0c\n**At 80'-85' with mid 0.20-0.70:** predict -1.0 to -1.5c\n**At 85'-90' with mid 0.25-0.65:** predict -1.5 to -2.0c\n**At 90'+ with mid 0.25-0.60:** predict -2.0 to -3.5c\n\nDecay accelerates as time runs out and is most significant in the mid-probability range (0.15-0.75). Outside this range, predict exactly 0.0.\n\nFor \"will match tie\" contracts when currently tied at 75'+, reverse the sign: the probability of staying tied increases as time runs out.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
