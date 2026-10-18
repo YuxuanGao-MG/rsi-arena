@@ -1,0 +1,156 @@
+{
+  "name": "crypto-horizon-1m-jev+gen47",
+  "description": "The one-minute forecast asked of a decisions model: the same frozen tools, one paragraph of state, and one typed question - a distribution over basis-point moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium snapping back through it\n- the US cash open (13:30-14:30 UTC), and the first minutes after it\n- a liquidation cascade: taker selling surging on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or extending\n\nMost minutes do not move. A quiet tape at a quiet hour stays within a couple of basis points, and saying so is the right answer.\n\nYour forecast has two parts: delta_bps (direction and size) and half_width_bps (your uncertainty).\n\n**Critical: half_width is a risk parameter that sets the bid-ask spread you will quote, NOT a confidence interval. It determines whether you get filled and whether you get run over.**\n\n## Width calibration rules (MOST IMPORTANT)\n\n**Default width is 3 bps for an ordinary minute.** This is your starting point. Adjust from here based on recent volatility.\n\n**After ANY recent move, widen substantially:**\n- If |change_1m_bps| \u2265 3: use half_width \u2265 3 bps\n- If |change_1m_bps| \u2265 5: use half_width \u2265 4 bps\n- If |change_5m_bps| \u2265 5: use half_width \u2265 3 bps\n- If |change_5m_bps| \u2265 8: use half_width \u2265 4 bps\n- If |change_5m_bps| \u2265 12: use half_width \u2265 5 bps\n- If |change_5m_bps| \u2265 20: use half_width \u2265 7 bps\n- If |change_5m_bps| \u2265 30: use half_width \u2265 9 bps\n\n**Examples from feedback:**\n- change_5m=-9.6, change_1m=+2.4 \u2192 needed 4bp width (used 1.4bp, got run over -5.0bp)\n- change_5m=-8.4, change_1m=+1.4 \u2192 needed 4bp width (used 1.3bp, got run over -4.3bp)\n- change_5m=+7.5, change_1m=+3.5 \u2192 needed 4bp width (used 2.0bp, got run over -15.9bp)\n- change_5m=+12.4, change_1m=+11.6 \u2192 needed 10bp width (used 5.9bp, got run over -9.8bp)\n- change_5m=-31.7, change_1m=-13.3 \u2192 used 9.5bp width correctly, stayed inside, +0.64 skill\n\n**The pattern is clear: recent volatility predicts continued volatility. When |change_5m| > 5, the next minute is highly uncertain regardless of direction.**\n\n**Tighten width to 2 bps ONLY when ALL conditions hold:**\n- |change_1m_bps| < 2 AND |change_5m_bps| < 4\n- Volume < 2000 contracts/minute (for BTC/ETH) or < 1000 (for SOL)\n- taker_buy_share between 0.45 and 0.55 (balanced flow)\n- No directional catalyst visible\n\n**Never use width < 2 bps.** The 1bp widths in examples 1, 2, 4, 8 all resulted in getting run over and negative skill.\n\n**High volume or high trade count = widen:**\n- Volume > 5000 contracts or trades > 5000: add 1-2 bps\n- Volume > 10000 contracts: add 2-3 bps\n\n## Delta (directional forecast)\n\n**Most forecasts should be near-zero (within \u00b12 bps).** This is the base case for most minutes.\n\n**After a large move, expect consolidation or retracement as default:**\n- If |change_1m| > 5 or |change_5m| > 10, default to small mean reversion (\u00b11-2bp)\n- Large moves exhaust momentum and usually pause or reverse\n- Exception: sustained multi-minute flow in same direction (see continuation signals below)\n\n**Exhaustion signals (expect reversal):**\n- Single-bar spike: taker_buy_share > 0.80 or < 0.20 after a large move usually exhausts\n- Example: change_5m=+7.7, taker_buy=0.81 \u2192 reversed -14.1 bps next minute\n- Heavy one-sided flow (>0.75 or <0.25) for one bar often marks exhaustion\n\n**Continuation signals (rare, but when present expect follow-through):**\n- Multi-minute sustained flow: 3+ consecutive minutes with taker_buy > 0.65 or < 0.35\n- Accelerating moves: both change_1m and change_5m large and same sign\n- But even these require wide spreads: uncertainty remains high\n\n**Call direction (|delta| > 2) only with clear driver:**\n- Funding in 1-5 minutes and perp premium > 5bp: expect snapback toward spot\n- US cash open hour (13:30-14:30 UTC) with strong flow: may continue\n- Liquidation cascade visible: taker selling >0.7, volume surge, OI dropping\n- One major (BTC) just moved \u00b15bp: ETH/SOL may follow in 1-2 minutes\n- Otherwise default to \u00b11bp mean reversion or 0\n\n**Key insight from feedback: directional calls matter less than width. Wrong direction with wide spread loses less than right direction with narrow spread that gets run over.**\n\n## Trading costs and position sizing\n\nRound-trip costs are 20 bps. A forecast is useful only if |delta| significantly exceeds (round_trip_cost + half_width).\n\n**When to quote narrow (2-3bp width):**\n- Very quiet conditions: |change_5m| < 4, balanced flow, low volume\n- You have no directional edge: delta \u2248 0\n- This is the right answer most of the time\n\n**When to quote wide (4-7bp+ width):**\n- After any significant move: |change_1m| > 3 or |change_5m| > 5\n- High volume or high uncertainty\n- You cannot predict direction but must account for volatility\n- Wide quotes lose less than being run over\n\n**When to stand aside (delta\u22480, width 3bp):**\n- No catalyst, no clear driver\n- Moderate recent volatility\n- This is the default answer for most minutes\n\n## Skill scoring and key lessons\n\nSkill = 1 - (your_error / nochange_error), where nochange_error is floored at 2 bps.\n\n**How to earn positive skill:**\n1. Stay silent (delta\u22480, width 3bp) when market is quiet \u2192 avoid unnecessary risk\n2. Widen spreads after large moves \u2192 don't get run over (this is the primary lesson)\n3. Call direction on rare big moves (>5bp) when you see a strong catalyst \u2192 capture edge when it exists\n\n**Primary failure mode from feedback: systematic under-widening**\n- Examples 1,2,3,4,5,6,8 all used 1-2bp width after |change_5m| > 5\n- All got run over, all had negative or near-zero skill\n- Example 7 used 9.5bp width after |change_5m| = -31.7 \u2192 stayed inside, +0.64 skill\n\n**Width discipline is the foundation of positive skill. Set width based on recent volatility FIRST, then set delta based on directional signals SECOND. A wrong narrow forecast destroys skill; a wide forecast with any delta rarely hurts much.**\n\n**Calibration rule from feedback: when in doubt, widen. The cost of being too narrow vastly exceeds the cost of being too wide.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "funding_rate",
+    "cross_asset",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.5,
+          "interval": "1m"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 3,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "funding",
+        "output_key": "funding",
+        "skip_if": null,
+        "tool": "funding_rate",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "others",
+        "output_key": "others",
+        "skip_if": null,
+        "tool": "cross_asset",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nState: {{summary.summary}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.",
+            "criteria": [
+              "down 10 bps or more",
+              "down 4 to 9 bps",
+              "down about 2 bps",
+              "unchanged, within a basis point either way",
+              "up about 2 bps",
+              "up 4 to 9 bps",
+              "up 10 bps or more"
+            ],
+            "values": [
+              -15,
+              -6,
+              -2,
+              0,
+              2,
+              6,
+              15
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 1
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a close outside the quoted band when the minute prints"
+          }
+        }
+      }
+    ]
+  }
+}
