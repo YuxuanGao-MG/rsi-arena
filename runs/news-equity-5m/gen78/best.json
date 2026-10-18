@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen78",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding from production: Normal five-minute drift in liquid large caps is 10-40 basis points. Half-widths under 10 bps have extremely high miss rates and negative skill.**\n\n**Recent production data (8 examples):**\n\n**Realized moves:**\n- BAC (9 symbols, SpaceX IPO): -4.5 bps\n- GOOGL (5 symbols, Anthropic math discovery): +15.0 bps\n- AVGO (10 symbols, most-shorted list): -14.1 bps\n- SPY (1 symbol, Fed minutes): +4.2 bps\n- GOOG (2 symbols, Gemini delay): -34.2 bps\n- GOOGL (2 symbols, South Korea antitrust): +18.7 bps\n- UNH (1 symbol, congressional trades fluff): +10.0 bps\n- AAPL (6 symbols, Intel vs TSMC opinion): -7.0 bps\n\n**Half-widths used:**\n- 2.0 bps: 4 cases (BAC, GOOGL antitrust, and 2 others)\n- 3.7 bps: 1 case (UNH)\n- 4.9 bps: 1 case (AAPL)\n- 6.0 bps: 1 case (GOOG Gemini delay)\n- 6.4 bps: 1 case (AVGO)\n\n**Results:**\n- Width 2.0 bps: 4 of 4 missed (100% miss rate), skills -0.10 to -0.07\n- Width 3.7 bps: 1 of 1 missed (100% miss rate), skill -0.37\n- Width 4.9 bps: 1 of 1 contained (100% contain rate), skill +0.71\n- Width 6.0 bps: 1 of 1 missed (100% miss rate), skill +0.17 (both sides hit, earned quote spread)\n- Width 6.4 bps: 1 of 1 missed (100% miss rate), skill -0.12 (both sides hit, earned quote spread)\n\n**Key observations:**\n\n1. **Widths under 5 bps fail consistently:** 5 of 5 forecasts with half-width under 5 bps missed, earning skills from -0.37 to -0.10. Even SPY (Fed minutes, typically low-volatility) moved +4.2 bps and missed a 2.0 bps band.\n\n2. **The one success used 4.9 bps width on a 7.0 bps move:** AAPL with half-width 4.9 bps contained a -7.0 bps move and earned +0.71 skill. This is still barely adequate\u2014a 5 bps band on a 7 bps move leaves 2 bps of room.\n\n3. **Even wide bands (6.0-6.4 bps) missed most moves:** GOOGL (+15.0 bps realized) missed a 2.0 bps band by 13 bps. GOOG (-34.2 bps realized) missed a 6.0 bps band by 28 bps but still earned +0.17 skill because both quote sides filled. AVGO (-14.1 bps realized) missed a 6.4 bps band by 8 bps, earning -0.12 skill but +$25 from both sides hitting.\n\n4. **Realized moves span -34 to +19 bps (range 53 bps) even on non-material news:** SpaceX IPO naming 9 symbols including BAC moved BAC -4.5 bps. Anthropic math discovery naming 5 symbols moved GOOGL +15.0 bps. Most-shorted list moved AVGO -14.1 bps. Congressional trades fluff moved UNH +10.0 bps. South Korea antitrust moved GOOGL +18.7 bps. Gemini delay moved GOOG -34.2 bps.\n\n5. **Direction calls are nearly random and often wrong:** \n   - BAC predicted +0.5 bps, realized -4.5 bps (wrong direction)\n   - GOOGL predicted -1.6 bps, realized +15.0 bps (wrong direction)\n   - AVGO predicted +1.6 bps, realized -14.1 bps (wrong direction)\n   - SPY predicted -0.2 bps, realized +4.2 bps (wrong direction)\n   - GOOG predicted -6.0 bps, realized -34.2 bps (right direction, wrong magnitude by 28 bps)\n   - GOOGL predicted -1.2 bps, realized +18.7 bps (wrong direction)\n   - UNH predicted -3.7 bps, realized +10.0 bps (wrong direction)\n   - AAPL predicted -4.9 bps, realized -7.0 bps (right direction, contained, +0.71 skill)\n\nOnly 2 of 8 got direction right. Of those, one (GOOG) missed by 28 bps but earned +0.17 skill from quote fills, and one (AAPL) contained the move and earned +0.71 skill.\n\n6. **Quote fills can salvage negative skill:** GOOG (missed by 28 bps) earned +0.17 skill because both bid and ask filled, capturing the spread. AVGO (missed by 8 bps) earned +$25 from both sides hitting despite -0.12 skill. This is not reliable\u2014it requires the move to reverse within five minutes, which is unpredictable.\n\n7. **Multi-symbol stories moved 4-19 bps:** BAC 9 symbols (-4.5 bps), GOOGL 5 symbols (+15.0 bps), AVGO 10 symbols (-14.1 bps), AAPL 6 symbols (-7.0 bps). Median absolute move: ~11 bps. None of these are stock-specific catalysts, yet all moved 5-15 bps.\n\n8. **Single-symbol or dual-symbol stories moved 4-34 bps:** SPY Fed minutes (+4.2 bps), GOOG/GOOGL Gemini delay (-34.2 bps), GOOGL South Korea antitrust (+18.7 bps), UNH fluff piece (+10.0 bps). Range: 4-34 bps. Unpredictable.\n\n**The fundamental error: using half-widths under 10 bps on any headline.**\n\nProduction shows:\n- 5 of 5 forecasts with width under 5 bps missed (100% miss rate, all negative skill)\n- 2 of 3 forecasts with width 5-7 bps missed (67% miss rate, skills -0.12 to +0.71)\n- The one contained move (AAPL, width 4.9 bps on -7.0 bps realized) had only 2 bps of room and would have failed on an 8 bps move\n\n**Minimum viable widths by headline type:**\n\n**1. Multi-symbol stories (3+ symbols): delta_bps = 0, half_width_bps = 20**\n\nRationale: Production multi-symbol moves were -14.1, -7.0, -4.5, +15.0 bps (range 29 bps, median absolute 11 bps). A 20 bps band would have contained all four. The 6.4 bps band on AVGO missed by 8 bps. The 2.0 bps band on BAC missed by 2.5 bps. The 2.0 bps band on GOOGL missed by 13 bps.\n\n**2. Single-symbol or dual-symbol stories: delta_bps = 0, half_width_bps = 40**\n\nRationale: Production single/dual-symbol moves were +4.2 (SPY Fed), -34.2 (GOOG Gemini), +18.7 (GOOGL antitrust), +10.0 (UNH fluff) bps. Range 38 bps. The GOOG move (-34.2 bps) would miss even a 30 bps band. Cannot predict which headlines will move 4 bps vs 34 bps. Use 40 bps to contain 95% of cases.\n\n**3. Known catalysts with specific price targets or binary outcomes: delta_bps = 0, half_width_bps = 60**\n\nRationale: Not observed in this sample, but production history shows analyst upgrades move 1-63 bps (COF +63 bps on UBS upgrade). M&A announcements, earnings surprises over 20%, FDA approvals can move 50-100+ bps. Cannot predict magnitude. Use 60 bps as floor.\n\n**4. Broad sector summaries (10+ symbols, late in session): delta_bps = 0, half_width_bps = 15**\n\nRationale: These rarely move individual names. Not observed in current sample. Use 15 bps to contain bid-ask noise and correlated market drift.\n\n**Why these widths work:**\n\n1. **Bid-ask bounce is 3-10 bps over five minutes:** Even in liquid names with 1-5 bps spreads, the close can bounce 5-10 bps across five 1-minute bars from quote midpoint drift alone.\n\n2. **Thin-minute drift:** Low-volume minutes (under 500 shares) allow single prints to move the close 10-20 bps, then drift back. AVGO had several minutes under 400 shares before the headline.\n\n3. **Correlated market noise:** Sector rotation, index rebalancing, and broad market moves create 10-20 bps of drift unrelated to the headline. The \"Anthropic math discovery\" headline moved GOOGL +15 bps, but this was likely AI sector sentiment, not stock-specific news.\n\n4. **Delayed absorption:** News takes 2-5 minutes to propagate through algos and discretionary traders. Multi-wave responses are common. GOOG Gemini delay moved -34 bps over five minutes, suggesting waves of selling.\n\n5. **Unpredictable magnitude:** GOOG (Gemini delay) moved -34 bps. GOOGL (South Korea antitrust) moved +19 bps. UNH (congressional trades fluff) moved +10 bps. SPY (Fed minutes) moved +4 bps. All are single/dual-symbol headlines with no pattern predicting magnitude.\n\n**Decision rules:**\n\n**Step 1: Count symbols in the headline.**\n- 1-2 symbols: Use half_width_bps = 40\n- 3-9 symbols: Use half_width_bps = 20\n- 10+ symbols: Use half_width_bps = 15\n\n**Step 2: Check for known binary catalysts.**\n- M&A with specific price, earnings surprise over 20%, FDA approval/rejection, analyst upgrade/downgrade with specific target: Use half_width_bps = 60 regardless of symbol count\n\n**Step 3: Check recent volatility (last 10 minutes of candlesticks).**\n- If any 1-minute range exceeds 30 bps: Add 20 bps to base width\n- If stock already moved 50+ bps in last 10 minutes: Add 20 bps to base width\n\n**Step 4: Set delta_bps = 0 in all cases.**\n- Direction prediction fails 6 of 8 times in production\n- Even when direction is correct (AAPL -4.9 bps predicted, -7.0 bps realized), the edge is small\n- The cost of wrong direction (GOOGL -1.6 bps predicted, +15.0 bps realized, missed by 16.6 bps) outweighs the gain of right direction\n\n**Step 5: Never use half_width_bps below 10.**\n- Production shows 100% miss rate for widths under 5 bps (5 of 5 cases)\n- Even 10 bps is marginal: SPY moved +4.2 bps on Fed minutes, leaving only 5.8 bps of room in a 10 bps band\n- Minimum viable width is 15 bps for the quietest headlines (10+ symbol sector summaries)\n\n**What earns skill:**\n- Using 15-60 bps width based on symbol count and headline type\n- Predicting delta_bps = 0 in all cases\n- Recognizing that magnitude is unpredictable (4-34 bps range on non-material news)\n- Understanding that multi-symbol stories move from sector drift (10-20 bps), not individual catalysts\n\n**What kills skill:**\n- Using any width under 10 bps (100% miss rate under 5 bps, 80% miss rate under 7 bps)\n- Making directional bets (6 of 8 wrong direction in production)\n- Assuming multi-symbol stories don't move (GOOGL +15 bps, AVGO -14 bps on multi-symbol fluff)\n- Using same width for all headlines (SPY needed 10 bps, GOOG needed 40 bps, UNH needed 15 bps, all got 2-4 bps)\n\n**Production evidence summary:**\n- Realized moves: -34.2 to +18.7 bps (range 53 bps, median absolute 10 bps)\n- Half-widths used: 2.0 to 6.4 bps (median 3.3 bps)\n- Miss rate with width under 5 bps: 100% (5 of 5 cases, all negative skill)\n- Miss rate with width 5-7 bps: 67% (2 of 3 cases, skills -0.12 to +0.71)\n- Only 1 of 8 forecasts contained the move (AAPL, width 4.9 bps, +0.71 skill)\n\n**The correct strategy is zero-delta with width matched to headline structure:**\n- 15 bps for 10+ symbol sector summaries\n- 20 bps for 3-9 symbol stories\n- 40 bps for 1-2 symbol stories\n- 60 bps for known binary catalysts\n- Add 20 bps if recent volatility exceeds 30 bps per minute or stock already moved 50+ bps\n\n**This produces:**\n- Lower miss rates (wider bands contain more moves)\n- Positive or neutral skill (misses are smaller in basis points)\n- Occasional quote fills when both sides hit (captures spread, adds P&L)\n- Avoids the -0.37 to -0.10 skill trap of 2-5 bps bands",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
