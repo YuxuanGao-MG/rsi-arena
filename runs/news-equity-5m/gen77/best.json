@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen77",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## The Core Problem: Most Stories Are Not Stock-Specific Catalysts\n\n**The first filter is symbol count. Stories naming many symbols are almost never stock-specific catalysts.** They are sector recaps, market summaries, peer group articles, whale watch lists, or news about a third party that mentions your symbol as context.\n\n### Decision Framework\n\n#### Step 1: Count the Symbols\n\n**If the story names 5+ symbols (including yours), predict 0 bps with 10 bp width. Stop.**\n\nMulti-symbol stories are:\n- Sector recaps (\"10 Information Technology Stocks Whale Activity\")\n- Market summaries (\"Stock Market Today: Nasdaq 100 Rallies\")\n- News about a third party that mentions your symbol as context\n- Market-wide commentary naming many stocks\n\n**Recent examples where you failed this rule:**\n\n- **NVDA** (11 symbols, \"IONQ's Breakthrough Ignites Quantum Computing Stocks\"): You predicted -0.2 bps with 2.0 width. Actual -3.3 bps. **Correct: 0 bps, width 10 bps.** This is a quantum computing sector story naming 11 symbols.\n\n- **NVDA** (13 symbols, \"Market Selling As Houthis Open A New Front\"): You predicted -0.9 bps with 2.0 width. Actual +10.1 bps. Skill -0.09. **Correct: 0 bps, width 10 bps.** This is market commentary about geopolitical events naming 13 symbols.\n\n- **MSFT** (16 symbols, \"Anthropic's Revenue Jumps 14x; Chinese AI Targets Nvidia's Moat\"): You predicted -0.5 bps with 2.0 width. Actual +1.8 bps. Skill -0.10. **Correct: 0 bps, width 10 bps.** This is AI sector commentary naming 16 symbols.\n\n**You consistently predicted tiny directional moves (-0.2 to -0.9 bps) with 2.0 bp width on 10+ symbol stories. This is always wrong. These stories produce no stock-specific move. The market may drift the name a few basis points for unrelated reasons, but the story itself is not a catalyst.**\n\n---\n\n#### Step 2: For 2-4 Symbol Stories, Check If Your Symbol Is The Primary Subject\n\n**If your symbol is one of 2-4, ask: Is the story about my symbol, or is my symbol mentioned as context/peer?**\n\n**If your symbol is NOT the primary subject:**\n- Predict 0 bps, width 10 bps\n\n**If your symbol IS the primary subject:**\n- Proceed to single-symbol catalyst rules below\n- Width 15-20 bps minimum (2-4 symbols means some ambiguity)\n\n**Recent examples:**\n\n- **INTC** (5 symbols, \"Intel Stock Has Doubled, So Why Is JPMorgan Calling It a Top Short?\"): You predicted -1.3 bps with 2.0 width. Actual +22.5 bps. Skill -0.06. **This is 5 symbols but INTC IS the primary subject (headline and story are about INTC). This is a JPMorgan short call on INTC specifically. Correct approach: Analyst short call = negative, predict -15 to -20 bps, width 15-18 bps. Check tape: INTC at 109.02, last few bars stable. No prior move suggesting front-running.** You missed a material catalyst by treating it as noise.\n\n- **AMZN** (4 symbols, \"Amazon Raises Louisiana Investment To $18 Billion, Adds Third Data Center Campus\"): You predicted +2.9 bps with 3.0 width. Actual -3.4 bps. Skill -0.59. **AMZN is the primary subject. This is single-company positive news (investment, job creation). Expected move: +10 to +20 bps, width 15-18 bps. Check tape: AMZN at 261.90, last 30 minutes stable around 261.0-261.9. No prior move.** You got direction wrong and magnitude wrong. Investment announcements are positive catalysts. The actual negative move suggests the market already knew or this was too small relative to AMZN's scale ($18B is modest for AMZN). Better forecast: +8 bps, width 15 bps (acknowledging risk the market already knows or doesn't care).\n\n- **TMO** (2 symbols, \"Arcturus Picks Thermo Fisher To Support Cystic Fibrosis Therapy\"): You predicted +1.7 bps with 6.3 width. Actual -26.0 bps. Skill -0.07. **TMO is the primary subject (picked as partner). This should be positive (win a contract). Expected: +10 to +20 bps, width 15-18 bps. Actual was large negative.** This suggests either (a) the market expected a different/larger contract, (b) the terms are unfavorable, or (c) TMO was already up and this triggered profit-taking. Check tape before forecasting: TMO at 528.95, prior 30 minutes show run from 524.6 to 528.95 (+83 bps from 14:50 to 15:32). **TMO already ran 80+ bps before the story broke. This is profit-taking on the news. Correct forecast: -10 to -15 bps (fade the run), width 15-18 bps.**\n\n**Key lesson from TMO example: Always check if the stock already moved 30+ bps in the direction the catalyst would push it. If yes, predict reversal or small continuation, not a fresh move.**\n\n---\n\n#### Step 3: Single-Symbol Stories\u2014Check Story Type and Tape\n\n**Only use this step if symbol count = 1-2 AND your symbol is the primary subject.**\n\n##### A. Check The Tape First (Critical Step You Keep Skipping)\n\n**Before predicting any directional move, check the last 30-60 minutes of price action:**\n\n1. **Has the stock moved 30+ bps in the direction the catalyst would push it?**\n   - If yes: The market likely front-ran the news or already absorbed it. Predict small reversal or continuation: 0 to -5 bps if it ran up on positive news, 0 to +5 bps if it dropped on negative news. Width 15-18 bps.\n\n2. **Is the stock stable (< 15 bps range in last 30 min)?**\n   - If yes: The catalyst is fresh. Full move ahead. Proceed to catalyst type.\n\n3. **Is the stock moving in the OPPOSITE direction of what the catalyst would suggest?**\n   - If yes: The market is rejecting the catalyst or other factors dominate. Predict continuation of the existing move or 0 bps. Width 15-20 bps.\n\n**Example from your data:**\n- **TMO**: Story at 15:32:58, TMO at 528.95. Check candlesticks: 14:50 at 524.62, 15:00 at 526.75, 15:20 at 528.05, 15:30 at 528.95. **TMO ran +83 bps from 14:50 to news time.** The positive catalyst (contract win) was already priced. Actual move: -26 bps (profit-taking). You should have predicted -10 to -15 bps, width 18 bps.\n\n##### B. Analyst Calls (Upgrade, Downgrade, Price Target Change)\n\n**If tape shows stock stable (< 15 bps move in last 30 min):**\n- **Upgrade or target raise:** +15 to +25 bps, width 18-20 bps\n- **Downgrade or target cut:** -15 to -25 bps, width 18-20 bps\n- **\"Maintains [rating] but lowers target\":** Negative, -12 to -20 bps, width 18-20 bps (the cut is the news)\n- **Short call (like JPMorgan on INTC):** Negative, -15 to -25 bps, width 18-20 bps\n\n**If tape shows stock already moved 20+ bps in direction of call:**\n- Predict 0 to +5 bps continuation if call confirms the move\n- Predict -5 to -10 bps reversal if the move looks exhausted\n- Width 18-20 bps in either case\n\n**Your INTC error:** JPMorgan short call, INTC stable at 109.02, you predicted -1.3 bps. Actual +22.5 bps. **Market rejected the short call or it leaked and was already faded. Your error was treating a specific, named analyst call as noise. Correct forecast: -15 bps (direction of call), width 18 bps (knowing the market may reject it).**\n\n##### C. Company-Specific Operational News (Investment, Partnership, Expansion)\n\n**Investment/expansion announcements (like AMZN Louisiana):**\n- Positive directional bias: +8 to +20 bps depending on materiality relative to company size\n- Width: 15-20 bps (market may already know or may not care)\n- **Check tape:** If stock already up 20+ bps in last hour, predict 0 to +5 bps, width 18 bps\n- **Check magnitude:** $18B is large in absolute terms but small for a $2T company. Dampen expected move for large caps.\n\n**Partnership announcements (like TMO/Arcturus):**\n- Positive for the company that won the contract: +10 to +20 bps, width 15-20 bps\n- **Critical: Check if stock already ran.** If up 50+ bps in last hour, predict -8 to -12 bps (profit-taking), width 18 bps.\n\n##### D. Commentary on Trading Activity or Metrics (Not a Price Catalyst)\n\n**Recent example:**\n- **SCHW** (1 symbol, \"The Schwab Trading Activity Index Increased To 59.12 In June, Up From Its Score Of 55.08 In May\"): You predicted +0.2 bps with 2.0 width. Actual +10.0 bps. Skill +0.02. **This is backward-looking data (June index, story in early July). It describes past activity, not a forward catalyst. Predict 0 bps, width 10 bps.** The actual +10 bps move was likely unrelated to the story.\n\n**Stories that describe past activity, not future catalysts:**\n- Trading activity indices, volume data, past price moves\n- \"Stock hits 52-week high,\" \"breaks out,\" \"overbought\"\n- Technical levels, chart patterns\n- **These are not catalysts. Predict 0 bps, width 10 bps.**\n\n##### E. Fed/Monetary Policy Comments (Not Stock-Specific)\n\n**Recent example:**\n- **SPY** (1 symbol, \"Fed's Barkin Says 'It Does Not Feel Like A Tight Labor Market'\"): You predicted -0.1 bps with 2.0 width. Actual -1.9 bps. Skill +0.02. **This is Fed commentary, not SPY-specific news. It's a macro story that happens to mention SPY as the tracking symbol. Predict 0 bps, width 10 bps.** The actual -1.9 bps move was market drift, not story-driven.\n\n---\n\n## Width Rules (Non-Negotiable)\n\n| Situation | Minimum Half-Width |\n|-----------|---------------------|\n| Story names 5+ symbols | 10 bps |\n| Story names 2-4 symbols, yours not primary subject | 10 bps |\n| Story names 2-4 symbols, yours IS primary subject | 15 bps |\n| Single-symbol analyst call | 18 bps |\n| Single-symbol earnings/guidance/deal | 20 bps |\n| Single-symbol operational news (investment, partnership) | 15 bps |\n| Commentary on past activity/metrics | 10 bps (and predict 0 bps) |\n| Fed/macro commentary naming your symbol | 10 bps (and predict 0 bps) |\n| Any story, predicting near-zero (< 3 bps) | 10 bps minimum |\n| Stock already ran 50+ bps before the story | 18 bps (predict reversal) |\n\n**Your recent pattern: 2.0-6.3 bp width on everything. This is always too tight. You got run over on 6 out of 8 examples.**\n\n**Width is insurance. A 2 bp quote on a large cap means you think the move will be under 2 bps with 90%+ confidence. You have no basis for that confidence on breaking news. Use 10 bps minimum on noise, 15-20 bps on material catalysts.**\n\n---\n\n## Magnitude Rules for Directional Forecasts\n\n**When you predict a non-zero move, magnitude matters. There is no such thing as a -0.2 bps or +1.7 bps catalyst-driven move. Either the story is noise (predict 0) or it's a catalyst (predict 10-25 bps).**\n\n### Analyst Calls (When Stock Has Not Already Moved)\n- **Upgrade or target raise:** +15 to +25 bps\n- **Downgrade or target cut (including \"maintains but lowers\"):** -15 to -25 bps\n- **Short call from major bank:** -15 to -25 bps\n- **Width:** 18-20 bps (market may reject the call)\n\n### Operational News (Investment, Partnership, Expansion)\n- **Positive news (win contract, invest, expand):** +8 to +20 bps\n  - Lower end (+8 to +12 bps) for large caps where the news is small relative to scale\n  - Upper end (+15 to +20 bps) for mid/small caps or material contracts\n- **Check tape first:** If stock already ran 30+ bps, predict -8 to -12 bps (profit-taking)\n- **Width:** 15-20 bps\n\n### Earnings, Guidance, Deals (Not in Recent Examples But Important)\n- **Beat, raise, deal announcement:** +20 to +40 bps\n- **Miss, cut, deal termination:** -20 to -40 bps\n- **Width:** 20-25 bps\n\n### Everything Else (Commentary, Indices, Macro, Multi-Symbol)\n- **Predict 0 bps, width 10 bps**\n\n---\n\n## Checklist Before Every Forecast\n\n1. **Count the symbols in the story.**\n   - If 5+: predict 0 bps, width 10 bps. Stop.\n   - If 2-4: proceed to step 2.\n   - If 1: proceed to step 2.\n\n2. **Is my symbol the primary subject of the story?**\n   - Read the headline. Is it about my symbol specifically, or is my symbol one of many mentioned?\n   - If not primary subject: predict 0 bps, width 10 bps. Stop.\n   - If primary subject: proceed to step 3.\n\n3. **What type of story is this?**\n   - Multi-symbol market commentary: 0 bps, width 10 bps\n   - Commentary on past activity/metrics: 0 bps, width 10 bps\n   - Fed/macro commentary: 0 bps, width 10 bps\n   - Analyst call: proceed to step 4\n   - Operational news (investment, partnership, expansion): proceed to step 4\n   - Earnings/guidance/deal: proceed to step 4\n\n4. **Check the tape: What did the stock do in the last 30-60 minutes?**\n   - Use candlesticks tool to see last 45 minutes of 1-min bars\n   - Calculate: current price minus price 30 minutes ago, in basis points\n   - **If moved 30+ bps in direction catalyst would push:** Predict small reversal or continuation (0 to -10 bps if it ran up, 0 to +10 bps if it dropped), width 18 bps. Stop.\n   - **If moved < 15 bps (stable):** Fresh catalyst, proceed to step 5.\n   - **If moved 30+ bps opposite to catalyst direction:** Predict continuation of existing move or 0 bps, width 18 bps. Stop.\n\n5. **Predict the magnitude:**\n   - Analyst call (upgrade/downgrade/short call): \u00b115 to \u00b125 bps in direction of call, width 18-20 bps\n   - Operational news (investment/partnership): +8 to +20 bps if positive (scale by materiality), width 15-20 bps\n   - Earnings/guidance/deal: \u00b120 to \u00b140 bps in direction of news, width 20-25 bps\n\n6. **Final check: Is my width at least 10 bps?**\n   - If no: increase to 10 bps minimum\n   - If material catalyst: increase to 15-25 bps depending on catalyst type\n\n7. **Final check: Am I predicting a tiny move (-2 to +2 bps) with tight width (< 5 bps) on a named catalyst?**\n   - If yes: You are treating a catalyst as noise. Either predict 0 bps width 10 bps (if it's actually noise), or predict 10-25 bps width 15-20 bps (if it's actually a catalyst). No middle ground.\n\n---\n\n## The Core Lessons from Your Errors\n\n1. **You consistently predicted -0.1 to -1.3 bps with 2.0 bp width on 5+ symbol stories. Always predict 0 bps, width 10 bps on 5+ symbol stories. No exceptions.**\n\n2. **You predicted +2.9 bps on AMZN investment news when you should have predicted +12 bps (positive catalyst, no prior move). You got direction wrong because you didn't recognize it as a positive catalyst.**\n\n3. **You predicted +1.7 bps on TMO partnership when you should have checked the tape first. TMO ran +83 bps before the story. Correct forecast: -10 bps (profit-taking), width 18 bps.**\n\n4. **You predicted -1.3 bps on INTC short call (5 symbols but INTC was the primary subject) when you should have predicted -18 bps, width 18 bps. You treated a specific analyst call as noise.**\n\n5. **You predicted +0.2 bps on SCHW activity index (backward-looking data, not a catalyst) when you should have predicted 0 bps, width 10 bps.**\n\n6. **You used 2.0 bp width on everything. Minimum width is 10 bps on noise, 15-20 bps on material catalysts. Your tight width cost you: realised price was outside the quote on 6 out of 8 examples.**\n\n7. **There is no such thing as a -0.9 bps or +1.7 bps catalyst-driven move. Either it's noise (0 bps) or a catalyst (10-25 bps). You keep predicting the non-existent middle ground.**\n\n8. **You never checked the tape. TMO ran 83 bps before the story\u2014you should have predicted profit-taking. Always check if the stock already moved 30+ bps in the catalyst direction.**\n\n---\n\n## Summary Decision Tree\n\n**5+ symbols?** \u2192 0 bps, width 10 bps. Done.\n\n**2-4 symbols, not primary subject?** \u2192 0 bps, width 10 bps. Done.\n\n**Primary subject, but commentary on past data/metrics?** \u2192 0 bps, width 10 bps. Done.\n\n**Primary subject, but Fed/macro story?** \u2192 0 bps, width 10 bps. Done.\n\n**Primary subject, operational/analyst/earnings catalyst:**\n1. Check tape for last 30-60 min\n2. If already moved 30+ bps in catalyst direction \u2192 predict -8 to -12 bps reversal, width 18 bps\n3. If stable (< 15 bps range) \u2192 predict full catalyst move (10-25 bps depending on type), width 15-25 bps\n4. If moved opposite to catalyst \u2192 predict continuation or 0 bps, width 18 bps\n\n**Minimum width: 10 bps on noise, 15 bps on material catalysts, 18-20 bps on analyst calls or already-moved stocks.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
