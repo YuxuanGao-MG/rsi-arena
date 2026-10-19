@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen79",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing.\n\n**The intraday noise floor is 10-15 basis points.** A liquid large-cap will drift this far in five minutes from:\n- Normal order flow and bid-ask bounce\n- Microstructure noise (minute close sampling error)\n- Small market moves unrelated to the story\n- Random imbalances in a thin minute\n\nThis drift happens *even when the news has zero impact*. Your bands must contain it.\n\n**Recent performance shows systematic underestimation of normal drift:**\n\nEight prior examples used 2-7 bps half-width and almost all missed. Eight new examples used 2.0 bps half-width uniformly and all eight missed. Realized drifts ranged from -29.6 bps to +10.3 bps.\n\n**Realized drifts in the eight new examples:**\n- IWM (Nasdaq correction roundup, 268 symbols): -14.0 bps, predicted -2.1 \u00b1 2.0 bps \u2192 missed by 11.9 bps\n- V (financials whale alert, 10 symbols): +5.2 bps, predicted -1.5 \u00b1 2.0 bps \u2192 missed by 6.7 bps\n- GOOGL (Nvidia partner Tesla/Waymo story, 5 symbols): +4.0 bps, predicted -0.9 \u00b1 2.0 bps \u2192 missed by 4.8 bps\n- TSLA (Elon Musk/SpaceX IPO warning, 2 symbols): +2.9 bps, predicted -0.8 \u00b1 2.0 bps \u2192 missed by 3.6 bps\n- XLK (Microsoft Azure analyst note, 4 symbols): -3.9 bps, predicted -0.3 \u00b1 2.0 bps \u2192 missed by 3.5 bps\n- V (historical returns fluff, 1 symbol): +10.3 bps, predicted -0.7 \u00b1 2.0 bps \u2192 missed by 11.0 bps\n- AMD (IT stocks whale alert, 10 symbols): -29.6 bps, predicted -0.1 \u00b1 2.0 bps \u2192 missed by 29.5 bps\n- SPY (WHO Ebola statement, 12 symbols): +8.3 bps, predicted -1.5 \u00b1 2.0 bps \u2192 missed by 9.9 bps\n\n**Pattern: The harness used 2.0 bps half-width on every single forecast and failed on every single one. Multi-symbol stories (5-268 symbols) drifted 3.9-29.6 bps. Single-symbol fluff drifted 10.3 bps. Even the 2-symbol competitor story drifted 2.9 bps.**\n\n**The 2.0 bps width is catastrophically too narrow. It fails to capture even the smallest realized drifts and guarantees negative skill.**\n\n**Mandatory minimum widths by story type:**\n\n**1. Multi-symbol market/sector stories (5+ symbols): 15 bps minimum, predict delta = 0**\n\nThese are sector roundups, market commentary, whale alert lists, or collections naming many stocks:\n- IWM on 268-symbol market roundup \u2192 realized -14.0 bps, predicted -2.1 \u00b1 2.0 bps\n- V on 10-symbol financials whale alert \u2192 realized +5.2 bps, predicted -1.5 \u00b1 2.0 bps\n- GOOGL on 5-symbol Nvidia partner story \u2192 realized +4.0 bps, predicted -0.9 \u00b1 2.0 bps\n- AMD on 10-symbol IT whale alert \u2192 realized -29.6 bps, predicted -0.1 \u00b1 2.0 bps\n- SPY on 12-symbol WHO Ebola statement \u2192 realized +8.3 bps, predicted -1.5 \u00b1 2.0 bps\n\nThe story names your symbol alongside many others because they all belong to the same theme, not because of stock-specific news about your symbol. **Count symbols first. If 5+, predict 0 \u00b1 15 bps minimum. For 10+ symbols or index ETFs (SPY, IWM, QQQ, DIA) on multi-symbol news, use 0 \u00b1 20 bps.**\n\n**Why you keep making directional bets on these:** You see move distributions with probabilities like {down: 22%, unchanged: 69%, up: 7%} and translate this to delta = -2.05 bps. But multi-symbol stories describe market patterns, not stock-specific catalysts. **Count symbols first. If 5+, predict 0 with 15-20 bps width regardless of the distribution's lean. Never make directional bets under 5 bps on multi-symbol stories.**\n\n**2. Single-symbol fluff stories with no operational content: 12 bps minimum, predict delta = 0**\n\nStories that mention only your symbol but contain no material news:\n- V \"Here's How Much $1000 Invested In Visa 15 Years Ago Would Be Worth Today\" (1 symbol) \u2192 backward-looking historical returns fluff, no news \u2192 realized +10.3 bps, predicted -0.7 \u00b1 2.0 bps\n\nIf the headline describes what already happened (price milestones, historical returns, past performance) or restates known information, predict **0 \u00b1 12 bps minimum**.\n\n**3. Competitor news, partner stories, or related-sector news (2-4 symbols): 12-15 bps minimum**\n\nStories about partners, competitors, or related companies where your symbol is named but not the primary subject:\n- XLK on Microsoft Azure analyst note (4 symbols, one is MSFT) \u2192 MSFT-specific, XLK is sector ETF \u2192 realized -3.9 bps, predicted -0.3 \u00b1 2.0 bps\n- TSLA on \"Elon Musk Warns SpaceX Short-Sellers\" (2 symbols: SPCX, TSLA) \u2192 SpaceX-specific, not Tesla \u2192 realized +2.9 bps, predicted -0.8 \u00b1 2.0 bps\n\n**Check whether the headline is actually about your symbol.** If your symbol is an ETF containing the story's primary subject, or if the story is about a related company/product: predict **0 \u00b1 12-15 bps**. Never use widths under 10 bps.\n\n**4. Single-symbol operational news with potential impact: 20-25 bps minimum**\n\nProduct delays, launch announcements, operational updates, regulatory news specifically about your symbol.\n\n**Check candlesticks for pre-move (last 10-15 minutes):**\n- If moved >50 bps in direction consistent with news impact \u2192 already priced \u2192 predict 0 \u00b1 20-25 bps\n- If moved 20-50 bps in consistent direction \u2192 partial pricing \u2192 reduce delta by half, use 15-25 bps width\n- If no clear pre-move (<20 bps range) and material news \u2192 make directional call \u00b1 20-25 bps\n\n**5. Major fundamental catalysts: 30-50 bps minimum**\n\nEarnings, guidance revisions, M&A announcements, rating changes (not maintains), major regulatory rulings. These were not present in the recent examples.\n\n**The core failure: using 2 bps half-width uniformly**\n\nIn the eight new examples, the harness used exactly 2.0 bps half-width on every forecast, regardless of:\n- Symbol count (1 to 268 symbols)\n- Story type (fluff, whale alerts, market roundups)\n- The instrument (single stocks vs. broad ETFs like SPY/IWM)\n\nThis produced a 0% success rate. The narrowest realized drift was 2.9 bps. The median was around 6-8 bps. The widest was 29.6 bps.\n\n**Why 2 bps fails:**\n- It's narrower than the bid-ask spread on most names (large caps quote 1-5 bps wide, so 2 bps is less than one spread)\n- It's below the noise floor for minute-close sampling (a minute close can bounce 5-10 bps from microstructure)\n- It assumes the model can predict direction to within fractions of a basis point, which is impossible\n\n**Decision tree:**\n\n1. **Count symbols in the story**\n   - If 10+ symbols or index ETF (SPY, IWM, QQQ) on multi-symbol story \u2192 predict 0 \u00b1 20 bps, stop\n   - If 5-9 symbols \u2192 multi-symbol sector story \u2192 predict 0 \u00b1 15 bps, stop\n   - If 1-4 symbols, proceed to step 2\n\n2. **Read headline and summary for story type**\n   - Fluff (historical returns, price milestones, backward-looking commentary) \u2192 predict 0 \u00b1 12 bps, stop\n   - Whale alerts, options activity roundups \u2192 if your symbol is one of many \u2192 predict 0 \u00b1 15 bps, stop\n   - Competitor/partner news where headline isn't about your symbol \u2192 predict 0 \u00b1 12-15 bps, stop\n   - ETF on news about a single constituent \u2192 predict 0 \u00b1 12-15 bps, stop\n   - Operational news specifically about your symbol \u2192 proceed to step 3 with 20-25 bps floor\n   - Major catalyst (earnings, guidance, M&A, rating change) \u2192 proceed to step 3 with 30-50 bps floor\n\n3. **Check candlesticks for pre-move (last 10-15 minutes)**\n   - If moved >50 bps in direction consistent with news impact \u2192 already priced \u2192 predict 0 \u00b1 20-25 bps\n   - If moved 20-50 bps in consistent direction \u2192 partial pricing \u2192 reduce directional delta by half, use 15-25 bps width\n   - If no clear pre-move (<20 bps range) and material operational news \u2192 directional call \u00b1 20-25 bps\n   - If no clear pre-move and major catalyst \u2192 directional call \u00b1 30-50 bps\n\n4. **If uncertain about impact or story type \u2192 always predict 0 with 12-20 bps width based on symbol count**\n\n**Width is not a penalty.** You are scored on whether the realized price lands in your band. A 0 \u00b1 15 bps forecast that captures a 14 bps drift earns skill. A 0 \u00b1 2 bps forecast that misses a 14 bps drift loses skill.\n\n**What kills skill:**\n- Using 2-5 bps half-width (failed in 16 of 16 recent examples)\n- Making sub-5 bps directional bets on any multi-symbol story\n- Using the same width regardless of story type or symbol count\n- Setting width based on model confidence rather than noise floor and story type\n- Ignoring that most Benzinga stories are just market commentary\n\n**What earns skill:**\n- Starting at 12 bps minimum for single-symbol fluff\n- Using 15 bps for 5-9 symbol stories, 20 bps for 10+ symbols or index ETFs\n- Recognizing multi-symbol stories as market noise \u2192 0 \u00b1 15-20 bps, never directional\n- Recognizing fluff (historical returns, backward-looking) \u2192 0 \u00b1 12 bps\n- Using 20-25 bps on single-symbol operational news\n- Using 30-50 bps on major catalysts\n- Checking candlesticks for pre-moves before making directional calls\n- Predicting zero correctly with adequate width (most stories are noise)\n\n**Start every forecast at 12 bps minimum width. Add 3-8 bps for multi-symbol stories (15-20 bps total). Add 8-13 bps for operational news (20-25 bps total). Add 18-38 bps for major catalysts (30-50 bps total). Never go below 12 bps under any circumstances.**\n\n**The recent run shows what happens when you use 2 bps uniformly: 100% miss rate, negative skill on 7 of 8 examples, and losses even when both sides of the quote fill because the width was too narrow to be meaningful. The correct response to uncertainty is wider bands, not narrower ones.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
