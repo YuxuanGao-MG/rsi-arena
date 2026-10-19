@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen80",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Core insight: most Benzinga stories are noise, and the tape barely moves on them.** On pure noise, the stock drifts randomly by 3-8 bps in the next five minutes. The dominant pattern in the feedback is: predict near-zero on noise stories, but **protect yourself with adequate half-width** because you don't know which way the random drift will go.\n\n**The systematic error in the current examples: every forecast used 2 bps half-width, and this failed catastrophically.**\n\nRealized moves in these eight examples: -2.1 (META), -16.8 (TSLA robotics story), -2.6 (IWM), -6.2 (AAPL), +6.3 (PLTR), +11.9 (TSLA China story), +14.6 (AVGO), -1.5 (TSLA lawsuit). That's a range from -16.8 to +14.6 bps, with most falling between -7 and +12 bps.\n\n**Every single forecast used 2.0 bps half-width. Results:**\n- 7 out of 8 got run over (realised price outside the quote)\n- Only 1 stayed inside the quote (TSLA lawsuit at -1.5 bps realized)\n- Skill scores: -0.10, +0.05, +0.06, +0.03, +0.04, -0.06, -0.05, +0.18\n- Average skill: +0.03 (barely above silence, and negative on half the forecasts)\n\n**The evidence is clear: normal five-minute volatility is 8-15 bps even on pure noise stories.** A 2 bps width captures almost nothing. The bid-ask spread is 1-5 bps, but the five-minute price path is far wider than the instantaneous spread.\n\n**Critical insight: half-width must be set based on normal tape volatility, not story significance.**\n\nWhen you predict near-zero delta (correct for noise stories), you're saying \"the stock will drift randomly but stay near the current price.\" The half-width is your uncertainty bound on that random drift. Setting it to 2 bps says \"I'm confident the price will stay within \u00b12 bps,\" which is almost never true.\n\n**Decision framework:**\n\n1. **Check the tape first, always.** Look at candlesticks for the last 15 minutes:\n   - What is the recent volatility? (high-low range over last 15 minutes)\n   - Is the stock drifting directionally, or oscillating?\n   - Has it already moved sharply then flattened?\n   - Is volume elevated or thin?\n\n2. **Classify the story's relevance to your symbol:**\n   - **Direct catalyst on your name** (guidance, deal, analyst initiation/downgrade specifically on this symbol): Stock-specific material news\n   - **Listicle/multi-stock roundup** (8+ symbols, generic market commentary, \"whale alerts,\" sector ETF stories): Pure noise\n   - **Passing mention** (your symbol is one of many, no thesis about it): Pure noise\n   - **Thematic but not actionable** (e.g., \"robotics could advance in 5 years,\" lawsuit from 2022 going to trial): Noise unless tape shows it's being traded\n\n3. **Set your half-width based on observed tape volatility:**\n\n   **Base width calculation from recent tape:**\n   - Look at the high-low range over the last 15 minutes in basis points\n   - Typical five-minute drift is 40-60% of the 15-minute range\n   - **Minimum width: 8 bps** for any forecast, even on dead-flat tape\n   - **Default width for noise: 10-12 bps** (captures normal random drift)\n   - **Volatile tape (15-min range > 30 bps): 12-15 bps**\n   - **Very volatile tape (15-min range > 60 bps): 15-20 bps**\n   - **Direct material catalyst: 18-25 bps** (outcome uncertainty is high)\n   \n   **Examples from feedback:**\n   - META: 15-min range ~50 bps (603.71 to 604.355), realized -2.1 bps. Should have used 10-12 bps width.\n   - TSLA (robotics): 15-min range ~110 bps (350.19 to 351.19), realized -16.8 bps. Should have used 15-18 bps width.\n   - IWM: 15-min range ~18 bps (293.0 to 293.18), realized -2.6 bps. Should have used 10 bps width minimum.\n   - AAPL: 15-min range ~75 bps (329.45 to 330.32), realized -6.2 bps. Should have used 12-15 bps width.\n   - PLTR: 15-min range ~36 bps (175.64 to 176.0), realized +6.3 bps. Should have used 10-12 bps width.\n   - TSLA (China): 15-min range ~77 bps (368.415 to 369.185), realized +11.9 bps. Should have used 12-15 bps width.\n   - AVGO: 15-min range ~38 bps (353.58 to 353.96), realized +14.6 bps. Should have used 12-15 bps width.\n   - TSLA (lawsuit): 15-min range ~102 bps (378.325 to 379.335), realized -1.5 bps. Should have used 15 bps width (got lucky with 2 bps).\n\n4. **Make your directional forecast:**\n\n   **If direct catalyst AND tape hasn't moved yet:**\n   - Directional call based on catalyst (upgrade = up, downgrade = down)\n   - Delta: 8-15 bps depending on catalyst strength\n   - Width: 18-25 bps (you don't know absorption speed or magnitude)\n   \n   **If direct catalyst AND tape already moved in catalyst direction:**\n   - If move is already large (30+ bps), catalyst may be mostly priced\n   - Predict small continuation (3-8 bps) or mean reversion\n   - Width: 15-20 bps (volatility persists after large moves)\n   \n   **If listicle, roundup, or passing mention (the majority of stories):**\n   - These are pure noise\u2014your symbol is mentioned in passing\n   - Predict near-zero (0-3 bps) based on any weak tape drift visible in last 15 min\n   - Width: 10-12 bps minimum, 12-15 bps if recent tape range exceeds 30 bps\n   - Examples: META (-2.1 bps), IWM (-2.6 bps), PLTR (+6.3 bps), AVGO (+14.6 bps) all on noise stories\n   \n   **If thematic story but not actionable (robotics in 5 years, old lawsuit, speculation):**\n   - Treat as noise unless tape shows active trading on it\n   - Predict 0-3 bps with 10-15 bps width depending on tape volatility\n   - Examples: TSLA robotics story (-16.8 bps realized, tape was volatile), TSLA lawsuit (-1.5 bps, also volatile tape)\n\n5. **Never use under 8 bps width. The safe default is 10-12 bps.**\n   - 2 bps width worked 1 out of 8 times (12.5% success rate)\n   - Even when directional prediction was perfect, 2 bps width caused negative skill\n   - Getting run over (realised price outside quote) kills your score\n   - A wider quote that doesn't fill is neutral; a tight quote that gets breached is negative\n\n6. **Direction matters less than you think when the move is small:**\n   - META: predicted +0.5, realized -2.1 (wrong direction) \u2192 skill -0.10 with 2 bps width\n   - TSLA lawsuit: predicted -0.9, realized -1.5 (correct direction) \u2192 skill +0.18 with 2 bps width\n   - The difference: one got run over (-2.1 outside \u00b12.0), one didn't (-1.5 inside \u00b12.0)\n   - With 10 bps width, both would have stayed inside and scored positive\n\n7. **Tape volatility is the best predictor of five-minute volatility:**\n   - Calculate the high-low range over the last 15 minutes\n   - Expect the next 5 minutes to move 40-60% of that range\n   - If the last 15 minutes ranged 30 bps, expect next 5 minutes to move 12-18 bps\n   - If the last 15 minutes ranged 15 bps, expect next 5 minutes to move 6-9 bps\n   - This works regardless of story content\n\n8. **Width formula based on recent tape:**\n   - last_15min_range_bps = (recent high - recent low) / recent_close * 10000\n   - expected_5min_move = last_15min_range_bps * 0.5\n   - half_width = max(10, expected_5min_move * 0.8)\n   - Never go below 10 bps unless last 15 minutes were exceptionally flat (under 10 bps range), and even then use 8 bps minimum\n\n9. **The winning pattern from feedback:**\n   - On noise stories (8 out of 8 in these examples): predict near-zero delta (0-3 bps)\n   - Set width to 10-15 bps based on recent tape volatility\n   - This keeps you inside the quote on most outcomes\n   - Skill of +0.03 to +0.18 is achievable even on noise\n   - Negative skill comes from being too tight (getting run over)\n\n10. **What went wrong in each example:**\n    - **META (whale alerts, 10 symbols):** Predicted +0.5 with 2.0 width, realized -2.1. Noise story, should have predicted ~0 with 10-12 bps width. Recent tape range was 50 bps, suggesting 10-12 bps five-minute volatility. Got run over. Skill -0.10.\n    - **TSLA (robotics in 5 years):** Predicted -0.8 with 2.0 width, realized -16.8. Speculative story is noise. Recent tape range was 110 bps (very volatile), suggesting 15-20 bps five-minute volatility. Should have used 15-18 bps width. Got run over. Skill +0.05 (lucky on direction).\n    - **IWM (market roundup, 33 symbols):** Predicted -0.3 with 2.0 width, realized -2.6. Pure noise. Should have predicted ~0 with 10 bps width. Recent tape range was 18 bps (quiet). Got run over. Skill +0.06 (barely positive).\n    - **AAPL (sector story, 13 symbols):** Predicted -0.2 with 2.0 width, realized -6.2. Noise story. Recent tape range was 75 bps, suggesting 12-15 bps width. Got run over. Skill +0.03.\n    - **PLTR (passing mention, 8 symbols):** Predicted +0.2 with 2.0 width, realized +6.3. Noise story. Recent tape range was 36 bps, suggesting 10-12 bps width. Got run over. Skill +0.04.\n    - **TSLA (China weakness story):** Predicted -0.7 with 2.0 width, realized +11.9. Noise (thematic but not actionable). Recent tape range was 77 bps, suggesting 12-15 bps width. Wrong direction and too tight. Got run over. Skill -0.06.\n    - **AVGO (sector story, 12 symbols):** Predicted -0.7 with 2.0 width, realized +14.6. Noise story. Recent tape range was 38 bps, suggesting 12 bps width. Wrong direction and too tight. Got run over. Skill -0.05.\n    - **TSLA (lawsuit trial):** Predicted -0.9 with 2.0 width, realized -1.5. Old lawsuit going to trial is noise. Recent tape range was 102 bps, suggesting 15 bps width. Got lucky staying inside. Skill +0.18 (best score, but still got run over on one side).\n\n**Summary:** On noise stories, predict near-zero delta (0-3 bps based on weak tape drift) and set half-width to 10-15 bps based on recent tape volatility. Calculate the 15-minute high-low range, expect five-minute drift to be 40-60% of that, and set width to 80% of expected drift with a 10 bps floor. Never use under 8 bps width. The 2 bps width failed 87.5% of the time in these examples. Width is your primary defense against negative skill, and tape volatility is your guide to setting it.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
