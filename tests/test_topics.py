@@ -28,7 +28,7 @@ def test_the_kalshi_spec_is_what_settings_always_defaulted_to():
                  "window_usd", "model_choices", "holdout", "audit", "max_metric_calls", "valset"):
         assert getattr(spec, name) == getattr(d, name), name
     assert spec.jev_harness == "harnesses/horizon-5m-jev.json"
-    assert spec.max_day_usd == 100 and spec.unit == "cents"
+    assert spec.max_day_usd == 200 and spec.unit == "cents"
     assert isinstance(TOPICS["kalshi-horizon-5m"], TopicSpec)
 
 

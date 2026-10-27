@@ -103,7 +103,7 @@ TOPICS: dict[str, TopicSpec] = {
         max_metric_calls=_defaults.max_metric_calls,
         valset=_defaults.valset,
         # Two generations a day at the measured cold price, with room.
-        max_day_usd=100.0,
+        max_day_usd=200.0,
         unit=KalshiHorizon.metric.unit,
         cost_floor_usd=_defaults.cost_floor_usd,
         runs_per_day=3,
@@ -142,7 +142,7 @@ TOPICS: dict[str, TopicSpec] = {
         # key's own hundred.
         # One cap for every topic, because it is checked against the shared
         # key's spend for the whole UTC day.
-        max_day_usd=100.0,
+        max_day_usd=200.0,
         unit=NewsEquity.metric.unit,
         cost_floor_usd=0.002,
         runs_per_day=3,
@@ -216,7 +216,7 @@ TOPICS: dict[str, TopicSpec] = {
         # makes it $25. Three slots is $75 - the whole shared day - so the guard
         # refuses a start once the day is at seventy, which leaves thirty for
         # Kalshi ($17) and news ($10).
-        max_day_usd=70.0,
+        max_day_usd=200.0,
         unit=CryptoHorizon.metric.unit,
         cost_floor_usd=0.002,
         runs_per_day=3,

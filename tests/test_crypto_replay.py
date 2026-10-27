@@ -372,7 +372,7 @@ def test_the_topic_is_registered_and_the_command_prints_it(capsys):
     # rather than twenty-five, and the call budget is what lets GEPA pass over it
     # more than three times.
     assert (spec.holdout, spec.audit, spec.max_metric_calls, spec.valset) == (120, 60, 12000, 1200)
-    assert spec.max_day_usd == 70 and spec.unit == "bps"
+    assert spec.max_day_usd == 200 and spec.unit == "bps"
     assert main(["topic", "--topic", "crypto-horizon-1m", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["name"] == "crypto-horizon-1m" and out["unit"] == "bps" and "factory" not in out
