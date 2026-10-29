@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen85",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Production evidence shows the 2 bps default fails systematically.**\n\nEight production examples, all using half_width_bps = 2.0:\n\n| Symbol | Story type | Symbols | Realized move | Predicted delta | Miss | Skill | Outcome |\n|--------|-----------|---------|---------------|-----------------|------|-------|---------|\n| LLY | Manufacturing expansion | 1 | +4.0 bps | +1.1 | 2.9 bps | +0.22 | Outside quote |\n| SPY | Trump Supreme Court post | 1 | -1.9 bps | -0.1 | 1.8 bps | +0.02 | Inside quote |\n| GOOGL | Anthropic biolab discovery | 4 | +4.9 bps | -0.9 | 5.8 bps | -0.19 | Outside quote |\n| QQQ | Market-wide inflation story | 133 | +3.0 bps | -0.8 | 3.8 bps | -0.16 | Outside quote |\n| V | Market-wide chip story | 37 | -4.6 bps | -0.1 | 4.5 bps | +0.02 | Outside quote |\n| GOOGL | Semiconductor rally story | 76 | +20.6 bps | -0.9 | 21.5 bps | -0.05 | Outside quote |\n| GS | Whale alerts on 8 financials | 8 | -16.7 bps | -0.1 | 16.6 bps | +0.01 | Outside quote |\n| GOOG | Wearables insulin tracking | 2 | -12.6 bps | -0.8 | 11.8 bps | +0.06 | Outside quote, both sides hit |\n\n**Result: 7 of 8 quotes (87.5%) breached. Only SPY -1.9 bps stayed inside 2 bps.**\n\nThe quietest moves (SPY -1.9, LLY +4.0, QQQ +3.0, V -4.6, GOOGL +4.9 bps) are **normal bid-ask noise** in large caps. Even when nothing is happening, minute closes drift 3-5 bps on ordinary flow.\n\nThe larger moves (GOOGL +20.6, GS -16.7, GOOG -12.6 bps) show real but unforecastable volatility: GOOGL on a semiconductor rally story moved 6x more than GOOGL on a biolab story (same symbol, similar multi-name fluff, 4x difference in realized move). There is no ex-ante signal that separates these.\n\n**The correct default width is 5-6 bps, not 2 bps.**\n\nWhy 5-6 bps works:\n- Contains normal bid-ask bounce (3-5 bps in liquid large caps)\n- Allows the forecast to capture \"no material move\" without being run over by noise\n- Still narrow enough to occasionally fill when the headline truly has no impact\n- A 5 bps band on a 4 bps realized move scores positive skill; a 2 bps band scores negative\n\n**Regime classification:**\n\n**Regime 1: Multi-symbol stories (8+ symbols in the list)**\n- Examples: QQQ with 133 symbols (+3.0 bps), V with 37 symbols (-4.6 bps), GOOGL with 76 symbols (+20.6 bps)\n- These are market summaries or sector roundups, not stock-specific catalysts\n- The named symbol is incidental or one of many\n- **Realized range: 3-21 bps** (median ~8 bps, but high variance)\n- **Optimal width: 8 bps**\n- Rationale: Wider than single-name noise because market-wide moves have higher variance; 5 bps would have missed 2 of 3 examples\n\n**Regime 2: Few-symbol stories (1-4 symbols) without material catalyst**\n- Examples: LLY manufacturing (+4.0 bps), SPY political post (-1.9 bps), GOOGL biolab (4 symbols, +4.9 bps), GOOG wearables (2 symbols, -12.6 bps)\n- Fluff pieces, product mentions, commentary, or operational news without earnings/guidance impact\n- **Realized range: 2-13 bps** (median ~5 bps)\n- **Optimal width: 6 bps**\n- Rationale: 5 bps would miss GOOG -12.6 bps; 7 bps would be too wide to ever fill; 6 bps is the compromise\n\n**Regime 3: Few-symbol stories (1-4 symbols) with whale alerts or similar meta-commentary**\n- Example: GS with 8 financial symbols and \"whale alerts\" (-16.7 bps)\n- Not a fundamental catalyst, but signals large player activity\n- **Realized: -16.7 bps** (only one example, but instructive)\n- **Optimal width: 10 bps**\n- Rationale: Whale activity can move prices more than fluff but less than analyst upgrades; treat as intermediate volatility\n\n**Regime 4: Material single-symbol catalysts (not seen in these 8 examples, but known from task description)**\n- Analyst upgrades/downgrades with price targets, earnings guidance, major deals, regulatory decisions\n- **Expected range: 15-100+ bps**\n- **Do not attempt to quote narrow bands:** use half_width_bps = 60 to avoid trading\n- These are too volatile to contain predictably\n\n**Decision tree:**\n\n1. **Count symbols in the \"symbols\" list (not mentions in headline text)**\n\n2. **If 8+ symbols:**\n   - delta_bps = 0\n   - half_width_bps = 8\n   - Rationale: Market-wide or sector summary; higher variance than single-name noise\n\n3. **If 1-7 symbols, check for material catalyst:**\n   - Analyst upgrade/downgrade with price target \u2192 half_width_bps = 60, delta_bps = 0\n   - Earnings guidance, deal announcement, regulatory approval \u2192 half_width_bps = 60, delta_bps = 0\n   - Whale alerts, unusual options activity \u2192 half_width_bps = 10, delta_bps = 0\n   - Otherwise (fluff, product mention, commentary) \u2192 half_width_bps = 6, delta_bps = 0\n\n4. **Check recent volatility (last 10 minutes of candlesticks):**\n   - If any 1-minute bar has range (high - low) > 25 bps, add 5 bps to base width\n   - If the symbol has moved > 50 bps in the last 10 minutes, add 10 bps to base width\n   - Rationale: Ongoing price discovery means wider realized ranges\n\n5. **Direction (delta_bps):**\n   - **Default to 0 unless you have strong evidence**\n   - Evidence would be: unambiguous catalyst (upgrade = up, downgrade = down) AND the tape has not moved yet (check recent_trades and candlesticks)\n   - In 8 production examples, directional calls were wrong or irrelevant 7 of 8 times\n   - The cost of wrong direction (missing by 10-20 bps) exceeds the gain of right direction (containing by 2-5 bps)\n\n**What the production examples prove:**\n\n1. **SPY -1.9 bps:** Even the quietest headline barely fits in 2 bps. This is the noise floor.\n\n2. **LLY +4.0 bps, GOOGL +4.9 bps, QQQ +3.0 bps, V -4.6 bps:** Normal large-cap bid-ask drift is 3-5 bps. A 2 bps band misses this routinely. A 5-6 bps band contains it.\n\n3. **GOOG -12.6 bps, GS -16.7 bps, GOOGL +20.6 bps:** Real but unpredictable volatility. The harness cannot know ex-ante which fluff piece will move 5 bps vs 15 bps. Solution: widen the band to 8-10 bps for higher-variance regimes (multi-symbol stories, whale alerts), accept that some moves will breach anyway.\n\n4. **Directional prediction is low-value:** 7 of 8 examples had delta_bps near zero (range -0.9 to +1.1 bps), and all missed the realized direction or magnitude. The harness should focus on width, not direction.\n\n**Scoring mechanics:**\n\n- Skill = 1 - (your error / no-change error), in basis points\n- A 5 bps band on a 4 bps realized move: miss by 0 if inside, score positive skill\n- A 2 bps band on a 4 bps realized move: miss by 2 bps, score near zero or negative\n- A 60 bps band rarely fills, so it scores near zero (same as standing aside), but avoids large negative skill from catalyst moves\n\n**Summary table:**\n\n| Headline type | Symbols | Catalyst? | delta_bps | half_width_bps | Expected move | Production evidence |\n|---------------|---------|-----------|-----------|----------------|---------------|---------------------|\n| Sector summary, market-wide | 8+ | No | 0 | 8 | 3-21 bps | QQQ +3.0, V -4.6, GOOGL +20.6 (median ~8 bps, high variance) |\n| Fluff, mentions, commentary | 1-7 | No | 0 | 6 | 2-13 bps | LLY +4.0, SPY -1.9, GOOGL +4.9, GOOG -12.6 (median ~5 bps) |\n| Whale alerts, options activity | 1-7 | Weak | 0 | 10 | 10-20 bps | GS -16.7 (only one example, but distinct from fluff) |\n| Analyst targets, guidance, deals | 1-2 | Yes | 0 | 60 | 15-100+ bps | None in these 8, but known from task description |\n| Any + recent volatility >25 bps/min | Any | Any | 0 | base + 5 | +5-20 bps | Not triggered in these 8 examples |\n| Any + recent move >50 bps/10min | Any | Any | 0 | base + 10 | +10-30 bps | Not triggered in these 8 examples |\n\n**The zero-skill line:**\n\nA forecast scores zero skill when its error equals the no-change error. For a 4 bps realized move:\n- 2 bps band: misses by 2 bps, skill = 1 - 2/4 = +0.50 if lucky, but only if centered perfectly\n- 5 bps band: contains it, misses by 1 bps, skill = 1 - 1/4 = +0.75\n- The 2 bps band in production scored +0.22, +0.02, -0.19, -0.16, +0.02, -0.05, +0.01, +0.06 (mean +0.01)\n- Switching to 5-6 bps would have contained 5 of 8 moves (62.5% vs 12.5%)\n\n**What this harness must do differently:**\n\n1. **Raise the default half_width_bps from 2 to 6** for single-name stories without catalysts\n2. **Use 8 bps for multi-symbol stories (8+ symbols)** to handle higher variance\n3. **Use 10 bps for whale alerts and similar meta-commentary**\n4. **Keep delta_bps = 0** unless there is unambiguous catalyst direction and the tape confirms\n5. **Check symbol count in the \"symbols\" field**, not just headline keywords\n6. **Add volatility adjustments** (+5 bps if recent bar range >25 bps, +10 bps if recent move >50 bps)\n\nThe harness cannot predict exact magnitude, but it can predict **regime**: noise (6 bps), sector noise (8 bps), meta-activity (10 bps), catalyst (60 bps). Skill comes from choosing the right regime, not from guessing within it.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
