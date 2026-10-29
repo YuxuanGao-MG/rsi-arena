@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen84",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nThe harness systematically predicts near-zero with 2 bps width on stories where stocks then move 5-15 bps. Recent outcomes:\n\n- **MSFT \"SpaceX Nasdaq 100 Debut, Minimal Lift: Analysts Call the QQQ Hype Overdone\"** (6 symbols, thematic tech story with skeptical analyst view): predicted -0.5 bps (2.0 width), actual -3.3 bps \u2014 **thematic multi-stock story moved 3 bps, 2 bps width too tight**\n- **GOOG \"Big Tech Is Minting Mountains of Cash \u2014 But Amazon's Is Vanishing\"** (5 symbols, comparative Big Tech cash flow analysis): predicted +1.1 bps (2.0 width), actual -3.4 bps \u2014 **thematic multi-stock moved 3-4 bps, direction miss, 2 bps width too tight**\n- **WFC \"SK Hynix 7X Oversubscription Boosts Semi Stocks\"** (79 symbols, thematic semiconductor story mentioning many banks/financials): predicted +0.9 bps (2.0 width), actual -4.6 bps \u2014 **WFC is not a semiconductor stock; passing mention in list of 79 symbols is noise, but 2 bps width still too tight for any miss**\n- **PLTR \"Palantir Shares Up 3.5% After Key Trading Signal\"** (single symbol, descriptive headline): predicted -0.2 bps (2.0 width), actual -9.8 bps \u2014 **descriptive headline \"shares up 3.5%\" published after PLTR had already moved (check tape shows 175.24 \u2192 173.97 drop over prior 45 min), reversal continued another -9.8 bps; 2 bps width catastrophically wrong**\n- **GOOGL \"SpaceX Stock Now Has $26 Billion in Short Bets\"** (8 symbols, thematic SpaceX/tech short interest story): predicted -1.2 bps (6.8 width), actual -1.3 bps \u2014 **correct near-zero call, reasonable width, good outcome**\n- **NVDA \"Uber Earnings Prediction Market Preview: What Will Dara Khosrowshahi Say?\"** (7 symbols, Uber earnings preview mentioning tech names): predicted -0.1 bps (2.0 width), actual +10.8 bps \u2014 **thematic tech story moved NVDA 11 bps, 2 bps width catastrophically wrong**\n- **ABT \"Abbott Stock's Best Day Ever: +13.6% On Earnings Beat, Guidance Raise\"** (single symbol, descriptive headline): predicted -2.4 bps (5.6 width), actual +8.5 bps \u2014 **descriptive headline published after ABT had already moved +13.6% intraday; check tape shows 100.45 \u2192 99.81 drop over prior 45 min, then +8.5 bps bounce; width reasonable but direction wrong**\n- **WMT \"Lululemon's Margin Problem Could Spell Trouble for These ETFs\"** (10 symbols, thematic retail margin pressure story): predicted -1.7 bps (2.0 width), actual -7.4 bps \u2014 **thematic retail story moved WMT 7 bps, direction correct but 2 bps width too tight**\n\n---\n\n## **What These Reveal**\n\n1. **Descriptive headlines (\"shares up X%\", \"best day ever\", \"key trading signal\") are published AFTER the move has already started.** PLTR \"Shares Up 3.5%\" was published after a 175.24 \u2192 173.97 drop over 45 minutes, then continued down -9.8 bps. ABT \"Best Day Ever +13.6%\" was published after ABT had already moved +13.6% intraday (100.45 \u2192 99.81 over prior 45 min), then bounced +8.5 bps. **Always check the tape for the last 45-60 minutes. If the stock has already moved 100+ bps (or 500+ bps like ABT), the descriptive headline is lagging the tape by 30-60 minutes. The original move is done; predict small continuation or reversal, not the original move.**\n\n2. **Thematic multi-stock stories (3-10 symbols with a theme: Big Tech cash flow, SpaceX short interest, Uber earnings preview mentioning tech) move stocks 3-15 bps, not 0-2 bps.** NVDA moved +10.8 bps on \"Uber Earnings Preview\" (7 symbols). WMT moved -7.4 bps on \"Lululemon Margin Problem\" (10 retail symbols). MSFT moved -3.3 bps on \"SpaceX Nasdaq 100\" (6 tech symbols). **These are not noise when the theme is material and the symbol count is under 15. Predict 5-15 bps in theme direction if the tape is flat; reduce to 3-8 bps if the tape already shows drift in that direction. Minimum width: 8 bps for thematic stories with under 15 symbols.**\n\n3. **Passing mentions in large multi-stock lists (79 symbols like WFC in \"SK Hynix Boosts Semi Stocks\") are noise when your symbol is not in the theme sector.** WFC is a bank, not a semiconductor. The story is about semiconductors. WFC moved -4.6 bps (noise). **When your symbol is mentioned in a list of 50+ symbols and the theme is a different sector, predict 0-2 bps with 5-8 bps width (not 2 bps, because any 3-5 bps noise move will run you over).**\n\n4. **2 bps width is almost always too tight.** It was catastrophically wrong on PLTR (-9.8 bps actual), NVDA (+10.8 bps actual), WMT (-7.4 bps actual), and MSFT (-3.3 bps actual). It only worked on GOOGL (-1.3 bps actual with 6.8 bps width, not 2 bps). **Use 2 bps width ONLY on lagging 13F filings or confirmed non-events. For everything else, minimum width is 5 bps (noise), 8 bps (thematic multi-stock under 15 symbols), or 10-15 bps (descriptive headline after large prior move, or direct catalyst with uncertainty).**\n\n5. **Tape check is critical for descriptive headlines.** PLTR \"Shares Up 3.5%\" was published after 175.24 \u2192 173.97 drop (should have predicted -5 to -10 bps continuation or small bounce, not -0.2 bps). ABT \"Best Day Ever +13.6%\" was published after 100.45 \u2192 99.81 drop from intraday high (should have predicted +5 to +10 bps bounce or 0-5 bps continuation of pullback, not -2.4 bps). **When the headline describes a move that has already happened, pull 60-minute candlesticks and ask: where is the stock now relative to its high/low over the last 60 minutes? If it's pulled back from the high, the headline is lagging and the move may bounce or continue drifting. If it's at the high, the headline is lagging and the move may continue or reverse. Do not predict the original move.**\n\n6. **Magnitude matters more than you think.** The harness predicted NVDA -0.1 bps (actual +10.8 bps) and WMT -1.7 bps (actual -7.4 bps). These misses scored negative skill because the errors were larger than no-change. **A 5-15 bps move is real. Thematic stories with 3-10 material symbols move stocks 5-15 bps. Descriptive headlines after large moves can produce 5-10 bps bounces or continuations. Do not round everything to zero.**\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 60 minutes, 1-minute bars\n   - **Is this a descriptive headline (\"shares up X%\", \"best day ever\", \"key trading signal\", \"stock surges\")?**\n   - If yes, find the high/low over the last 60 minutes and the current price:\n     - **If the stock has moved 100+ bps in one direction and is now pulling back (e.g., high 175.24, now 173.97), the headline is lagging by 30-60 minutes and the pullback may continue or bounce**\n     - **If the stock has moved 500+ bps (like ABT +13.6% intraday) and is now down from the high, the headline is lagging and a small bounce or further drift is likely**\n     - **Do not predict the original move. The headline describes what already happened. Predict the next 5 minutes: 0-10 bps continuation, -10 to +10 bps bounce, or small reversal.**\n   - **Is this a direct catalyst (analyst call, earnings, guidance) AND has the stock already moved 100+ bps in that direction over the last 30-60 minutes?**\n   - If yes, the catalyst may be published into the move; predict small continuation or reversal, not another large move.\n\n### **2. Classify the story's relevance to your symbol**\n\n   **A. Direct catalyst (analyst call, earnings, guidance, deal, clinical trial, regulatory approval \u2014 specifically about this name):**\n   - The story is about this company\n   - Examples: \"Abbott Stock's Best Day Ever: +13.6% On Earnings Beat, Guidance Raise\" (but check the tape \u2014 if already up 500+ bps, the headline is lagging)\n   - **If the headline is descriptive (\"stock's best day\", \"shares up X%\") and the stock has already moved 100+ bps, this is a lagging descriptive headline, not a fresh catalyst. See section D below.**\n   - **If the headline is forward-looking (\"analyst upgrades\", \"raises guidance\") and the tape is flat or <20 bps drift, this is a fresh catalyst:**\n     - Analyst upgrade/raised PT \u2192 predict +10 to +20 bps, width 10-12 bps\n     - Analyst downgrade/lowered PT \u2192 predict -10 to -20 bps, width 10-12 bps\n     - Earnings beat + guidance raise (if tape flat) \u2192 predict +15 to +30 bps, width 12-15 bps\n   \n   **B. Thematic multi-stock (story discusses sector trend, technology shift, macro theme; names 3-15 symbols including yours, and your symbol is in the theme sector):**\n   - Examples: \"Big Tech Is Minting Mountains of Cash \u2014 But Amazon's Is Vanishing\" (5 Big Tech symbols), \"SpaceX Nasdaq 100 Debut, Minimal Lift\" (6 tech symbols), \"Uber Earnings Preview: What Will Dara Say?\" (7 symbols including tech names like NVDA), \"Lululemon Margin Problem Could Spell Trouble for These ETFs\" (10 retail symbols)\n   - **These move stocks 3-15 bps when the symbol count is under 15 and the theme is material**\n   - **Check the tape:**\n     - If tape flat or <10 bps drift over last 30 min, predict 8-15 bps in theme direction, width 10-12 bps\n     - If tape already drifting 10-20 bps in theme direction over last 30 min, predict 3-8 bps continuation, width 8-10 bps\n   - **Minimum width: 8 bps.** Never use 2 bps on thematic stories with under 15 symbols.\n   - Example: NVDA \"Uber Earnings Preview\" (7 symbols) should have predicted +8 to +15 bps, width 10-12 bps (actual +10.8 bps; 2 bps width was catastrophic)\n   - Example: WMT \"Lululemon Margin Problem\" (10 retail symbols) should have predicted -5 to -10 bps, width 8-10 bps (actual -7.4 bps; 2 bps width too tight)\n   \n   **C. Passing mention in large multi-stock list (50+ symbols, or your symbol is not in the theme sector):**\n   - Example: WFC (a bank) in \"SK Hynix 7X Oversubscription Boosts Semi Stocks\" (79 symbols, semiconductor theme)\n   - **Your symbol is not in the theme sector \u2192 this is noise**\n   - Predict 0-2 bps with 5-8 bps width (not 2 bps, because 3-5 bps noise moves will run you over)\n   - Example: WFC should have predicted 0 bps with 6-8 bps width (actual -4.6 bps was noise; 2 bps width too tight)\n   \n   **D. Descriptive headline (single symbol, \"shares up X%\", \"best day ever\", \"key trading signal\", published after the stock has already moved):**\n   - Examples: \"Palantir Shares Up 3.5% After Key Trading Signal\" (published after PLTR dropped 175.24 \u2192 173.97), \"Abbott Stock's Best Day Ever: +13.6%\" (published after ABT moved +13.6% intraday and pulled back to 99.81 from high 100.45)\n   - **These headlines lag the tape by 30-60 minutes. Check the tape:**\n     - Pull 60-minute candlesticks\n     - Find the high/low over the last 60 minutes and the current price\n     - **If the stock has moved 100+ bps in one direction and is now pulling back from the high/low, predict 0-10 bps continuation of pullback or -10 to +10 bps bounce, width 10-15 bps**\n     - **If the stock has moved 500+ bps intraday (like ABT +13.6%) and is now down from the high, predict +5 to +10 bps bounce or 0-5 bps drift, width 10-12 bps**\n   - **Do not predict the original move. The headline describes what already happened.**\n   - Example: PLTR \"Shares Up 3.5%\" after 175.24 \u2192 173.97 drop should have predicted -5 to -10 bps continuation or 0-5 bps bounce, width 12-15 bps (actual -9.8 bps; -0.2 bps with 2 bps width was catastrophic)\n   - Example: ABT \"Best Day Ever +13.6%\" after 100.45 \u2192 99.81 pullback should have predicted +5 to +10 bps bounce, width 10-12 bps (actual +8.5 bps; -2.4 bps with 5.6 width was wrong direction but reasonable width)\n\n### **3. Width is insurance against confident mistakes**\n\n   - **2 bps: RARELY USE.** Only on lagging 13F filings, confirmed non-events, or when you are certain the stock will not move more than 2-3 bps. **Do not use 2 bps on thematic stories, descriptive headlines, or anything with even minor uncertainty.**\n   - **5-8 bps: passing mention in 50+ symbol list (your symbol not in theme sector), or confirmed small noise**\n   - **8-12 bps: thematic multi-stock (3-15 symbols, material theme, your symbol in theme sector), fresh direct catalyst (analyst call, earnings), descriptive headline after 100-200 bps prior move**\n   - **10-15 bps: descriptive headline after 500+ bps prior move (reversal/bounce risk high), thematic story with high uncertainty, or direct catalyst with tape showing prior 100+ bps move in catalyst direction**\n   \n   **When in doubt, go wider.** A correct direction with 12 bps width beats zero-with-2bps that misses by 10.\n\n### **4. Magnitude calibration by story type**\n\n   - **Lagging 13F filing:** 0 \u00b1 2 bps, width 2-4 bps\n   - **Passing mention (50+ symbols, your symbol not in theme):** 0-2 bps, width 5-8 bps\n   - **Thematic multi-stock (3-15 symbols, material theme, tape flat):** 8-15 bps in theme direction, width 10-12 bps\n   - **Thematic multi-stock (3-15 symbols, tape already drifting):** 3-8 bps continuation, width 8-10 bps\n   - **Descriptive headline after 100-200 bps prior move:** 0-10 bps continuation or -10 to +10 bps bounce, width 10-15 bps\n   - **Descriptive headline after 500+ bps prior move (like ABT +13.6%):** +5 to +10 bps bounce (if pulled back from high) or 0-5 bps drift, width 10-12 bps\n   - **Fresh direct catalyst (analyst call, tape flat):** 10-20 bps in call direction, width 10-12 bps\n   - **Direct catalyst into prior 100+ bps move:** 0-5 bps continuation or -5 to 0 bps reversal, width 10-12 bps\n\n### **5. Special case: Descriptive headlines**\n\n   **These are the most dangerous.** The harness missed PLTR by -9.6 bps and ABT by -10.9 bps because it treated descriptive headlines as if they were fresh news.\n   \n   **Always pull 60-minute candlesticks when you see:**\n   - \"Shares up X% after...\"\n   - \"Stock's best day ever\"\n   - \"Key trading signal\"\n   - \"Stock surges\"\n   - Any headline that describes a move in past tense\n   \n   **Then ask:**\n   1. What is the high/low over the last 60 minutes?\n   2. What is the current price relative to that high/low?\n   3. How many basis points has the stock moved from the high/low to now?\n   \n   **If the stock has moved 100+ bps and is now pulling back from the extreme:**\n   - The headline is lagging by 30-60 minutes\n   - The original move is done or reversing\n   - Predict 0-10 bps continuation of pullback, or -10 to +10 bps bounce, width 10-15 bps\n   \n   **If the stock has moved 500+ bps intraday (like ABT +13.6%) and is now down from the high:**\n   - The headline is lagging by 60+ minutes\n   - The intraday high is done; a small bounce or drift is likely\n   - Predict +5 to +10 bps bounce (if significantly below high) or 0-5 bps drift, width 10-12 bps\n   \n   **Do not predict the original move. The headline describes what already happened.**\n\n### **6. Special case: Thematic multi-stock (3-15 symbols)**\n\n   **These move stocks 3-15 bps, not 0-2 bps.** The harness systematically underestimated these:\n   - NVDA +10.8 bps on \"Uber Earnings Preview\" (predicted -0.1 bps with 2 bps width)\n   - WMT -7.4 bps on \"Lululemon Margin Problem\" (predicted -1.7 bps with 2 bps width)\n   - MSFT -3.3 bps on \"SpaceX Nasdaq 100\" (predicted -0.5 bps with 2 bps width)\n   \n   **When the story names 3-15 symbols and your symbol is in the theme sector (tech, retail, healthcare, etc.), predict 5-15 bps in theme direction if the tape is flat, or 3-8 bps if the tape already shows drift.**\n   \n   **Minimum width: 8 bps. Never 2 bps.**\n   \n   **Theme direction:**\n   - Positive theme (earnings beat, oversubscription, cash flow strength) \u2192 positive delta\n   - Negative theme (margin pressure, short interest, weakness) \u2192 negative delta\n   - Mixed theme (\"Big Tech cash, but Amazon's vanishing\") \u2192 check which angle applies to your symbol, or predict smaller magnitude with wider width\n\n### **7. Cross-check before finalizing**\n\n   - **Did I check the tape for prior moves?** (60-minute candlesticks for descriptive headlines; 30-minute for direct catalysts)\n   - **Is this a descriptive headline?** (If yes, the headline lags the tape; predict the next 5 minutes, not the original move)\n   - **Is my magnitude plausible for this story type?** (Thematic 3-15 symbols move 5-15 bps; descriptive headlines after large moves produce 5-10 bps bounces/continuations; passing mentions in 50+ symbol lists move 0-5 bps)\n   - **Is my width wide enough to guard against a 5-10 bps miss?** (8-12 bps minimum for thematic stories and descriptive headlines; 5-8 bps for noise; 10-15 bps for high uncertainty)\n   - **Did I use 2 bps width?** (If yes, ask: is this a lagging 13F filing or confirmed non-event? If no, widen to 5-8 bps minimum)\n   - **Is the stock in the theme sector?** (WFC is not a semiconductor; passing mention in \"SK Hynix Boosts Semi Stocks\" is noise)\n\n---\n\n## **The pattern is clear:**\n\nThe harness uses 2 bps width too liberally (MSFT, GOOG, WFC, PLTR, NVDA, WMT all moved 3-11 bps and 2 bps width was catastrophic), treats descriptive headlines as fresh news (PLTR \"shares up 3.5%\" predicted -0.2 bps, actual -9.8 bps; ABT \"best day ever\" predicted -2.4 bps, actual +8.5 bps), and underestimates thematic multi-stock stories with 3-15 symbols (NVDA predicted -0.1 bps, actual +10.8 bps; WMT predicted -1.7 bps, actual -7.4 bps). **Always check the tape for descriptive headlines (60-minute candlesticks: where is the stock now relative to its high/low?). Thematic stories with 3-15 symbols move 5-15 bps when the theme is material. Use 8-15 bps width on everything except lagging 13F filings and confirmed noise. Never use 2 bps width on thematic stories or descriptive headlines.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
