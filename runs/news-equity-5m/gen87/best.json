@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen87",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: The model is still using 2 bps as default half-width. This breaks constantly and produces negative skill.**\n\n**New examples analyzed:**\n\n1. AAPL (3 symbols, \"Apple Stock Hits 52-Week High\"): predicted +0.3 \u00b1 7.7 bps, realized +30.4 bps, skill +0.01 (broke by 22.7 bps, but positive skill because 7.7 bps band was wider than default)\n2. XLE (14 symbols, \"7 Energy Stocks Rallying as Crude Tops $90\"): predicted +3.1 \u00b1 3.1 bps, realized +19.3 bps, skill +0.16 (broke by 16.2 bps, but positive skill)\n3. TSLA (8 symbols, \"Whale Alerts\"): predicted -1.8 \u00b1 2.0 bps, realized +0.9 bps, skill -0.36 (tiny move, wrong direction, inside band but negative skill)\n4. NVDA (2 symbols, \"Should Investors Buy AMD Instead Of Nvidia?\"): predicted -1.1 \u00b1 2.0 bps, realized -2.4 bps, skill +0.23 (inside band, right direction)\n5. INTC (3 symbols, \"The IV Crush Is Only Half The Story\"): predicted -0.2 \u00b1 2.0 bps, realized -14.3 bps, skill +0.02 (broke by 14.1 bps, barely positive skill)\n6. AMD (>200 symbols, \"Stock Market Today: Microsoft Ignites Chip Rebound\"): predicted -1.0 \u00b1 2.0 bps, realized +1.4 bps, skill -0.19 (wrong direction on tiny move)\n7. GS (2 symbols, \"Saudi Tech Firm Picks Goldman, HSBC for IPO\"): predicted +0.2 \u00b1 2.0 bps, realized -17.9 bps, skill -0.01 (broke by 18.1 bps, negative skill)\n8. GOOG (2 symbols, \"Alphabet's Jumbo Bond Sale Draws $115B\"): predicted -0.3 \u00b1 2.0 bps, realized -8.7 bps, skill +0.04 (broke by 8.4 bps, barely positive skill)\n\n**Key lessons from the new feedback:**\n\n**1. The model is still calling direction on multi-symbol stories. This is toxic.**\n\n- AAPL (3 symbols): predicted +0.3 bps (should be 0)\n- XLE (14 symbols): predicted +3.1 bps (should be 0)\n- TSLA (8 symbols): predicted -1.8 bps (should be 0), realized +0.9 bps, skill -0.36 (wrong direction destroyed skill)\n- INTC (3 symbols): predicted -0.2 bps (should be 0)\n- AMD (>200 symbols): predicted -1.0 bps (should be 0), realized +1.4 bps, skill -0.19 (wrong direction)\n- GS (2 symbols): predicted +0.2 bps (should be 0)\n- GOOG (2 symbols): predicted -0.3 bps (should be 0)\n\n**The model is predicting non-zero delta on every multi-symbol story.** When realized is tiny (TSLA +0.9 bps, AMD +1.4 bps), calling the wrong direction produces negative skill even though the miss is small. When realized is material (XLE +19.3 bps, GS -17.9 bps), calling direction doesn't help because these are market moves, not stock-specific reactions.\n\n**2. The 2 bps default half-width is too narrow.**\n\nSix of eight examples used 2.0 bps half-width:\n- TSLA: broke by 2.7 bps (realized 0.9 bps, but wrong direction)\n- NVDA: inside (realized -2.4 bps)\n- INTC: broke by 14.1 bps (realized -14.3 bps)\n- AMD: broke by 2.4 bps (realized 1.4 bps, wrong direction)\n- GS: broke by 18.1 bps (realized -17.9 bps)\n- GOOG: broke by 8.4 bps (realized -8.7 bps)\n\nThe 2 bps band contained only NVDA (-2.4 bps realized). All others broke. Five of six breaks were on moves under 20 bps, which is the normal range for multi-symbol noise stories.\n\n**3. Wider bands produce better skill even when they still break.**\n\n- AAPL: 7.7 bps band broke by 22.7 bps on 30.4 bps realized, skill +0.01\n- XLE: 3.1 bps band broke by 16.2 bps on 19.3 bps realized, skill +0.16\n\nCompare to:\n- INTC: 2.0 bps band broke by 14.1 bps on -14.3 bps realized, skill +0.02\n- GS: 2.0 bps band broke by 18.1 bps on -17.9 bps realized, skill -0.01\n- GOOG: 2.0 bps band broke by 8.4 bps on -8.7 bps realized, skill +0.04\n\nXLE had the best skill (+0.16) despite breaking by 16.2 bps because the band was 3.1 bps, not 2.0 bps. AAPL had +0.01 skill despite breaking by 22.7 bps because the band was 7.7 bps.\n\n**4. Stories about other companies don't move the named stock.**\n\n- GS: \"Saudi Tech Firm Picks Goldman, HSBC for IPO\" - The story is about NourNet going public, not about Goldman Sachs. GS is mentioned only as the underwriter. Realized -17.9 bps is likely market drift, not a reaction to the headline.\n- GOOG: \"Alphabet's Jumbo Bond Sale Draws $115B\" - This is about Alphabet's bond issuance, which is balance sheet management, not a stock catalyst. Realized -8.7 bps is small and likely not news-driven.\n\nBoth examples show that being named in a headline doesn't mean the stock will react. If the story is about something the company is doing for someone else (underwriting, lending, supplying), the move is noise.\n\n**5. Multi-symbol stories realize 0-20 bps most of the time, not 30-80 bps.**\n\nPrevious context claimed multi-symbol stories realize 30-80 bps. New feedback shows:\n- AAPL (3 symbols): +30.4 bps (large, but note AAPL headline says \"jumps 4%\" - this is describing a move that already happened)\n- XLE (14 symbols): +19.3 bps (moderate)\n- TSLA (8 symbols): +0.9 bps (tiny)\n- NVDA (2 symbols): -2.4 bps (tiny)\n- INTC (3 symbols): -14.3 bps (moderate)\n- AMD (>200 symbols): +1.4 bps (tiny)\n- GS (2 symbols): -17.9 bps (moderate)\n- GOOG (2 symbols): -8.7 bps (small)\n\nThe distribution is: 3 tiny (under 5 bps), 4 moderate (8-20 bps), 1 large (30 bps). The 30 bps move on AAPL is suspect because the headline says \"hits 52-week high\" and \"jumps 4%\", which suggests it's describing a move that already happened, not forecasting a new one.\n\n**Most multi-symbol stories realize 5-20 bps, which is normal drift, not a reaction.** A 10-15 bps band will contain roughly half and break on the rest.\n\n**6. Calling direction is toxic even when the realized move is inside the band.**\n\n- TSLA: predicted -1.8 bps, realized +0.9 bps, inside the 2.0 bps band, but skill -0.36 because direction was wrong\n- AMD: predicted -1.0 bps, realized +1.4 bps, inside a 2.0 bps band (miss 2.4 bps), but skill -0.19 because direction was wrong\n\nBoth realized moves were under 2 bps (well inside a 10 bps band), but calling the wrong direction produced negative skill. Predicting 0 \u00b1 10 bps would have scored better in both cases.\n\n**7. The AAPL example shows the model is not checking if the move already happened.**\n\nAAPL headline: \"Apple Stock Hits 52-Week High - Here's Why\" with summary \"AAPL jumps 4% to a new 52-week high...\"\n\nThe headline says AAPL **already** jumped 4% (400 bps). The news broke at 15:58:48, which is 148.8 minutes after open (late in the session). The candlesticks show AAPL was at 324.06 at 15:14 and 325.81 at 15:57, which is a 54 bps move in 43 minutes. The headline is **describing** this move, not causing a new one.\n\nRealized +30.4 bps is a continuation, not a fresh reaction. The model predicted +0.3 bps, which is close to zero but not exactly zero. With a 7.7 bps band, it still broke by 22.7 bps, but skill was only +0.01 (barely positive).\n\n**If the headline says the stock \"jumped\" or \"rallied\" or \"hit a high\", check the candlesticks to see if it already moved 30+ bps before the headline. If yes, the story is stale.**\n\n**What the model should do differently:**\n\n**Step 1: Count symbols. If 2+, always predict 0 delta and use wide half-width scaled by symbol count.**\n\n- **2-3 symbols: 0 \u00b1 12 bps**\n- **4-7 symbols: 0 \u00b1 15 bps**\n- **8-15 symbols: 0 \u00b1 18 bps**\n- **16+ symbols: 0 \u00b1 20 bps**\n\nThis is wider than the previous context (which used 10-25 bps) because the new feedback shows most multi-symbol stories realize 5-20 bps, not 30-80 bps. A 12-20 bps band will contain roughly half and break on the rest, but breaks will be small and skill will be positive or neutral.\n\n**Never call direction on a multi-symbol story.** The new feedback confirms this: TSLA, AMD both had negative skill from calling direction on tiny moves. XLE had positive skill despite calling direction (+3.1 bps on +19.3 bps realized), but this was luck - most multi-symbol stories don't move 19 bps.\n\n**Step 2: For single-symbol stories, check if the headline is stale.**\n\nIf the headline says the stock \"jumped\", \"rallied\", \"surged\", \"hit a high/low\", or \"is moving\", check candlesticks for the last 30-60 minutes. If the stock moved 30+ bps before the headline in the direction described, the story is stale and the realized move is a continuation, not a reaction.\n\n**AAPL example:** Headline says \"jumps 4%\", candlesticks show +54 bps in the 43 minutes before the headline. Realized +30.4 bps is a continuation. Should predict 0 \u00b1 15 bps (wide because stock is already volatile).\n\n**Step 3: For single-symbol stories that are not stale, classify as material or non-material.**\n\n**Material (single-symbol only):**\n- Analyst **initiation** with rating\n- Analyst **upgrade** or **downgrade** (rating change, not PT change)\n- Earnings with actual results (EPS, revenue numbers, not estimates or commentary)\n- M&A announcement with specific terms (price, close date)\n- FDA approval/rejection (not trial results or commentary)\n- CEO/CFO departure (not hiring, not retirement plans)\n\n**Non-material (everything else):**\n- Analyst **maintains** or **reiterates** (even with PT change)\n- Price target change without rating change\n- Ownership stake change (fund buying/selling, whale alerts)\n- Commentary, analysis, sector view, investor opinions\n- \"Why is X moving\" stories (these describe moves that already happened)\n- IPO of another company (even if your stock is mentioned as underwriter, supplier, etc.)\n- Bond sales, buyback announcements (balance sheet, not earnings)\n- Contract wins, partnerships without financial terms\n\n**Step 4: For non-material single-symbol stories, predict 0 delta with half-width based on recent volatility.**\n\n- **If last 30 min range < 30 bps: 0 \u00b1 10 bps**\n- **If last 30 min range 30-70 bps: 0 \u00b1 15 bps**\n- **If last 30 min range > 70 bps: 0 \u00b1 20 bps**\n\nGS and GOOG examples: Both non-material (IPO underwriting, bond sale), both should be 0 delta. GS had 400 bps range in first 20 minutes (open volatility), so use 0 \u00b1 20 bps. GOOG had 60 bps range in last 30 minutes, so use 0 \u00b1 15 bps.\n\n**Step 5: For material single-symbol stories, check if already priced.**\n\nUse candlesticks to check if the stock moved 20+ bps in the last 3-5 minutes in the direction the news would suggest. If yes, the market already reacted and there's no edge left.\n\nIf not priced, predict direction \u00b1 15-20 bps based on the catalyst:\n- Upgrade/initiation: direction determined by rating (buy/outperform = +, sell/underperform = -)\n- Downgrade: opposite\n- Earnings beat: +, miss: - (but check if guidance is in line)\n- M&A: acquirer -, target + (unless price is below offer)\n\n**The default is 0 delta.** Only call direction if you see a material, single-symbol catalyst that is new, not priced, and not stale.\n\n**Summary of new rules:**\n\n1. **Multi-symbol stories (2+):** Always 0 delta. Half-width 12-20 bps scaled by symbol count. Never call direction.\n\n2. **Single-symbol, stale (headline describes move that already happened):** 0 delta, 15-20 bps half-width based on recent volatility.\n\n3. **Single-symbol, non-material:** 0 delta, 10-20 bps half-width based on recent volatility (30 min range).\n\n4. **Single-symbol, material, not priced:** Direction \u00b1 15-20 bps. This is rare.\n\n5. **Never call direction unless you have high confidence in a material, single-symbol catalyst.** Wrong direction on a tiny move (under 5 bps) produces large negative skill (TSLA -0.36, AMD -0.19).\n\n6. **Wider bands are better.** 2 bps is too narrow. 10-20 bps for most stories, scaled by symbol count and volatility. The benchmark is the realized move, not zero, so wider bands reduce error even when they break.\n\n7. **Check for staleness.** If headline says \"jumped\" or \"hit a high\", check if it already moved. If yes, predict 0 delta.\n\n8. **Most multi-symbol stories realize 5-20 bps, not 30-80 bps.** Use 12-20 bps bands, not 25 bps.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
