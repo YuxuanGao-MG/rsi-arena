@@ -1,0 +1,176 @@
+{
+  "name": "crypto-horizon-1m-jev+gen56",
+  "description": "The one-minute forecast asked of a decisions model: the same frozen tools, one paragraph of state, and one typed question - a distribution over basis-point moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- Funding settlement proximity: 30-90 minutes before a reset, volatility rises as positions adjust. The perp premium often snaps back toward zero through the settlement.\n- Momentum continuation: a move over the last 1-5 minutes often extends one more tick before pausing. A +20 bps surge with heavy taker buying is not done.\n- Mean reversion after shocks: a sudden -10 bps drop often bounces 2-5 bps in the next minute as limit orders absorb the move.\n- US cash market open (13:30-14:30 UTC): the first 30-60 minutes see elevated activity and directional moves.\n- Liquidation cascades: taker volume surging heavily one-sided (>80% buy or sell) with open interest dropping signals forced liquidations. These extend 2-3 minutes.\n- Cross-asset leadership: BTC moving while ETH/SOL lag by 30-60 seconds creates a brief arbitrage window.\n- Tape imbalance at key levels: sustained 70%+ taker buying or selling for 3+ minutes usually continues at least one more minute.\n\nMost minutes do not move. A quiet tape (50-60% taker buy share, low volume, far from funding) at an off-peak hour stays within 1-2 bps. But do not default to predicting zero when signals are present.\n\n**Critical guidance on quote width:**\n\nThe feedback shows the harness is consistently stopped out. Quotes are far too narrow for realized volatility. Half_width_bps must protect against being run over on both sides, not just reflect forecast uncertainty.\n\n**Use these rules for half_width_bps:**\n\n1. **When |change_1m_bps| > 4 OR |change_5m_bps| > 10**: Recent volatility is elevated. Use half_width of at least 8-10 bps. Example 1: change_1m = -4.7 bps, predicted -0.9 \u00b1 5.0, actual -8.8 bps (stopped out). Example 7: change_1m = +4.9 bps, change_5m = +3.5 bps, predicted +3.4 \u00b1 2.6, actual -17.4 bps (stopped out). In volatile conditions, 8-12 bps half_width is required.\n\n2. **When taker_buy_share is extreme (<0.25 or >0.75)**: Strong directional pressure. Use half_width of at least 8-10 bps because the move can extend OR reverse sharply. Example 1: taker_buy_share = 0.095, move continued down -8.8 bps. Example 4: taker_buy_share = 0.853, predicted +7.8 bps but actual -10.4 bps (reversal).\n\n3. **When conflicting signals appear (e.g., change_5m and change_1m opposite signs, both large)**: Direction is unclear but volatility is high. Use half_width of 10-15 bps. Example 8: change_1m = -7.9 bps, change_5m = -7.4 bps (both down), but taker_buy_share = 0.587 (balanced), predicted -4.7 \u00b1 2.7, actual +0.7 bps (sharp reversal, stopped out).\n\n4. **When funding is within 90 minutes**: Pre-funding volatility is unpredictable. Use half_width of at least 6-8 bps even if recent bars are quiet.\n\n5. **After a large multi-minute trend**: If |change_5m_bps| > 15, the trend may continue OR snap back. Use half_width of 8-12 bps. Example 6: change_5m = -12.1 bps, predicted -4.1 \u00b1 6.1, actual -0.8 bps (mean reversion).\n\n6. **Only use half_width of 2-3 bps when ALL of these hold**:\n   - |change_1m_bps| < 2 and |change_5m_bps| < 5\n   - Taker buy share between 0.45-0.55\n   - Funding 3+ hours away\n   - Volume typical (not surging)\n   - No momentum pattern in recent bars\n\n**If in doubt, quote wide.** A quote of 10 bps that misses a fill scores zero. A quote of 2 bps that gets run over both sides scores deeply negative. Example 3 shows the danger: predicted +0.7 \u00b1 2.0, actual -2.3 bps, both sides hit for round-trip loss.\n\n**On predicting direction and magnitude:**\n\nBe decisive when signals are strong, but recognize that direction can reverse even when momentum looks clear.\n\n- **Strong momentum with extreme taker imbalance (>80%)**: If the last minute moved 5+ bps with taker imbalance >80%, predict continuation of 4-8 bps. But quote wide (8-10 bps) because reversals happen. Example 4: change_1m = +10.7 bps, taker_buy_share = 0.853, predicted +7.8 bps, but actual -10.4 bps (sharp reversal stopped out).\n\n- **Multi-minute trend with balanced recent tape**: If change_5m shows a large move (e.g., -12 bps) but change_1m is smaller and taker_buy_share is near 0.50, the trend may be exhausted. Predict mean reversion of 2-4 bps, but quote wide (6-10 bps). Example 6: change_5m = -12.1 bps, change_1m = +5.9 bps (reversal starting), taker_buy_share = 0.587, actual -0.8 bps.\n\n- **Continuation after small move**: If change_1m is small (1-3 bps) but in the direction of change_5m (both same sign), and taker imbalance supports it (>60%), predict continuation of 1-3 bps with narrow quote (2-3 bps). This is the rare case for tight quotes.\n\n- **After sharp single-minute move opposite to 5-min trend**: If change_1m is large and opposite sign to change_5m (e.g., change_5m = -7 bps, change_1m = -8 bps), this is a potential capitulation or reversal. Direction is unclear. Predict near-zero with very wide quote (10-15 bps). Example 8: change_1m = -7.9, change_5m = -7.4, but taker_buy_share = 0.587 (balanced), actual +0.7 bps (reversal).\n\n- **When momentum is clear but you missed the size**: Better to predict +5 bps \u00b1 10 bps and have the quote hold than predict +5 bps \u00b1 3 bps and get stopped out. Example 5: change_1m = +2.8 bps, taker_buy_share = 0.886 (strong buying), predicted +2.0 \u00b1 4.0, actual -9.0 bps (reversal stopped out). Should have quoted \u00b18-10 bps given the extreme taker imbalance.\n\n**Predict zero only when truly quiet**: Balanced tape, |change_1m| < 2, |change_5m| < 5, distant funding, typical volume. Otherwise, if you see volatility but cannot confidently size the direction, predict zero with a wide quote (8-12 bps) to avoid getting stopped out.\n\n**Do not predict small deltas in volatile conditions**: If |change_5m_bps| > 10 or |change_1m_bps| > 4, predicting \u00b11 bps is not credible. Either predict a meaningful move (4-10 bps) with wide quote (8-12 bps), or predict zero with wide quote to acknowledge high volatility but unclear direction.\n\n**Skill comes from:**\n1. Calling direction and rough size when moves actually happen (positive skill)\n2. Quoting wide enough to avoid getting stopped out in volatile conditions (prevents deeply negative skill)\n\nA forecast of +5 bps \u00b1 10 bps that realizes at +7 bps earns good skill. A forecast of +5 bps \u00b1 3 bps that realizes at -10 bps earns deeply negative skill from getting stopped out. The feedback shows negative skill in Examples 3, 4, 6, 7, 8 \u2014 all from quotes too narrow for realized volatility.\n\n**The pattern in failures**: Every stopped-out example had either |change_1m| > 4 OR extreme taker_buy_share (<0.25 or >0.75) OR |change_5m| > 10, yet used half_width under 7 bps. When any volatility signal is present, half_width must be at least 8 bps.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "price_velocity",
+    "tape_imbalance",
+    "funding_rate",
+    "open_interest",
+    "basis",
+    "market_shock",
+    "shock_absorption",
+    "hourly_seasonality",
+    "session_clock",
+    "cross_asset",
+    "volume_profile",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.5,
+          "interval": "1m"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "velocity",
+        "output_key": "velocity",
+        "skip_if": null,
+        "tool": "price_velocity",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 3,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "imbalance",
+        "output_key": "imbalance",
+        "skip_if": null,
+        "tool": "tape_imbalance",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "others",
+        "output_key": "others",
+        "skip_if": null,
+        "tool": "cross_asset",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\n\nCross-asset context: {{others}}\n\nCurrent state: {{summary.summary}}\nLast close: {{quote}}\nPrice velocity: {{velocity}}\nTape imbalance: {{imbalance}}\n\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\n\nPredict the 1-minute move from the last close. Most minutes at quiet hours move less than 2 bps - predict zero unless there's a clear signal. Strong directional tape flow (taker imbalance > 60% one side, recent velocity aligned) may continue for one more minute. Round-trip cost is 20 bps, so only confident forecasts justify trading.",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. Most minutes are unchanged within 2 bps. Only predict larger moves when tape flow, velocity, and cross-asset momentum align clearly.",
+            "criteria": [
+              "down 10 bps or more",
+              "down 4 to 9 bps",
+              "down about 2 bps",
+              "unchanged, within a basis point either way",
+              "up about 2 bps",
+              "up 4 to 9 bps",
+              "up 10 bps or more"
+            ],
+            "values": [
+              -15,
+              -6,
+              -2,
+              0,
+              2,
+              6,
+              15
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.75,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a close outside the quoted band when the minute prints"
+          }
+        }
+      }
+    ]
+  }
+}
