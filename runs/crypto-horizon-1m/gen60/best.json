@@ -1,0 +1,156 @@
+{
+  "name": "crypto-horizon-1m-jev+gen60",
+  "description": "The one-minute forecast asked of a decisions model: the same frozen tools, one paragraph of state, and one typed question - a distribution over basis-point moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium snapping back through it\n- the US cash open (13:30-14:30 UTC), and the first minutes after it\n- a liquidation cascade: taker selling surging on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or extending\n\nMost minutes do not move. A quiet tape at a quiet hour stays within a couple of basis points, and saying so is the right answer.\n\nReading recent price action - mean reversion dominates:\n- After |change_1m_bps| > 3, expect partial retracement or consolidation in the next minute, NOT continuation.\n- After |change_5m_bps| > 8, a pause or snapback is far more likely than extension.\n- The stronger the recent move, the stronger the reversion tendency.\n- Only continue a directional call when there is a clear ongoing driver (funding in <5 minutes, liquidation cascade still active, cross-asset lead).\n- A large recent move without a persistent driver exhausts quickly.\n\nReading the tape (taker_buy_share):\n- Above 0.7 is aggressive buying; below 0.3 is aggressive selling.\n- A single minute of extreme flow (>0.8 or <0.2) often exhausts immediately\u2014the aggressor is done.\n- Sustained imbalance over 3-5 minutes is more reliable than a spike.\n- After heavy one-sided flow in the last bar, expect consolidation or reversal unless the driver persists.\n- A balanced tape (0.4-0.6) after a move signals the move is complete.\n\nYour forecast has two parts: delta_bps (direction and size) and half_width_bps (your uncertainty).\n\nCRITICAL CALIBRATION: BASELINE 1-MINUTE VOLATILITY\n\nCryptocurrency 1-minute moves have baseline volatility of 10-20 bps, NOT 2-4 bps.\n\nAnalysis of failed forecasts shows systematic spread underestimation:\n- Example 1: SOLUSDT moved -9.6 bps; quoted \u00b11.4 bps (off by 8.2 bps)\n- Example 2: ETHUSDT moved -24.5 bps; quoted \u00b12.1 bps (off by 20.6 bps)\n- Example 3: BTCUSDT moved -2.9 bps; quoted \u00b11.2 bps (off by 3.6 bps)\n- Example 4: BTCUSDT moved -5.1 bps; quoted \u00b11.0 bps (off by 6.0 bps)\n- Example 8: SOLUSDT moved +3.4 bps; quoted \u00b12.4 bps (off by 3.8 bps)\n\nEvery failed example used spreads of 1-4 bps when actual realized moves were 3-25 bps. The pattern is universal: spreads were 5-15x too narrow.\n\nMANDATORY SPREAD CALIBRATION - THREE-STEP PROCESS\n\nStep 1: Assess realized recent volatility\nLook at the last 5-10 bars in candlesticks. What is the typical bar range (high - low)?\n- Typical range 5-15 bps: baseline spread 16 bps\n- Typical range 15-30 bps: baseline spread 22 bps  \n- Typical range 30-50 bps: baseline spread 28 bps\n- Typical range >50 bps: baseline spread 35+ bps\n\nStep 2: Apply regime adjustments\nSTART with the baseline from Step 1, then add:\n\nRecent large moves (mean reversion risk):\n- If |change_1m_bps| > 4: add +6 bps\n- If |change_1m_bps| > 8: add +10 bps total (not additional)\n- If |change_5m_bps| > 12: add +6 bps\n- If |change_5m_bps| > 25: add +10 bps total (not additional)\n\nFunding proximity (regime shift risk):\n- 120-240 min to funding: add +4 bps\n- 60-120 min to funding: add +8 bps\n- 30-60 min to funding: add +12 bps\n- <30 min to funding: add +16 bps\n\nHour volatility (US session and thin Asian hours):\n- 0-4 UTC (thin overnight): add +4 bps\n- 13-16 UTC (US open): add +6 bps\n\nTape imbalance (exhaustion vs continuation uncertainty):\n- taker_buy_share <0.3 or >0.7: add +4 bps\n- taker_buy_share <0.2 or >0.8: add +8 bps\n\nStep 3: Apply hard floors - never go below these\n- If any bar in last 5 minutes moved >5 bps: minimum 20 bps\n- If any bar in last 10 minutes moved >10 bps: minimum 25 bps\n- If within 120 minutes of funding: minimum 20 bps\n- If |change_5m_bps| > 15: minimum 22 bps\n- Universal floor for all forecasts: 14 bps (only exception: true dead market with <50 trades/min and all bars <2 bps)\n\nPRACTICAL DECISION TREE\n\nIs the market genuinely dead? (all bars last 10 min <2 bps, volume <50 trades/min, tape 0.45-0.55, >300 min to funding, outside 0-4 and 13-16 UTC)\n\u2192 YES: spread = 14 bps (rare, <2% of minutes)\n\u2192 NO: continue below\n\nDid any bar in last 5 minutes move >5 bps?\n\u2192 YES: spread = 20 bps minimum, proceed to add adjustments\n\u2192 NO: spread = 16 bps minimum, proceed to add adjustments\n\nApply adjustments from Step 2 above. Your final spread will typically be:\n- Quiet normal market: 16-18 bps\n- Normal market with some activity: 18-22 bps\n- Active market or near funding: 22-28 bps\n- Volatile market or very near funding: 28-35 bps\n- Extreme volatility: 35+ bps\n\nCOMMON PATTERNS FROM EXAMPLES\n\nAfter a 5-minute move of 10-40 bps (Examples 1, 2, 8):\n- Expect mean reversion or consolidation\n- Delta should be small (0-3 bps) or counter to the recent move\n- Spread must be 20-28 bps minimum (recent volatility is high)\n\nNear funding (Example 2, 7):\n- Within 120 minutes: spread minimum 20 bps\n- Within 60 minutes: spread minimum 24 bps\n- Direction is unclear unless perp basis is extreme\n- Widen significantly; regime can shift suddenly\n\nNormal quiet market (Examples 3, 4, 6):\n- Recent moves <5 bps, tape balanced, far from funding\n- Delta near zero is correct\n- But spread must still be 16-18 bps minimum (not 1-2 bps)\n- Crypto doesn't sleep; 5-10 bps moves appear without warning\n\nDIRECTION SELECTION\n\nAfter significant recent move (|change_5m| > 10):\n- Default to mean reversion: predict 10-30% retracement opposite direction\n- Only continue the move if there's an active driver still present\n- Examples 1, 2: large recent moves should predict consolidation/reversion\n\nAfter extreme tape in last bar (>0.75 or <0.25):\n- Likely exhaustion: predict consolidation (delta near 0)\n- Widen spread significantly (add 6-10 bps)\n\nNormal conditions (small recent moves, balanced tape):\n- Predict near zero (most minutes don't move)\n- But still use 16-18 bps spread\n\nWHY WIDER SPREADS ARE CORRECT\n\nThe scoring rewards capturing the realized move within your range. \n\nA forecast of 0 \u00b1 20 bps that captures an 8 bps move scores positive skill.\nA forecast of 0 \u00b1 2 bps that misses an 8 bps move by 6 bps scores negative skill.\n\nSpread is not a confidence interval from a probability distribution. Spread is your honest assessment of the range the next bar could plausibly print in. \n\nCryptocurrency 1-minute bars routinely move 5-15 bps even in \"normal\" conditions. Your spread must reflect this reality.\n\nThe examples prove narrow spreads fail:\n- Example 2: \u00b12.1 bps on ETHUSDT, actual moved -24.5 bps \u2192 skill +0.16 (barely positive)\n- Example 3: \u00b11.2 bps on BTCUSDT, actual moved -2.9 bps \u2192 skill -0.26 (negative)\n- Example 4: \u00b11.0 bps on BTCUSDT, actual moved -5.1 bps \u2192 skill -0.18 (negative)\n\nIf Example 3 had used \u00b116 bps instead of \u00b11.2 bps, it would have captured the -2.9 bps move and scored positive skill.\n\nFINAL VERIFICATION BEFORE SUBMITTING\n\n1. Check recent volatility: what is the typical bar range in last 10 minutes?\n2. Set baseline spread to match that range (minimum 16 bps)\n3. Add adjustments for recent moves, funding proximity, hour, tape\n4. Apply hard floors: minimum 20 bps if recent volatility high or near funding\n5. Typical final spreads: 16-22 bps (normal), 22-28 bps (active), 28+ bps (volatile)\n\nIf your spread is below 16 bps, you must verify the market is genuinely dead (which is very rare). When uncertain between two widths, always choose the wider one.\n\nStart every forecast at 16 bps baseline and build up from there. The evidence is clear: narrow spreads (1-5 bps) fail systematically.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "funding_rate",
+    "cross_asset",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.5,
+          "interval": "1m"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 3,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "funding",
+        "output_key": "funding",
+        "skip_if": null,
+        "tool": "funding_rate",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "others",
+        "output_key": "others",
+        "skip_if": null,
+        "tool": "cross_asset",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nState: {{summary.summary}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.",
+            "criteria": [
+              "down 10 bps or more",
+              "down 4 to 9 bps",
+              "down about 2 bps",
+              "unchanged, within a basis point either way",
+              "up about 2 bps",
+              "up 4 to 9 bps",
+              "up 10 bps or more"
+            ],
+            "values": [
+              -15,
+              -6,
+              -2,
+              0,
+              2,
+              6,
+              15
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 1
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a close outside the quoted band when the minute prints"
+          }
+        }
+      }
+    ]
+  }
+}
