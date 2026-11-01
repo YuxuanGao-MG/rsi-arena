@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen94",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Your news assessment remains strong. Half-width calibration has improved but the conditional logic requires better execution.**\n\nRecent pattern (8 examples):\n- News assessment: 8/8 correct (all correctly identified as non-material: market-level commentary, analyst maintains, whale alerts, multi-symbol stories)\n- Directional calls: sound (appropriate deltas, no systematic bias)\n- **Half-width: 7/8 used 2.0 bps, 1/8 used 7.1 bps**\n- **Realized absolute drifts: 16.1, 0.6, 2.1, 3.3, 34.6, 12.8, 5.1, 8.0 bps (median 5.6 bps)**\n- **4/8 forecasts captured the realized price (50% capture rate)**\n- **Average skill: +0.08 (positive but volatile)**\n\n**The prior guidance introduced conditional logic for half-width based on prior volatility, session timing, and story type. You applied it to only 1/8 examples (AVGO). The other 7/8 defaulted to 2 bps despite observable signals requiring wider quotes.**\n\n**Analysis of the 4 misses:**\n\n**1. IWM (+16.1 bps realized, predicted -0.6 bps \u00b1 2.0 bps, missed by 16.7 bps):**\n- 113-symbol market-wide story: \"Oil Crashes 8%, Chip Rout Weighs on Nasdaq 100\"\n- Story explicitly describes market-level moves (\"Nasdaq 100\" in headline, IWM is Russell 2000 ETF)\n- Candlesticks show 45-minute range: 291.55-291.91 = 36 bps (0.12%)\n- Late afternoon (13:52 ET), 127 minutes to close\n- **Should have applied: moderate volatility (15-30 bps range) \u2192 4 bps base + market-level story \u2192 +3 bps + late session \u2192 +1 bps = 8 bps half-width**\n- Used 2 bps, realized outside quote\n\n**2. AVGO (+34.6 bps realized, predicted +0.9 bps \u00b1 7.1 bps, missed by 33.7 bps):**\n- 2-symbol story: \"Broadcom and Nvidia Just Made Morningstar's 'Cheap Stocks to Buy' List\"\n- Candlesticks show **violent 45-minute selloff**: 397.68 \u2192 392.70 = 498 bps (1.27% range)\n- Early session (10:35 ET, 66 minutes in)\n- **You correctly widened to 7.1 bps, but this was insufficient for a stock in a 127 bps decline**\n- The prior 15-min range: 392.39-395.57 = 318 bps (0.81%) \u2192 extremely high volatility\n- **Should have used: 10-12 bps half-width for extreme volatility + opening hour + tech beta**\n- Used 7.1 bps (good instinct, under-sized), realized outside quote but both sides filled for +27 USD\n\n**3. META (+12.8 bps realized, predicted -0.6 bps \u00b1 2.0 bps, missed by 13.3 bps):**\n- Single-symbol analyst maintains/lowers target (non-material)\n- Candlesticks show 45-minute range: 532.15-533.37 = 122 bps (0.23%)\n- Late afternoon (14:32 ET, 87 minutes to close)\n- **Should have applied: moderate-high volatility (23 bps range) \u2192 4-5 bps base + late session \u2192 +1 bps = 5-6 bps half-width**\n- Used 2 bps, realized outside quote\n\n**4. AAPL (+8.0 bps realized, predicted -1.2 bps \u00b1 2.0 bps, missed by 6.8 bps):**\n- Single-symbol analyst opinion on iPhone 18 (forward-looking, not immediate material event)\n- Candlesticks show **violent 45-minute selloff**: 337.86 \u2192 336.33 = 153 bps (0.45% range)\n- Mid-morning (11:24 ET, 115 minutes in)\n- Prior 15-min range: 336.61-337.56 = 95 bps (0.28%) \u2192 high volatility\n- **Should have applied: high volatility (30+ bps range) \u2192 6 bps base + opening hours \u2192 +1 bps = 7 bps half-width**\n- Used 2 bps, realized outside quote but bid filled for +6 USD\n\n**The 4 captures (MDT 0.6 bps, BAC 3.3 bps, AMZN 5.1 bps at 2.1 bps width, AAPL 2.1 bps at 2.0 bps width) were all in calm conditions:**\n- MDT: 45-min range 82.28-82.39 = 11 bps (0.013%) \u2192 very tight \u2713\n- BAC: 45-min range 59.61-59.72 = 11 bps (0.018%) \u2192 very tight \u2713\n- AMZN: 45-min range 236.22-237.06 = 84 bps (0.035%) \u2192 tight-moderate, but late session justified 2 bps \u2713\n- AAPL (Broadcom story): 45-min range 316.36-317.24 = 88 bps (0.028%) \u2192 tight \u2713\n\n**Core problem: You are not executing the conditional logic consistently. The decision tree exists but you default to 2 bps without checking candlesticks.**\n\n**Simplified decision procedure for half-width (use this every time):**\n\n**Step 1: Calculate prior 45-minute high-low range from candlesticks**\n- Look at the 45 minutes before the story timestamp\n- Range in bps = (high - low) / last_close * 10000\n- This is the observable volatility state\n\n**Step 2: Map range to base half-width**\n- Range < 20 bps (< 0.20%): **2 bps base** (tight, stable tape)\n- Range 20-50 bps (0.20-0.50%): **4 bps base** (moderate chop)\n- Range 50-100 bps (0.50-1.00%): **6 bps base** (high volatility)\n- Range > 100 bps (> 1.00%): **10 bps base** (extreme volatility, momentum in play)\n\n**Step 3: Adjust for session timing**\n- First hour (09:30-10:30 ET): **+1 bps** (price discovery, heavy volume)\n- Mid-session (10:30-15:00 ET): **no adjustment**\n- Final 90 minutes (15:00-16:00 ET): **+1 bps** (thinning liquidity, position squaring)\n\n**Step 4: Adjust for story type**\n- Story mentions market-wide moves (\"Nasdaq 100\", \"S&P 500\", \"chip rout\", \"market selloff\"): **+2-3 bps** for beta correlation\n- Multi-symbol story (10+ names) describing broad sector: **+1 bps**\n- Single-symbol or small multi-symbol: **no adjustment**\n\n**Step 5: Final bounds**\n- Minimum half-width: **2 bps** (never go narrower, this is the typical large-cap spread)\n- Maximum half-width for non-material news: **12 bps** (beyond this, stand aside rather than quote)\n\n**Examples reworked with explicit calculation:**\n\n**1. IWM (market story, \"Oil Crashes 8%, Chip Rout\"):**\n- 45-min range: 291.55-291.91 = 36 bps (0.12%)\n- Step 2: 20-50 bps range \u2192 **4 bps base**\n- Step 3: 13:52 ET (127 min to close, final 90 min) \u2192 **+1 bps**\n- Step 4: Market-wide story (headline has \"Nasdaq 100\", \"chip rout\") \u2192 **+3 bps**\n- **Total: 4 + 1 + 3 = 8 bps half-width**\n- Used 2 bps \u2192 miss by 16.7 bps. At 8 bps would still miss but reduce error to 8.1 bps.\n\n**2. AVGO (2-symbol analyst story during violent selloff):**\n- 45-min range: 392.39-397.68 = 529 bps (1.35%)\n- Step 2: > 100 bps range \u2192 **10 bps base**\n- Step 3: 10:35 ET (first hour) \u2192 **+1 bps**\n- Step 4: 2-symbol story, analyst opinion \u2192 **no adjustment**\n- **Total: 10 + 1 = 11 bps half-width**\n- Used 7.1 bps \u2192 miss by 33.7 bps. At 11 bps would still miss but reduce error to 23.6 bps. Both sides filled for +27 USD (the wide quote worked partially).\n\n**3. META (single-symbol analyst maintains):**\n- 45-min range: 532.15-533.37 = 122 bps (0.23%)\n- Step 2: 50-100 bps range \u2192 **6 bps base**\n- Step 3: 14:32 ET (final 90 min) \u2192 **+1 bps**\n- Step 4: Single-symbol analyst \u2192 **no adjustment**\n- **Total: 6 + 1 = 7 bps half-width**\n- Used 2 bps \u2192 miss by 13.3 bps. At 7 bps would capture the 12.8 bps move.\n\n**4. AAPL (single-symbol analyst opinion during selloff):**\n- 45-min range: 336.33-337.86 = 153 bps (0.45%)\n- Step 2: 50-100 bps range \u2192 **6 bps base**\n- Step 3: 11:24 ET (first hour) \u2192 **+1 bps**\n- Step 4: Single-symbol \u2192 **no adjustment**\n- **Total: 6 + 1 = 7 bps half-width**\n- Used 2 bps \u2192 miss by 6.8 bps. At 7 bps would capture the 8.0 bps move.\n\n**5. MDT (single-symbol analyst maintains, calm tape):**\n- 45-min range: 82.28-82.39 = 11 bps (0.013%)\n- Step 2: < 20 bps range \u2192 **2 bps base**\n- Step 3: 12:30 ET (mid-session) \u2192 **no adjustment**\n- Step 4: Single-symbol \u2192 **no adjustment**\n- **Total: 2 bps half-width**\n- Used 2 bps \u2192 captured \u2713\n\n**Key insight: The 45-minute range is the critical input. It tells you whether the stock is in a calm or volatile state independent of the news content.**\n\n**Execution rule:**\n1. **Always** pull candlesticks for the prior 45 minutes\n2. **Always** calculate the high-low range in basis points\n3. **Always** apply the decision tree before setting half-width\n4. **Never** default to 2 bps without checking the range first\n\n**The 2 bps default is correct only when the prior 45-minute range is under 20 bps (0.20%). This was true for 4/8 examples. The other 4/8 had ranges of 36, 529, 122, 153 bps and required 7-11 bps half-widths.**\n\nWhen in doubt, err toward wider: a missed fill costs nothing, but a quote that gets run through costs the error in bps squared. The scoring function rewards you for standing aside when you cannot defend a width, not for taking every trade.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
