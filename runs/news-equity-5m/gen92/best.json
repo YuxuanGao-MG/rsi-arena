@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen92",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nThe harness systematically predicts near-zero with 2 bps width on stories where stocks then move 3-24 bps. Recent outcomes:\n\n- **GOOG \"Anthropic to Pay Nscale $45 Billion for AI Computing Power\"** (3 symbols: AMZN/GOOG/GOOGL, direct AI infrastructure deal): predicted +0.7 bps (2.0 width), actual +5.2 bps \u2014 **AI infrastructure deal moves 5-15 bps, not 1 bps; 2 bps width far too tight**\n- **AAPL \"Apple Stock Hits 52-Week High - Here's Why\"** (3 symbols: AAPL/BABA/BIDU, China greenlights Apple Intelligence with Baidu/Alibaba partnership): predicted +4.2 bps (4.2 width), actual +30.4 bps \u2014 **major regulatory approval + partnership moves 20-40 bps, not 4 bps; headline says \"jumps 4% to new 52-week high\" so tape already moved 400 bps, story published into the move**\n- **CVX \"Texas Pacific Land Partners With Chevron On Project Kilby\"** (2 symbols: CVX/TPL, direct infrastructure partnership): predicted +2.7 bps (5.3 width), actual -10.3 bps \u2014 **infrastructure partnership should move 5-10 bps in sentiment direction, but actual move was opposite; 5 bps width still too tight for 10 bps move**\n- **NVDA \"10 Information Technology Stocks Whale Activity In Today's Session\"** (10 symbols: CRCL/CRWD/INTC/MU/NTSK/NVDA/ORCL/PANW/SNDK/TSM, whale alert scanner): predicted -0.5 bps (2.0 width), actual +3.3 bps \u2014 **whale activity scanner is noise, but 2 bps width too tight for 3 bps drift**\n- **TSLA \"From Nvidia's 'Godfather of AI' to Palantir's 'Messi of AI': Dan Ives' Stock Calls\"** (5 symbols: AAPL/MSFT/NVDA/PLTR/TSLA, analyst retrospective): predicted -2.9 bps (2.9 width), actual -131.8 bps \u2014 **retrospective analyst profile is noise, but TSLA dropped 132 bps on something else (tape shows 430 -> 411 drop from 13:32 to 14:16, -450 bps over 44 minutes); this is a massive exogenous move unrelated to the headline**\n- **CVX \"Don't Be Fooled By The S&P 500's Record Run\"** (9 symbols: BZH/CVX/DJT/LEN/NOC/OPEN/RAAX/RTX/XOM, Wall Street veteran commentary on concentration risk): predicted -1.5 bps (2.0 width), actual -14.9 bps \u2014 **market commentary is noise, but 2 bps width too tight for 15 bps drift**\n- **QQQ \"Small Caps Near Record Highs, Robinhood Rallies 12%: Stock Market Today\"** (96+ symbols, descriptive market recap): predicted -0.6 bps (2.0 width), actual +5.9 bps \u2014 **market recap is noise, but 2 bps width too tight for 6 bps drift**\n- **XLK \"$100 Invested In State Street Technology Select Sector SPDR ETF 20 Years Ago\"** (1 symbol, retrospective performance listicle): predicted -0.1 bps (2.0 width), actual -6.7 bps \u2014 **retrospective listicle is noise, but 2 bps width too tight for 7 bps drift**\n\n---\n\n## **What These Reveal**\n\n1. **2 bps width is systematically too tight.** Even on correct near-zero calls (GOOG +5.2 bps, NVDA +3.3 bps, QQQ +5.9 bps, XLK -6.7 bps), the realised move exceeds 2 bps and the quote gets run over. **Minimum width should be 4-6 bps on retrospective listicles and whale scanners; 6-10 bps on market commentary and market recaps; 8-12 bps on infrastructure deals.**\n\n2. **AI infrastructure deals (3 symbols, specific $45B Anthropic-Nscale deal) move the named companies 5-15 bps, not 0-2 bps.** GOOG moved +5.2 bps on \"Anthropic to Pay Nscale $45 Billion for AI Computing Power\" (3 symbols: AMZN/GOOG/GOOGL). **Predict 5-15 bps in sentiment direction with 8-12 bps width on AI infrastructure deals.**\n\n3. **When the headline says the stock \"jumps 4%\" or \"hits 52-week high,\" the tape has already moved and the story is published into the move.** AAPL moved +30.4 bps after \"Apple Stock Hits 52-Week High - Here's Why\" (headline says \"jumps 4% to new 52-week high\"). **Check candlesticks for 100+ bps prior move; if headline describes a move already underway, predict 5-20 bps continuation or reversal depending on tape momentum, width 12-18 bps.**\n\n4. **Infrastructure partnerships (2-3 symbols, direct partnership announcement) move the named companies 5-10 bps, but direction can be opposite to naive sentiment.** CVX moved -10.3 bps on \"Texas Pacific Land Partners With Chevron On Project Kilby\" (2 symbols: CVX/TPL, direct infrastructure partnership). **Predict 5-10 bps in sentiment direction (usually positive) with 8-12 bps width on infrastructure partnerships, but widen to 10-15 bps if tape shows opposite momentum.**\n\n5. **Whale activity scanners (10 symbols, \"Whale Activity In Today's Session\" with options flow scanner) are noise, but stocks drift 3-6 bps.** NVDA moved +3.3 bps on \"10 Information Technology Stocks Whale Activity In Today's Session\" (10 symbols). **Predict 0 bps with 4-6 bps width on whale activity scanners.**\n\n6. **Analyst retrospectives (\"Dan Ives' Stock Calls That Defined a Bull Market\") are noise, but stocks can have massive exogenous moves (100+ bps) unrelated to the headline.** TSLA moved -131.8 bps on \"From Nvidia's 'Godfather of AI' to Palantir's 'Messi of AI': Dan Ives' Stock Calls\" (tape shows 430 -> 411 drop from 13:32 to 14:16, -450 bps over 44 minutes before the headline). **Always check candlesticks for prior moves. If tape shows 100+ bps move in last 30-60 minutes, the headline is likely noise and the move is exogenous. Predict 0 bps with 12-18 bps width to guard against continuation of exogenous move.**\n\n7. **Market commentary (9 symbols, \"Wall Street Veteran Says The Real American Growth Story Is Elsewhere\") is noise, but stocks drift 10-20 bps randomly.** CVX moved -14.9 bps on \"Don't Be Fooled By The S&P 500's Record Run\" (9 symbols: BZH/CVX/DJT/LEN/NOC/OPEN/RAAX/RTX/XOM). **Predict 0 bps with 8-12 bps width on market commentary (9-20 symbols).**\n\n8. **Descriptive market recaps (50+ symbols, \"Stock Market Today\") cause 5-10 bps random drift in individual names.** QQQ moved +5.9 bps on \"Small Caps Near Record Highs, Robinhood Rallies 12%: Stock Market Today\" (96+ symbols). **Predict 0 bps with 6-10 bps width on descriptive market recaps (50+ symbols).**\n\n9. **Retrospective performance listicles (single symbol, \"$100 Invested X Years Ago Would Be Worth This Much Today\") are noise, but stocks drift 5-10 bps.** XLK moved -6.7 bps on \"$100 Invested In State Street Technology Select Sector SPDR ETF 20 Years Ago Would Be Worth This Much Today\". **Predict 0 bps with 5-8 bps width on retrospective performance listicles.**\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 60 minutes, 1-minute bars\n   - **Has the stock moved 100+ bps in one direction over the last 30-60 minutes?**\n   - **Does the headline describe a price move (\"jumps 4%,\" \"hits 52-week high,\" \"rallies 12%\")?**\n   - If yes, the headline is published into the move. Tape shows the move already happened (AAPL 324.06 -> 325.81 over 45 min before \"Apple Stock Hits 52-Week High\"). Predict 5-20 bps continuation or reversal depending on tape momentum, width 12-18 bps.\n   - **Has the stock moved 100+ bps and the headline is unrelated noise (analyst retrospective, listicle)?**\n   - If yes, the move is exogenous (TSLA 430 -> 411 over 44 min before \"Dan Ives' Stock Calls\"). Predict 0 bps with 12-18 bps width to guard against continuation.\n   - **Is the headline sentiment opposite to the prior move direction?**\n   - If yes and prior move is 50+ bps, the headline may reverse it. Predict 10-20 bps reversal with 10-15 bps width.\n\n### **2. Classify the story's relevance to your symbol**\n\n   **A. Direct catalyst (analyst call with PT change, guidance, deal, earnings, clinical trial, regulatory approval \u2014 specifically about this name):**\n   - The story is about this company\n   - Examples: analyst upgrade/downgrade, earnings beat/miss, M&A announcement, FDA approval, **major regulatory approval (China greenlights Apple Intelligence)**\n   - **Check the tape:**\n     - **If the headline describes a price move already underway (\"jumps 4%,\" \"hits 52-week high\") AND tape shows 100+ bps move over last 30-60 min, the story is published into the move \u2192 predict 5-20 bps continuation or reversal depending on momentum, width 12-18 bps**\n     - **If the stock is flat or drifting <20 bps over the last 30 min, the call is fresh news \u2192 predict 10-25 bps in catalyst direction, width 10-15 bps (major regulatory approval: 20-40 bps, width 15-20 bps)**\n     - **If the stock has already moved 100+ bps in the catalyst direction over the last 30-60 min and headline does not describe the move, the call is published into the move \u2192 predict 0-5 bps continuation or reversal, width 10-15 bps**\n   - Example: AAPL on \"Apple Stock Hits 52-Week High - Here's Why\" (China greenlights Apple Intelligence, headline says \"jumps 4%\", tape shows 324.06 -> 325.81 over 45 min, +54 bps before headline) should have been predicted at +10 to +20 bps continuation, width 12-18 bps (actual +30.4 bps)\n   \n   **B. AI infrastructure deal (3 symbols, specific multi-billion dollar Anthropic/OpenAI/hyperscaler deal for compute/data centers):**\n   - Examples: \"Anthropic to Pay Nscale $45 Billion for AI Computing Power\" (AMZN, GOOG, GOOGL)\n   - **These move the named companies 5-15 bps when the tape is flat**\n   - **Check tape direction over last 30 minutes:**\n     - If tape flat and story is fresh, predict 5-15 bps in sentiment direction (positive for compute provider, positive for AI company investor), width 8-12 bps\n     - If tape moved 50+ bps opposite to headline sentiment over last 30 min, predict 10-20 bps reversal, width 10-15 bps\n   - Example: GOOG moved +5.2 bps on \"Anthropic to Pay Nscale $45 Billion for AI Computing Power\" (should have predicted +5 to +15 bps, width 10-12 bps, not +0.7 bps with 2.0 bps width)\n   \n   **C. Direct company infrastructure partnership (2-3 symbols, specific partnership announcement for data center, land, water, power infrastructure):**\n   - Example: \"Texas Pacific Land Partners With Chevron On Project Kilby To Supply Land And Brackish Water For Giga-Scale Power And Data Center Development\" (2 symbols: CVX, TPL)\n   - **Infrastructure partnerships move the named companies 5-10 bps, but direction can be opposite to naive sentiment**\n   - Predict 5-10 bps in sentiment direction (usually positive for infrastructure partner), width 8-12 bps\n   - **If tape shows opposite momentum (moved 20+ bps opposite in last 15 min), widen to 10-15 bps and consider 0 bps delta**\n   - Example: CVX moved -10.3 bps on \"Texas Pacific Land Partners With Chevron On Project Kilby\" (predicted +2.7 bps, width 5.3 bps; should have predicted +5 to +10 bps, width 10-12 bps, or recognized opposite tape momentum and predicted 0 bps with 12-15 bps width)\n   \n   **D. Whale activity scanner (10 symbols, \"Whale Activity In Today's Session\" or \"X Stocks With Large Options Activity\"):**\n   - Example: \"10 Information Technology Stocks Whale Activity In Today's Session\" (10 symbols: CRCL, CRWD, INTC, MU, NTSK, NVDA, ORCL, PANW, SNDK, TSM)\n   - **Whale activity scanners are automated noise. Stocks drift 3-6 bps randomly.**\n   - Predict 0 bps with 4-6 bps width\n   - Example: NVDA moved +3.3 bps on whale activity scanner (should have predicted 0 bps, width 5-6 bps, not -0.5 bps with 2.0 bps width)\n   \n   **E. Analyst retrospective (5 symbols, profile of analyst's past calls, not a new call):**\n   - Example: \"From Nvidia's 'Godfather of AI' to Palantir's 'Messi of AI': Dan Ives' Stock Calls That Defined a Bull Market\" (5 symbols: AAPL, MSFT, NVDA, PLTR, TSLA)\n   - **Analyst retrospectives are noise. But stocks can have massive exogenous moves (100+ bps) unrelated to the headline.**\n   - **Always check candlesticks. If tape shows 100+ bps move in last 30-60 minutes, the move is exogenous, not driven by the headline.**\n   - Predict 0 bps with 12-18 bps width to guard against continuation of exogenous move\n   - Example: TSLA moved -131.8 bps on \"Dan Ives' Stock Calls\" (tape shows 430 -> 411 drop from 13:32 to 14:16, -450 bps over 44 minutes before headline at 14:16; should have predicted 0 bps, width 15-18 bps to guard against exogenous continuation)\n   \n   **F. Market commentary (9-20 symbols, Wall Street veteran/economist view on broad market trends, concentration risk, sector rotation):**\n   - Example: \"Don't Be Fooled By The S&P 500's Record Run\u2014 One Wall Street Veteran Says The Real American Growth Story Is Elsewhere\" (9 symbols: BZH, CVX, DJT, LEN, NOC, OPEN, RAAX, RTX, XOM)\n   - **Market commentary is noise. Individual names drift 10-20 bps randomly.**\n   - Predict 0 bps with 8-12 bps width\n   - Example: CVX moved -14.9 bps on market commentary (should have predicted 0 bps, width 10-12 bps, not -1.5 bps with 2.0 bps width)\n   \n   **G. Descriptive market recap (50+ symbols, \"Stock Market Today,\" describes current intraday moves across market):**\n   - Example: \"Small Caps Near Record Highs, Robinhood Rallies 12%: Stock Market Today\" (96+ symbols)\n   - **These headlines describe market-wide moves, not stock-specific catalysts. Individual names move 5-10 bps randomly.**\n   - Predict 0 bps with 6-10 bps width\n   - Example: QQQ moved +5.9 bps on \"Stock Market Today\" (should have predicted 0 bps, width 8-10 bps, not -0.6 bps with 2.0 bps width)\n   \n   **H. Retrospective performance listicle (single symbol, \"Here's How Much $100 Invested...\" or \"$X Invested Y Years Ago\"):**\n   - Example: \"$100 Invested In State Street Technology Select Sector SPDR ETF 20 Years Ago Would Be Worth This Much Today\"\n   - **These are noise. Stocks drift 5-10 bps randomly.**\n   - Predict 0 bps with 5-8 bps width\n   - Example: XLK moved -6.7 bps on retrospective listicle (should have predicted 0 bps, width 6-8 bps, not -0.1 bps with 2.0 bps width)\n\n### **3. Match forecast to situation**\n\n   **If direct catalyst AND headline describes price move (\"jumps 4%,\" \"hits 52-week high\") AND tape shows 100+ bps move over last 30-60 min:**\n   - The story is published into the move. Tape shows the move already happened.\n   - Predict 5-20 bps continuation or reversal depending on tape momentum, width 12-18 bps\n   - Example: AAPL on \"Apple Stock Hits 52-Week High - Here's Why\" (headline says \"jumps 4%\", tape shows +54 bps over 45 min before headline) should have been predicted at +10 to +20 bps continuation, width 12-18 bps (actual +30.4 bps)\n   \n   **If direct catalyst AND tape flat or <20 bps drift over last 30 min:**\n   - Fresh news\n   - Upgrade/Outperform/raised PT \u2192 predict +10 to +25 bps, width 10-15 bps\n   - Downgrade/lowered PT \u2192 predict -10 to -25 bps, width 10-15 bps\n   - Major regulatory approval (China greenlights Apple Intelligence) \u2192 predict +20 to +40 bps, width 15-20 bps\n   - Earnings beat \u2192 predict +15 to +30 bps, width 12-18 bps\n   - Earnings miss \u2192 predict -15 to -30 bps, width 12-18 bps\n   \n   **If direct catalyst AND tape shows 100+ bps move in catalyst direction over last 30-60 min AND headline does not describe the move:**\n   - The catalyst is published into the move; the move is likely done or reversing\n   - Predict 0-5 bps continuation or -5 to 0 bps reversal, width 10-15 bps\n   \n   **If AI infrastructure deal (3 symbols) AND tape flat over last 30 min:**\n   - Predict 5-15 bps in sentiment direction (positive for compute provider, positive for AI company investor), width 8-12 bps\n   - Example: GOOG on \"Anthropic to Pay Nscale $45 Billion for AI Computing Power\" should have been predicted at +5 to +15 bps, width 10-12 bps (actual +5.2 bps)\n   \n   **If AI infrastructure deal (3 symbols) AND tape moved 50+ bps opposite to headline sentiment over last 30 min:**\n   - The headline may reverse the prior move\n   - Predict 10-20 bps reversal, width 10-15 bps\n   \n   **If direct company infrastructure partnership (2-3 symbols):**\n   - Predict 5-10 bps in sentiment direction (usually positive), width 8-12 bps\n   - **If tape shows opposite momentum (moved 20+ bps opposite in last 15 min), widen to 10-15 bps and consider 0 bps delta**\n   - Example: CVX on \"Texas Pacific Land Partners With Chevron On Project Kilby\" should have been predicted at +5 to +10 bps, width 10-12 bps (actual -10.3 bps, so opposite tape momentum was present; better forecast: 0 bps, width 12-15 bps)\n   \n   **If whale activity scanner (10 symbols):**\n   - Predict 0 bps with 4-6 bps width\n   - Example: NVDA on whale activity scanner should have been predicted at 0 bps, width 5-6 bps (actual +3.3 bps drift)\n   \n   **If analyst retrospective (5 symbols):**\n   - **Check candlesticks. If tape shows 100+ bps move in last 30-60 minutes, the move is exogenous.**\n   - Predict 0 bps with 12-18 bps width to guard against continuation of exogenous move\n   - Example: TSLA on \"Dan Ives' Stock Calls\" (tape shows -450 bps over 44 min before headline) should have been predicted at 0 bps, width 15-18 bps (actual -131.8 bps continuation)\n   \n   **If market commentary (9-20 symbols):**\n   - Predict 0 bps with 8-12 bps width\n   - Example: CVX on \"Don't Be Fooled By The S&P 500's Record Run\" should have been predicted at 0 bps, width 10-12 bps (actual -14.9 bps drift)\n   \n   **If descriptive market recap (50+ symbols):**\n   - Predict 0 bps with 6-10 bps width\n   - Example: QQQ on \"Stock Market Today\" should have been predicted at 0 bps, width 8-10 bps (actual +5.9 bps drift)\n   \n   **If retrospective performance listicle (single symbol):**\n   - Predict 0 bps with 5-8 bps width\n   - Example: XLK on \"$100 Invested X Years Ago\" should have been predicted at 0 bps, width 6-8 bps (actual -6.7 bps drift)\n\n### **4. Width is insurance against confident mistakes**\n\n   - **2 bps: NEVER USE.** Even on correct near-zero calls, stocks drift 3-10 bps and 2 bps width gets run over.\n   - **4-6 bps: whale activity scanners (10 symbols), confirmed non-events**\n   - **5-8 bps: retrospective performance listicles (single symbol)**\n   - **6-10 bps: descriptive market recaps (50+ symbols)**\n   - **8-12 bps: AI infrastructure deals (3 symbols), direct company infrastructure partnerships (2-3 symbols), market commentary (9-20 symbols)**\n   - **10-15 bps: direct catalyst (analyst call, upgrade/downgrade), reversal after 50+ bps prior move, infrastructure partnerships with opposite tape momentum**\n   - **12-18 bps: earnings beat/miss, major M&A, direct catalyst published into 100+ bps prior move, analyst retrospective with 100+ bps exogenous move**\n   - **15-20 bps: major regulatory approval (China greenlights Apple Intelligence)**\n   \n   **When in doubt, go wider.** A correct direction with 12 bps width beats zero-with-4bps that misses by 10.\n\n### **5. Magnitude calibration by story type**\n\n   - **Whale activity scanner (10 symbols):** 0 \u00b1 3 bps, width 4-6 bps\n   - **Retrospective performance listicle (single symbol):** 0 \u00b1 5 bps, width 5-8 bps\n   - **Descriptive market recap (50+ symbols):** 0 \u00b1 6 bps, width 6-10 bps\n   - **Market commentary (9-20 symbols):** 0 \u00b1 12 bps, width 8-12 bps\n   - **Analyst retrospective (5 symbols, with 100+ bps exogenous move):** 0 \u00b1 15 bps continuation, width 12-18 bps\n   - **AI infrastructure deal (3 symbols), tape flat:** 5-15 bps in sentiment direction, width 8-12 bps\n   - **Direct company infrastructure partnership (2-3 symbols):** 5-10 bps in sentiment direction, width 8-12 bps (or 0 bps with 10-15 bps width if opposite tape momentum)\n   - **AI infrastructure deal (3 symbols), after 50+ bps opposite move:** 10-20 bps reversal, width 10-15 bps\n   - **Analyst call, fresh (stock flat or <20 bps drift):** 10-25 bps in call direction, width 10-15 bps\n   - **Direct catalyst published into 100+ bps prior move (headline describes move):** 5-20 bps continuation or reversal, width 12-18 bps\n   - **Major regulatory approval (China greenlights Apple Intelligence), tape flat:** 20-40 bps in approval direction, width 15-20 bps\n   - **Earnings beat/miss:** 15-30 bps in result direction, width 12-18 bps\n\n### **6. Special case: Tape check for prior moves and headline describing moves**\n\n   Always pull candlesticks for the last 60 minutes. Ask:\n   - **Does the headline describe a price move (\"jumps 4%,\" \"hits 52-week high,\" \"rallies 12%\")?**\n   - **Has the stock moved 100+ bps in one direction over the last 30-60 minutes?**\n   - If yes to both, the headline is published into the move. Predict 5-20 bps continuation or reversal depending on tape momentum, width 12-18 bps.\n   - **Has the stock moved 100+ bps and the headline is unrelated noise (analyst retrospective, listicle)?**\n   - If yes, the move is exogenous. Predict 0 bps with 12-18 bps width to guard against continuation.\n   - **Is the headline sentiment opposite to the prior move direction (moved 50+ bps)?**\n   - If yes, the headline may reverse the prior move. Predict 10-20 bps reversal with 10-15 bps width.\n\n### **7. Special case: Symbol count matters**\n\n   - **2-3 symbols (focused story):** Each named symbol is highly relevant. AI infrastructure deals move 5-15 bps. Direct infrastructure partnerships move 5-10 bps.\n   - **5 symbols (analyst retrospective):** Check tape for exogenous moves. Predict 0 bps with 12-18 bps width if tape shows 100+ bps move.\n   - **9-20 symbols (market commentary):** Individual names move 10-20 bps randomly. Predict 0 bps with 8-12 bps width.\n   - **50+ symbols (market-wide recap):** Individual names move 5-10 bps randomly. Predict 0 bps with 6-10 bps width.\n\n### **8. Cross-check before finalizing**\n\n   - **Did I check the tape for prior moves?** (100+ bps move before the headline may be exogenous; 50+ bps move may reverse on opposite-sentiment news)\n   - **Does the headline describe a price move?** (\"jumps 4%,\" \"hits 52-week high\" means story is published into the move)\n   - **Is my magnitude plausible for this story type?** (AI infrastructure deal moves 5-15 bps, not 1 bps; major regulatory approval moves 20-40 bps, not 4 bps; infrastructure partnership moves 5-10 bps, not 0-2 bps)\n   - **Is my width wide enough to guard against a 5-10 bps miss?** (4-6 bps minimum for whale scanners; 5-8 bps for listicles; 6-10 bps for market recaps; 8-12 bps for infrastructure deals; 12-18 bps for catalysts published into moves)\n   - **Did I use 2 bps width?** (If yes, STOP. 2 bps width is always wrong. Widen to at least 4-6 bps.)\n   - **How many symbols are named?** (2-3: focused story, each symbol highly relevant; 5: check for exogenous moves; 9-20: market commentary; 50+: market-wide noise)\n   - **Is this a descriptive headline or a forward-looking catalyst?** (Descriptive: 0-10 bps; Forward-looking: 5-40 bps)\n   - **Is there an exogenous move underway (100+ bps in last 30-60 min) and the headline is noise?** (If yes, predict 0 bps with 12-18 bps width to guard against continuation)\n\n---\n\n## **The pattern is clear:**\n\nThe harness systematically uses 2 bps width, which is always too tight. Even on correct near-zero calls (GOOG +5.2 bps, NVDA +3.3 bps, QQQ +5.9 bps), the realised move exceeds 2 bps and the quote gets run over. **Never use 2 bps width. Minimum width is 4-6 bps on whale scanners and confirmed non-events; 5-8 bps on listicles; 6-10 bps on market recaps; 8-12 b",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
