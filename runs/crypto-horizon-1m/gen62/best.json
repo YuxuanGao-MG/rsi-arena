@@ -1,0 +1,156 @@
+{
+  "name": "crypto-horizon-1m-jev+gen62",
+  "description": "The one-minute forecast asked of a decisions model: the same frozen tools, one paragraph of state, and one typed question - a distribution over basis-point moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium snapping back through it\n- the US cash open (13:30-14:30 UTC), and the first minutes after it\n- a liquidation cascade: taker selling surging on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or extending\n\nMost minutes do not move. A quiet tape at a quiet hour stays within a couple of basis points, and saying so is the right answer.\n\nReading recent price action - critical patterns:\n- **A large 5-minute move (|change_5m_bps| > 7) creates high uncertainty for the next minute.** The move may extend, pause, or reverse. This is a volatility signal, not a directional one.\n- **After any large recent move, outcomes are widely dispersed.** A +13 bp one-minute bar was followed by -23 bp. A -15 bp five-minute move was followed by -9 bp. A +7 bp five-minute move was followed by -3 bp. A +10 bp five-minute move was followed by -3 bp.\n- Mean reversion after a spike is common but not reliable. A move can pause, reverse, or accelerate.\n- Sustained multi-minute flow imbalance (3-5 bars) with accelerating price suggests continuation, but this is rare.\n- When change_1m_bps is large (\u00b14 bps or more), check change_5m_bps: if change_5m_bps is small, it's an isolated spike; if large and same-sign, it may be a trend.\n\nReading the tape (taker_buy_share):\n- Above 0.7 is aggressive buying; below 0.3 is aggressive selling\n- A single-minute extreme (>0.8 or <0.2) in isolation often exhausts\n- Extreme selling (<0.1) for multiple bars can mark either exhaustion or the middle of a cascade\n- Balanced flow (0.4-0.6) after a large move suggests the move is pausing\n\nYour forecast has two parts: delta_bps (direction and size) and half_width_bps (your uncertainty).\n\n**Critical calibration: half-width protects you from being run over.**\n\nThe examples show the harness was systematically run over after volatile moves:\n- change_5m = +55 bp, change_1m = +13 bp \u2192 next bar -23 bp (quoted 9 bp width: run over)\n- change_5m = -15 bp \u2192 next bar -0.4 bp (quoted 4 bp width: barely held)\n- change_5m = +7 bp \u2192 next bar -1.4 bp (quoted 1 bp width: run over)\n- change_5m = -8 bp \u2192 next bar -9 bp (quoted 2 bp width: run over)\n- change_5m = +7 bp \u2192 next bar -4 bp (quoted 1 bp width: run over)\n- change_5m = +10 bp \u2192 next bar -3 bp (quoted 1 bp width: run over)\n- change_5m = +6 bp \u2192 next bar +4 bp (quoted 1 bp width: run over)\n\n**The pattern is clear: 1-2 bp width after |change_5m| > 7 or |change_1m| > 4 gets run over.**\n\n**Width rules by recent volatility (these are minimums):**\n\n- **|change_5m_bps| > 12 or |change_1m_bps| > 8: half_width \u2265 6 bps**\n- **|change_5m_bps| 8-12 or |change_1m_bps| 5-8: half_width \u2265 5 bps**\n- **|change_5m_bps| 5-8 or |change_1m_bps| 3-5: half_width \u2265 4 bps**\n- **|change_5m_bps| 3-5 or |change_1m_bps| 2-3: half_width 3 bps**\n- **|change_5m_bps| < 3 and |change_1m_bps| < 2, balanced flow, no catalysts: half_width 2 bps**\n\nUse the larger of the two volatility measures to set width. After a +13 bp one-minute bar or a +55 bp five-minute move, quote 6-8 bp width minimum.\n\n**Width and direction are independent.** You may forecast -3 bp or +4 bp directionally, but after a large recent move you still quote 5-6 bp width. The width is not confidence in your direction; it's protection against the outcome distribution being wide.\n\n**Directional signals (but always with appropriate width for recent volatility):**\n- Sustained 3-5 minute buying (taker_buy_share > 0.65) with rising prices: modest positive delta\n- Extreme selling (<0.1) for 2+ bars: negative delta possible, but crash can continue or bounce\n- Single-bar spike with no multi-bar trend: slight mean-reversion bias\n- Funding settlement approaching (<10 min) with perp premium: delta toward premium collapse\n- Mixed or unclear signals: delta near zero\n\n**Most minutes: stand aside.** Round-trip costs are ~20 bps. Only forecast a tight spread when you expect a move large and likely enough to justify trading. When recent volatility is high and you cannot confidently call direction, quote delta near zero with wide half-width (4-6+ bps). A quote that doesn't fill scores the same as standing aside, and that's often optimal.\n\n**The single most important rule from the feedback: After |change_5m| > 7 or |change_1m| > 4, never quote less than 4 bp half-width. After |change_5m| > 12 or |change_1m| > 8, never quote less than 6 bp half-width.**\n\nSkill comes from:\n1. **Quoting 4-6+ bp width after large moves** - this is what the harness was failing to do\n2. Staying silent (delta near zero, 2-3 bp width) when nothing will happen\n3. Calling direction on rare clear signals, but still with width scaled to recent volatility\n4. Recognizing when uncertainty is high and standing aside with a wide quote that won't fill\n\nEvery example that got run over used 1-2 bp width after a volatile period. Every example that held used wider spreads. The fix is mechanical: width scales with |change_5m| and |change_1m|, independent of your directional view.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "funding_rate",
+    "cross_asset",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.5,
+          "interval": "1m"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 3,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "funding",
+        "output_key": "funding",
+        "skip_if": null,
+        "tool": "funding_rate",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "others",
+        "output_key": "others",
+        "skip_if": null,
+        "tool": "cross_asset",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nState: {{summary.summary}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.",
+            "criteria": [
+              "down 10 bps or more",
+              "down 4 to 9 bps",
+              "down about 2 bps",
+              "unchanged, within a basis point either way",
+              "up about 2 bps",
+              "up 4 to 9 bps",
+              "up 10 bps or more"
+            ],
+            "values": [
+              -15,
+              -6,
+              -2,
+              0,
+              2,
+              6,
+              15
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 1
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a close outside the quoted band when the minute prints"
+          }
+        }
+      }
+    ]
+  }
+}
