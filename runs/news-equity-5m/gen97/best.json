@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen97",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Your news assessment is strong and directional intuition is sound. Half-width calibration requires observable volatility measurement.**\n\n**The core issue: Half-width is defense against the noise already visible in the tape. It must be set to the measured volatility envelope, not to confidence in the forecast.**\n\n**Half-width decision framework:**\n\n**Step 1: Measure prior 15-minute range**\nLook at candlesticks for the 15 minutes before the story timestamp.\n- Range in bps = ((highest high - lowest low) / last close) \u00d7 10000\n- Use the highest high and lowest low across all 15 bars, not individual bar ranges\n\n**Step 2: Map range to base half-width**\n- Range < 20 bps (0.20%): 2 bps base (tight, stable tape)\n- Range 20-50 bps (0.20-0.50%): 4 bps base (moderate volatility)\n- Range 50-100 bps (0.50-1.00%): 6 bps base (elevated volatility)\n- Range 100-200 bps (1.00-2.00%): 9 bps base (high volatility)\n- Range 200-400 bps (2.00-4.00%): 12 bps base (very high volatility)\n- Range > 400 bps (4.00%+): 15 bps base (extreme volatility)\n\n**Step 3: Adjust for market context**\n\nAdd +3 to +5 bps if the story describes broad market moves AND:\n- Symbol is an index ETF (SPY, QQQ, IWM, DIA, XLK) tracking that index, OR\n- Symbol is a mega-cap constituent (AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA) AND story explicitly mentions market-wide action (\"Nasdaq 100 falls\", \"S&P 500 rallies\", \"tech selloff\")\n\nAdd +2 bps during:\n- First 30 minutes of trading (09:30-10:00 ET): opening volatility\n- Final 60 minutes of trading (15:00-16:00 ET): position squaring\n\n**Step 4: Apply minimum by symbol type**\n- Large-cap mega-cap (AAPL, MSFT, GOOGL, etc.): 2 bps floor\n- Mid-cap or volatile sector: 3 bps floor\n- Small-cap ETF or thin name: 4 bps floor\n\n**Examples showing correct measurement:**\n\nBAC (Example 1): 15-min range 56.80 (high at 13:30) - 56.11 (low at 13:40) = 69 bps \u2192 6 bps base. Mid-session. **Recommended: 6 bps** (you used 2.0 bps, missed by 33.2 bps but both sides hit for +19 USD profit)\n\nGOOGL (Example 2): 15-min range 321.51 (high at 16:18) - 320.52 (low at 16:10) = 310 bps \u2192 12 bps base. Late session +2 bps. **Recommended: 14 bps** (you used 2.0 bps, captured correctly at -0.3 bps inside quote)\n\nKO (Example 3): 15-min range 89.78 (high at 15:18) - 88.71 (low at 15:54) = 1204 bps \u2192 15 bps base. Late session +2 bps. **Recommended: 17 bps** (you used 13.8 bps, missed by 26.1 bps on -12.4 bps move)\n\nGOOGL (Example 4): 15-min range 346.32 (high at 13:34) - 343.77 (low at 13:40) = 740 bps \u2192 15 bps base. Mid-session. **Recommended: 15 bps** (you used 2.0 bps, missed by 9.6 bps on +9.1 bps move)\n\nSPY (Example 5): 15-min range 746.30 (high at 13:34) - 742.66 (low at 13:45) = 490 bps \u2192 15 bps base. Opening hour +2 bps. **Recommended: 17 bps** (you used 2.0 bps but both sides hit for +19 USD profit)\n\nMSFT (Example 6): 15-min range 397.63 (high at 15:33) - 395.00 (low at 14:50) = 662 bps \u2192 15 bps base. Mid-session. **Recommended: 15 bps** (you used 2.0 bps, missed by 16.0 bps on +14.3 bps move)\n\nQQQ (Example 7): 15-min range 725.40 (high at 17:51) - 725.03 (low at 18:24) = 51 bps \u2192 4 bps base. Late session +2 bps. **Recommended: 6 bps** (you used 2.0 bps, missed by 3.2 bps on -4.4 bps move)\n\nAAPL (Example 8): 15-min range 326.54 (high at 15:57) - 324.03 (low at 16:34) = 774 bps \u2192 15 bps base. Late session +2 bps. Story says \"Tech Selloff\" + symbol is AAPL (tech stock) \u2192 +4 bps. **Recommended: 21 bps** (you used 5.2 bps, missed by 22.8 bps on +17.6 bps move)\n\n**Key insight from Examples 1 and 5:** Even with undersized width (2.0 bps when 6-17 bps was required), both sides hit for round-trip profit when volatility is high. This shows that narrow quotes in volatile tape capture round trips but score poorly on skill. The goal is both: set width to measured volatility to capture skill, and let the volatility itself deliver the round trips.\n\n**The prior 15-minute range is visible in candlesticks. Measure it first, before choosing half-width. A 2 bps width is correct only when the prior range is under 20 bps. In 7 of your 8 examples, the range was 51-1204 bps, requiring 4-21 bps widths.**\n\n**Half-width is not uncertainty about the forecast. It is defense against the noise already visible in the tape. Price wanders randomly within recent volatility even when news is immaterial. Set width to the observable noise level, measured as the prior 15-minute high-low range in basis points, then mapped through the framework above.**\n\nConfidence remains your assessment of news materiality. Delta remains your directional call. Half-width is the measured volatility envelope. These are three separate quantities.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
