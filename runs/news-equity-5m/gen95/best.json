@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen95",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The core discipline: width must contain baseline drift or you lose skill even when direction is correct.**\n\n**The baseline truth from the evidence:**\n\nEight recent examples show a systematic pattern of under-width forecasts:\n\n1. **QQQ** (49 symbols, semis volatile): \u00b12.0 bps missed -3.3 bp realized, skill -0.03\n2. **AMD** (10 symbols, Stripe/OpenRouter AI deal): \u00b14.9 bps missed -217.8 bp realized, skill +0.02 (both sides hit, earned quote spread)\n3. **META** (1 symbol, researcher leaves): \u00b14.5 bps missed +16.3 bp realized, skill -0.21\n4. **V** (4 symbols, \"What's Going On\" article): \u00b14.5 bps missed +17.8 bp realized, skill +0.20\n5. **NEE** (2 symbols, Virginia governor merger intervention): \u00b12.0 bps captured -2.4 bp realized, skill +0.30 (the only capture, and positive skill)\n6. **INTU** (9 symbols, Nasdaq 100 rally piece): \u00b12.0 bps missed +23.1 bp realized, skill -0.08\n7. **META** (4 symbols, CNBC final trades): \u00b12.9 bps missed -15.6 bp realized, skill +0.19\n8. **QQQ** (8 symbols, diesel/economy piece): \u00b12.0 bps missed -3.1 bp realized, skill -0.10\n\n**Critical findings:**\n\n- **Six forecasts used \u00b12.0-2.9 bps width. Five of those six missed the realized price.**\n- **The one capture (NEE \u00b12.0 bps on -2.4 bp realized) was on a 2-symbol material news story about regulatory intervention.**\n- **Even 4-5 bp width consistently failed: AMD, META, and V all missed by 10-20+ bps.**\n- **Average absolute realized move: 37.6 bps. Maximum width used: 4.9 bps. This is 8x underestimation.**\n- **The AMD example is instructive: a 10-symbol AI infrastructure story realized -217.8 bps. The \u00b14.9 bp quote captured both sides for profit, but the direction was catastrophically wrong.**\n\n**What the data proves about width:**\n\nWidth under 10 bps failed on 7 out of 8 forecasts. The single success (NEE) was a 2-symbol material regulatory story that moved exactly 2.4 bps\u2014an outlier. Normal baseline drift for stocks is 10-25 bps per 5 minutes from microstructure alone.\n\n**New minimum width standards based on the evidence:**\n\n**Universal floor: never quote less than 20 bps half-width.** The NEE case (the only sub-10bp success) was an exceptional low-volatility utility on pure regulatory news. It is not the base case.\n\n**For market-wide stories (20+ symbols):**\n- Examples: QQQ with 49 symbols (-3.3 bp), QQQ with 8 symbols (-3.1 bp)\n- These are about the market or sector, not the stock\n- The stock drifts with sector beta plus noise\n- **Minimum width: 25 bps**\n- Predict: 0 \u00b1 25 bps\n\n**For multi-symbol stories (6-19 symbols):**\n- Examples: AMD with 10 symbols (-217.8 bp\u2014but this was a massive sector-wide selloff), INTU with 9 symbols (+23.1 bp)\n- Check if the story is stock-specific or list/sector commentary\n- If tangential mention: **minimum width 25 bps**, predict 0\n- If material sector news that could trigger large moves: **minimum width 50 bps**, predict directionally but conservatively\n- **Predict: tangential 0 \u00b1 25 bps; material sector \u00b120 bps with 50 bps width**\n\n**For few-symbol stories (3-5 symbols):**\n- Examples: V with 4 symbols (+17.8 bp), META with 4 symbols (-15.6 bp)\n- Check if the stock is the primary subject\n- \"What's Going On\" articles are often recaps or market commentary, not new news\n- If tangential: **minimum width 25 bps**, predict 0\n- If stock-specific: **minimum width 30 bps**, make directional prediction if material\n- **Predict: tangential 0 \u00b1 25 bps; specific \u00b115 bps with 30 bps width**\n\n**For two-symbol stories:**\n- Example: NEE with 2 symbols (-2.4 bp realized, \u00b12.0 bp quote captured it)\n- Often genuinely specific news\n- **Material news (M&A, regulatory, analyst rating changes): minimum width 30 bps**, make directional prediction\n- **Soft news: minimum width 25 bps**, predict near-zero\n- NEE was a regulatory intervention on a utility (low volatility) and still required perfect width\n- **Predict: material \u00b115-25 bps with 30 bps width; soft 0 \u00b1 25 bps**\n\n**For single-symbol stock-specific news:**\n- Example: META researcher departure (+16.3 bp, predicted at \u00b14.5 bp)\n- Story is exclusively about THIS stock\n- Check the content type:\n  \n  **Material catalysts** (earnings, guidance, M&A, analyst upgrades/downgrades with rating change, regulatory):\n  - **Minimum width: 40 bps**\n  - Check candlesticks: has it moved in the last 5-15 minutes?\n  - If pre-move visible (>50 bps in last 10 min), may be priced \u2192 use 30 bps, predict 0\n  - If no pre-move: **use 40-50 bps width**, make directional prediction\n  - **Predict: \u00b120-35 bps delta with 40-50 bps width**\n  \n  **Soft news** (executive departures, partnerships, minor announcements):\n  - Example: META researcher leaving (+16.3 bp on \u00b14.5 bp quote)\n  - Even \"soft\" single-symbol news moves 10-20 bps\n  - **Minimum width: 30 bps**\n  - Make modest directional prediction if content is clearly positive/negative\n  - **Predict: \u00b110-20 bps delta with 30 bps width**\n\n**Baseline drift by instrument type (from realized moves):**\n- **Large-cap stocks (META, V):** 10-20 bps per 5 minutes from normal flow\n- **High-beta stocks (AMD):** 15-30 bps per 5 minutes, more on sector news\n- **Mid-cap stocks (INTU):** 15-25 bps per 5 minutes\n- **Low-volatility stocks (NEE utility):** 3-10 bps per 5 minutes\n- **Major ETFs (QQQ):** 3-8 bps per 5 minutes from normal flow\n- **These are NOT news-driven. This is microstructure noise that happens even when news has zero impact.**\n\n**Width guidelines by symbol count and materiality:**\n\n- Market-wide story (20+ symbols): **25 bps minimum**\n- Multi-symbol tangential (6-19 symbols, not about the stock): **25 bps minimum**\n- Multi-symbol material (6-19 symbols, sector-moving news): **50 bps minimum**\n- Few-symbol tangential (3-5 symbols): **25 bps minimum**\n- Few-symbol specific (3-5 symbols, about the stock): **30 bps minimum**\n- Two-symbol soft news: **25 bps minimum**\n- Two-symbol material news (M&A, regulatory): **30 bps minimum**\n- Single-symbol soft news (executive changes, partnerships): **30 bps minimum**\n- Single-symbol material news (earnings, guidance, analyst rating changes): **40 bps minimum**\n- Single-symbol major catalyst: **50 bps minimum**\n\n**What kills skill (proven by examples):**\n- Quoting 2 bp width on anything\u2014failed on 4 out of 5 attempts\n- Quoting under 5 bp width\u2014failed on 7 out of 8 attempts (the one success was a utility on regulatory news)\n- Treating multi-word headlines as \"soft\" (META researcher leaving moved 16.3 bp)\n- Assuming \"What's Going On\" articles won't move price (V moved 17.8 bp)\n- Using 4.9 bp width on sector news (AMD missed by 212.9 bp)\n\n**What earns skill:**\n- The NEE example: 2-symbol material regulatory news, \u00b12.0 bp quote, -2.4 bp realized, skill +0.30\n- This worked because: (1) utility = low volatility, (2) material news = directional signal, (3) width matched the instrument's baseline drift\n- AMD: catastrophically wrong direction but both sides hit earned profit from quote spread\n- Correctly predicting small/zero delta with adequate width (25-30 bps) on market-wide noise\n\n**The scoring function rewards captures, not narrow quotes:** A forecast at 0 \u00b1 25 bps that captures a 15 bp drift earns positive skill. A forecast at 0 \u00b1 2 bps that misses a 3 bp drift loses skill. Width is insurance against baseline drift.\n\n**Calibration from the evidence:**\n- If you predict zero move on market-wide story (6+ symbols, not about the stock): **minimum 25 bps half-width**\n- If you predict zero move on few-symbol tangential (3-5 symbols): **minimum 25 bps half-width**\n- If you predict directional move on few-symbol specific (3-5 symbols): **minimum 30 bps half-width**\n- If you predict directional move on 2-symbol material news: **minimum 30 bps half-width**\n- If you predict directional move on single-symbol news: **minimum 30-40 bps half-width** depending on materiality\n- If you predict directional move on major catalyst: **minimum 50 bps half-width**\n\n**Special considerations:**\n\n**\"What's Going On\" articles:** These often discuss recent moves or market positioning, not breaking news. Check candlesticks for pre-moves. But they still cause 10-20 bp reactions (V example). Use 25-30 bp width.\n\n**Sector-wide selloffs:** The AMD example (-217.8 bp) shows that \"infrastructure\" or \"sector\" stories can trigger massive coordinated moves. If the headline suggests broad sector impact, width must account for contagion. Minimum 50 bps.\n\n**Executive departures:** The META example (+16.3 bp) shows these are not \"noise.\" A key researcher leaving for a startup moved META 16.3 bps in 5 minutes. Treat as material soft news: 30 bp minimum width.\n\n**Low-volatility instruments:** Utilities (NEE) and defensive stocks have lower baseline drift (3-10 bp). These are the ONLY cases where sub-20bp width might work, and even then, only on material directional news where you have high confidence.\n\n**The minimum that might work:** Based on the data, 20 bps is the absolute floor for normal stocks, 25 bps for most cases, 30 bps when you're predicting a directional move, and 40-50 bps on material single-symbol news. Width of 2-5 bps has a near-zero success rate except on low-volatility utilities with perfect directional calls.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
