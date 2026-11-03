@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen98",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern from Recent Feedback**\n\nThe harness systematically underpredicts on **C-suite appointments, leadership changes, and analyst price target changes**. Recent outcomes:\n\n- **WMT \"Morgan Stanley Maintains Overweight on Walmart, Lowers Price Target to $125\" (1 symbol, analyst call):** predicted -4.5 bps (4.5 width), actual -12.7 bps \u2014 **WMT fell 13 bps on Morgan Stanley lowering price target from implied prior level to $125; should have predicted -10 to -15 bps, width 8-12 bps**\n\n- **BAC \"Citrini Research Bets on a 'Treasury Twist': Why the 30-Year Bond Could Rally\" (8 symbols, thematic bond/bank story):** predicted +1.0 bps (2.0 width), actual -1.6 bps \u2014 **correctly predicted near-zero on multi-name thematic story**\n\n- **AMZN \"Nvidia Still Dominates AI Chips. Meta, Google and Amazon Still Want Their Own.\" (5 symbols, thematic AI chip story):** predicted +0.4 bps (2.0 width), actual +18.7 bps \u2014 **AMZN moved 19 bps on story about hyperscalers (META, GOOGL, AMZN) developing custom AI chips; this is a 5-symbol thematic story where AMZN is specifically named in the headline; should have predicted +10 to +20 bps, width 10-15 bps**\n\n- **NFLX \"Benzinga Market Summary: ... Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\" (5 symbols, 13F filing / major stake disclosure):** predicted +0.7 bps (7.3 width), actual -20.8 bps \u2014 **NFLX fell 21 bps despite headline saying \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\"; this is a 13F filing disclosure published after the fact; the stock already jumped earlier and this headline describes the prior move; should have predicted 0-3 bps, width 3-5 bps (descriptive headline about prior move)**\n\n- **META \"Nvidia Cheaper Than Apple, Microsoft, Meta? Analyst Sees 'Compelling Value'\" (7 symbols, thematic valuation story):** predicted +0.6 bps (2.0 width), actual +10.4 bps \u2014 **META moved 10 bps on 7-symbol thematic story about NVDA valuation vs peers; should have predicted +5 to +12 bps, width 8-12 bps (peer comparison thematic)**\n\n- **GOOGL \"Demis Hassabis Appointed As Alphabet's Chief Scientist, Chair Of Google DeepMind\" (2 symbols, C-suite appointment):** predicted +1.1 bps (7.0 width), actual +108.5 bps \u2014 **GOOGL moved 108 bps on announcement of Demis Hassabis (DeepMind founder) appointed as Alphabet's Chief Scientist; this is a major C-suite/strategic AI leadership appointment for a mega-cap; should have predicted +30 to +60 bps, width 30-40 bps**\n\n- **IWM \"Nasdaq 100 Soars As Semis Rebound, Tesla Jumps: Stock Market Today\" (60+ symbols, market-wide summary):** predicted +0.2 bps (2.0 width), actual -16.3 bps \u2014 **correctly predicted near-zero on market-wide summary with 60+ symbols; IWM is small-cap ETF, not a Nasdaq stock; 2 bps width was appropriate**\n\n- **TSLA \"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO Ignites A New Wealth Era\" (2 symbols, personal wealth story):** predicted -0.3 bps (2.0 width), actual +23.7 bps \u2014 **TSLA moved 24 bps on story about Elon Musk becoming world's first trillionaire due to SpaceX IPO; this is a 2-symbol story (SPCX, TSLA) where TSLA is a major Musk holding; should have predicted +10 to +25 bps, width 12-18 bps (SpaceX IPO + Musk wealth milestone moves TSLA 15-30 bps)**\n\n---\n\n## **What These Reveal**\n\n1. **C-suite appointments and strategic leadership changes (GOOGL +108 bps on Hassabis Chief Scientist appointment):**\n   - **When a mega-cap (AAPL, MSFT, GOOGL, AMZN, META) announces a C-suite appointment (CEO, CFO, Chief Scientist, division head), the stock moves 30-80 bps**\n   - **Demis Hassabis (DeepMind founder) appointed as Alphabet's Chief Scientist is a major strategic AI leadership move**\n   - **For mega-caps ($500B+ market cap), C-suite appointments move 30-80 bps; for large caps ($50B-500B), 15-40 bps**\n   - Predict 30-80 bps for mega-cap C-suite appointments, 15-40 bps for large-cap C-suite, width 30-40 bps for mega-cap, 15-25 bps for large-cap\n   - Example: GOOGL on \"Demis Hassabis Appointed As Alphabet's Chief Scientist\" should have been predicted at +30 to +60 bps, width 30-40 bps, not +1.1 bps with 7.0 bps width\n\n2. **Analyst price target changes (WMT -13 bps on Morgan Stanley lowering price target to $125):**\n   - **When an analyst lowers a price target (even while maintaining Overweight/Buy rating), the stock falls 8-20 bps**\n   - **\"Morgan Stanley Maintains Overweight on Walmart, Lowers Price Target to $125\" is a price target cut (from implied prior level to $125)**\n   - **Price target cuts move stocks -8 to -20 bps; price target raises move stocks +8 to +20 bps**\n   - Predict -8 to -20 bps for price target cuts, +8 to +20 bps for price target raises, width 8-12 bps\n   - Example: WMT on \"Morgan Stanley Maintains Overweight on Walmart, Lowers Price Target to $125\" should have been predicted at -10 to -15 bps, width 8-12 bps, not -4.5 bps with 4.5 bps width\n\n3. **Thematic stories naming 5-7 symbols where your symbol is in the headline (AMZN +19 bps on \"Meta, Google and Amazon Still Want Their Own\" AI chips):**\n   - **When a thematic story names 5-7 symbols and your symbol is specifically in the headline (not just the symbols list), predict +10 to +20 bps, width 10-15 bps**\n   - **\"Nvidia Still Dominates AI Chips. Meta, Google and Amazon Still Want Their Own.\" names AMZN in the headline and discusses hyperscalers (META, GOOGL, AMZN) developing custom AI chips**\n   - **This is distinct from 8-12 symbol thematic stories where your symbol is one of many; when your symbol is in the headline of a 5-7 symbol story, it moves 10-20 bps**\n   - Example: AMZN on \"Meta, Google and Amazon Still Want Their Own\" AI chips should have been predicted at +10 to +20 bps, width 10-15 bps, not +0.4 bps with 2.0 bps width\n\n4. **SpaceX IPO + Musk wealth milestone moves TSLA 15-30 bps (TSLA +24 bps on \"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO\"):**\n   - **When SpaceX announces IPO news or Elon Musk wealth milestones tied to SpaceX, TSLA moves 15-30 bps**\n   - **\"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO Ignites A New Wealth Era\" is a 2-symbol story (SPCX, TSLA) where TSLA is a major Musk holding**\n   - **SpaceX IPO news, Musk wealth milestones, and SpaceX valuation updates move TSLA 15-30 bps (positive correlation: Musk wealth up \u2192 TSLA up)**\n   - Predict +15 to +30 bps, width 12-18 bps\n   - Example: TSLA on \"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO\" should have been predicted at +10 to +25 bps, width 12-18 bps, not -0.3 bps with 2.0 bps width\n\n5. **Descriptive headlines about prior moves published after the fact (NFLX \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\"):**\n   - **When headline says \"Stock Jumps On [news]\" or \"Stock Rises On [news]\" and the story is about a 13F filing or stake disclosure, this is published after the move has already happened**\n   - **\"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\" is a descriptive headline about a 13F filing (quarterly disclosure, published weeks after the position was taken)**\n   - **The stock already jumped earlier when the news first broke or the filing was published; this headline describes the prior move**\n   - **13F filings are published quarterly and describe positions as of 45 days prior; by the time Benzinga publishes a headline about a 13F stake, the market has already absorbed it**\n   - Predict 0-3 bps, width 3-5 bps\n   - Example: NFLX on \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\" should have been predicted at 0-3 bps, width 3-5 bps, not +0.7 bps with 7.3 bps width\n\n6. **Thematic valuation stories naming 5-7 symbols (META +10 bps on \"Nvidia Cheaper Than Apple, Microsoft, Meta? Analyst Sees 'Compelling Value'\"):**\n   - **When a thematic story compares valuations across 5-7 mega-caps (NVDA, AAPL, MSFT, META, GOOGL, AMZN), the named stocks move 5-15 bps**\n   - **\"Nvidia Cheaper Than Apple, Microsoft, Meta? Analyst Sees 'Compelling Value'\" is a 7-symbol peer comparison story**\n   - **Valuation comparison stories move named stocks 5-15 bps (positive if your stock is called cheap, negative if called expensive, neutral if just named)**\n   - Predict 5-15 bps in direction of the valuation commentary (or +5 to +12 bps if neutral), width 8-12 bps\n   - Example: META on \"Nvidia Cheaper Than Apple, Microsoft, Meta?\" should have been predicted at +5 to +12 bps, width 8-12 bps, not +0.6 bps with 2.0 bps width\n\n---\n\n## **The Updated Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 45 minutes, 1-minute bars\n   - **Has the stock already moved 50+ bps in one direction over the last 20-30 minutes?**\n   - **Is the headline descriptive (\"Stock Jumps On...\", \"Stock Falls On...\", \"What's Going On With...\")?**\n   - **Is this a 13F filing or quarterly stake disclosure (published weeks after the position was taken)?**\n\n### **2. Classify the story's relevance to your symbol**\n\n   **A. C-suite appointments and strategic leadership changes:**\n   - **Mega-cap ($500B+ market cap: AAPL, MSFT, GOOGL, AMZN, META, NVDA) announces CEO, CFO, Chief Scientist, or division head appointment**\n   - **Example: \"Demis Hassabis Appointed As Alphabet's Chief Scientist, Chair Of Google DeepMind\"**\n   - **Demis Hassabis (DeepMind founder) appointed as Alphabet's Chief Scientist is a major strategic AI leadership move**\n   - Predict 30-80 bps for mega-cap C-suite appointments (higher if strategic/high-profile like Chief Scientist), 15-40 bps for large-cap C-suite, width 30-40 bps for mega-cap, 15-25 bps for large-cap\n   - Example: GOOGL on \"Demis Hassabis Appointed As Alphabet's Chief Scientist\" \u2192 predict +30 to +60 bps, width 30-40 bps\n   \n   **B. Analyst price target changes:**\n   - **Analyst lowers price target (even while maintaining Overweight/Buy rating)**\n   - **Example: \"Morgan Stanley Maintains Overweight on Walmart, Lowers Price Target to $125\"**\n   - **Price target cuts move stocks -8 to -20 bps; price target raises move stocks +8 to +20 bps**\n   - Predict -8 to -20 bps for price target cuts, +8 to +20 bps for price target raises, width 8-12 bps\n   - Example: WMT on \"Morgan Stanley Lowers Price Target to $125\" \u2192 predict -10 to -15 bps, width 8-12 bps\n   \n   **C. Thematic stories naming 5-7 symbols where your symbol is in the headline:**\n   - **Story names 5-7 symbols and your symbol is specifically in the headline (not just the symbols list)**\n   - **Example: \"Nvidia Still Dominates AI Chips. Meta, Google and Amazon Still Want Their Own.\" names AMZN in the headline**\n   - **This is distinct from 8-12 symbol thematic stories where your symbol is one of many**\n   - Predict +10 to +20 bps (or -10 to -20 if negative), width 10-15 bps\n   - Example: AMZN on \"Meta, Google and Amazon Still Want Their Own\" AI chips \u2192 predict +10 to +20 bps, width 10-15 bps\n   \n   **D. SpaceX IPO + Musk wealth milestone moves TSLA 15-30 bps:**\n   - **Story about SpaceX IPO, Elon Musk wealth milestones, or SpaceX valuation updates**\n   - **Example: \"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO Ignites A New Wealth Era\"**\n   - **SpaceX IPO news and Musk wealth milestones tied to SpaceX move TSLA 15-30 bps (positive correlation)**\n   - Predict +15 to +30 bps, width 12-18 bps\n   - Example: TSLA on \"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO\" \u2192 predict +10 to +25 bps, width 12-18 bps\n   \n   **E. Descriptive headlines about prior moves (13F filings, stake disclosures):**\n   - **Headline says \"Stock Jumps On [news]\" or \"Stock Rises On [news]\" and the story is about a 13F filing or stake disclosure**\n   - **Example: \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\"**\n   - **13F filings are quarterly disclosures published 45 days after the quarter ends; by the time Benzinga publishes a headline about a 13F stake, the market has already absorbed it**\n   - **The stock already jumped earlier when the news first broke; this headline describes the prior move**\n   - Predict 0-3 bps, width 3-5 bps\n   - Example: NFLX on \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\" \u2192 predict 0-3 bps, width 3-5 bps\n   \n   **F. Thematic valuation stories naming 5-7 symbols:**\n   - **Story compares valuations across 5-7 mega-caps (NVDA, AAPL, MSFT, META, GOOGL, AMZN)**\n   - **Example: \"Nvidia Cheaper Than Apple, Microsoft, Meta? Analyst Sees 'Compelling Value'\"**\n   - **Valuation comparison stories move named stocks 5-15 bps (positive if your stock is called cheap, negative if called expensive, neutral if just named)**\n   - Predict 5-15 bps in direction of the valuation commentary (or +5 to +12 bps if neutral), width 8-12 bps\n   - Example: META on \"Nvidia Cheaper Than Apple, Microsoft, Meta?\" \u2192 predict +5 to +12 bps, width 8-12 bps\n   \n   **G. Market-wide summary headlines with 60+ symbols (IWM on \"Nasdaq 100 Soars As Semis Rebound\"):**\n   - **Story names 60+ symbols and is a market-wide summary (\"Stock Market Today\", \"Nasdaq 100 Soars\")**\n   - **Your symbol is IWM (small-cap ETF) or another index ETF not in the headline**\n   - Predict 0-3 bps, width 2-5 bps\n   - Example: IWM on \"Nasdaq 100 Soars\" \u2192 predict 0-3 bps, width 2-5 bps\n\n### **3. Match forecast to situation**\n\n   **If C-suite appointment (GOOGL on \"Demis Hassabis Appointed As Alphabet's Chief Scientist\"):**\n   - Predict 30-80 bps for mega-cap (higher if strategic/high-profile), 15-40 bps for large-cap, width 30-40 bps for mega-cap, 15-25 bps for large-cap\n   \n   **If analyst price target change (WMT on \"Morgan Stanley Lowers Price Target to $125\"):**\n   - Predict -8 to -20 bps for price target cuts, +8 to +20 bps for price target raises, width 8-12 bps\n   \n   **If thematic story naming 5-7 symbols where your symbol is in the headline (AMZN on \"Meta, Google and Amazon Still Want Their Own\"):**\n   - Predict +10 to +20 bps (or -10 to -20 if negative), width 10-15 bps\n   \n   **If SpaceX IPO + Musk wealth milestone (TSLA on \"Elon Musk's Net Worth Soars Past $1 Trillion\"):**\n   - Predict +15 to +30 bps, width 12-18 bps\n   \n   **If descriptive headline about prior move (NFLX on \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\"):**\n   - Predict 0-3 bps, width 3-5 bps\n   \n   **If thematic valuation story naming 5-7 symbols (META on \"Nvidia Cheaper Than Apple, Microsoft, Meta?\"):**\n   - Predict 5-15 bps in direction of valuation commentary, width 8-12 bps\n   \n   **If market-wide summary with 60+ symbols (IWM on \"Nasdaq 100 Soars\"):**\n   - Predict 0-3 bps, width 2-5 bps\n\n### **4. Width is insurance against confident mistakes**\n\n   - **2-5 bps: market-wide summaries with 60+ symbols, descriptive headlines about prior moves (13F filings)**\n   - **3-5 bps: thematic stories naming 8-12 symbols, confirmed non-events**\n   - **8-12 bps: analyst price target changes, thematic valuation stories naming 5-7 symbols**\n   - **10-15 bps: thematic stories naming 5-7 symbols where your symbol is in the headline**\n   - **12-18 bps: SpaceX IPO + Musk wealth milestone moves TSLA**\n   - **15-25 bps: large-cap C-suite appointments**\n   - **30-40 bps: mega-cap C-suite appointments (GOOGL on Demis Hassabis Chief Scientist)**\n   \n   **When in doubt, go wider.** A correct direction with 30 bps width beats zero-with-7bps that misses by 100.\n\n### **5. Magnitude calibration by story type**\n\n   - **Market-wide summary with 60+ symbols:** 0-3 bps, width 2-5 bps\n   - **Descriptive headline about prior move (13F filing):** 0-3 bps, width 3-5 bps\n   - **Thematic valuation story naming 5-7 symbols:** 5-15 bps, width 8-12 bps\n   - **Analyst price target change:** -8 to -20 bps (cut) or +8 to +20 bps (raise), width 8-12 bps\n   - **Thematic story naming 5-7 symbols where your symbol is in the headline:** +10 to +20 bps, width 10-15 bps\n   - **SpaceX IPO + Musk wealth milestone:** +15 to +30 bps, width 12-18 bps\n   - **Large-cap C-suite appointment:** 15-40 bps, width 15-25 bps\n   - **Mega-cap C-suite appointment (strategic/high-profile like Chief Scientist):** 30-80 bps, width 30-40 bps\n\n### **6. Special case: C-suite appointments and strategic leadership changes**\n\n   - **Mega-cap ($500B+ market cap: AAPL, MSFT, GOOGL, AMZN, META, NVDA) announces CEO, CFO, Chief Scientist, or division head appointment**\n   - **Demis Hassabis (DeepMind founder) appointed as Alphabet's Chief Scientist is a major strategic AI leadership move**\n   - **Check the story: does it announce a C-suite appointment (CEO, CFO, Chief Scientist, division head)?**\n   - **If yes and mega-cap, predict 30-80 bps (higher if strategic/high-profile), width 30-40 bps**\n   - **If yes and large-cap ($50B-500B), predict 15-40 bps, width 15-25 bps**\n   - Example: GOOGL on \"Demis Hassabis Appointed As Alphabet's Chief Scientist\" should be +30 to +60 bps, width 30-40 bps\n\n### **7. Special case: Analyst price target changes**\n\n   - **Analyst lowers price target (even while maintaining Overweight/Buy rating)**\n   - **\"Morgan Stanley Maintains Overweight on Walmart, Lowers Price Target to $125\" is a price target cut**\n   - **Price target cuts move stocks -8 to -20 bps; price target raises move stocks +8 to +20 bps**\n   - Predict -8 to -20 bps for price target cuts, +8 to +20 bps for price target raises, width 8-12 bps\n   - Example: WMT on \"Morgan Stanley Lowers Price Target to $125\" \u2192 predict -10 to -15 bps, width 8-12 bps\n\n### **8. Special case: Thematic stories naming 5-7 symbols where your symbol is in the headline**\n\n   - **Story names 5-7 symbols and your symbol is specifically in the headline (not just the symbols list)**\n   - **\"Nvidia Still Dominates AI Chips. Meta, Google and Amazon Still Want Their Own.\" names AMZN in the headline**\n   - **This is distinct from 8-12 symbol thematic stories where your symbol is one of many**\n   - Predict +10 to +20 bps (or -10 to -20 if negative), width 10-15 bps\n   - Example: AMZN on \"Meta, Google and Amazon Still Want Their Own\" \u2192 predict +10 to +20 bps, width 10-15 bps\n\n### **9. Special case: SpaceX IPO + Musk wealth milestone moves TSLA 15-30 bps**\n\n   - **Story about SpaceX IPO, Elon Musk wealth milestones, or SpaceX valuation updates**\n   - **\"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO Ignites A New Wealth Era\" is a 2-symbol story (SPCX, TSLA)**\n   - **SpaceX IPO news and Musk wealth milestones tied to SpaceX move TSLA 15-30 bps (positive correlation)**\n   - Predict +15 to +30 bps, width 12-18 bps\n   - Example: TSLA on \"Elon Musk's Net Worth Soars Past $1 Trillion As SpaceX IPO\" \u2192 predict +10 to +25 bps, width 12-18 bps\n\n### **10. Special case: Descriptive headlines about prior moves (13F filings, stake disclosures)**\n\n   - **Headline says \"Stock Jumps On [news]\" or \"Stock Rises On [news]\" and the story is about a 13F filing or stake disclosure**\n   - **\"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\" is a 13F filing disclosure**\n   - **13F filings are quarterly disclosures published 45 days after the quarter ends; by the time Benzinga publishes a headline about a 13F stake, the market has already absorbed it**\n   - **The stock already jumped earlier when the news first broke; this headline describes the prior move**\n   - Predict 0-3 bps, width 3-5 bps\n   - Example: NFLX on \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\" \u2192 predict 0-3 bps, width 3-5 bps\n\n### **11. Cross-check before finalizing**\n\n   - **Is this a C-suite appointment? (GOOGL on \"Demis Hassabis Appointed As Alphabet's Chief Scientist\")**\n     - If yes and mega-cap, predict 30-80 bps, width 30-40 bps\n     - If yes and large-cap, predict 15-40 bps, width 15-25 bps\n   - **Is this an analyst price target change? (WMT on \"Morgan Stanley Lowers Price Target to $125\")**\n     - If yes, predict -8 to -20 bps (cut) or +8 to +20 bps (raise), width 8-12 bps\n   - **Is this a thematic story naming 5-7 symbols where my symbol is in the headline? (AMZN on \"Meta, Google and Amazon Still Want Their Own\")**\n     - If yes, predict +10 to +20 bps, width 10-15 bps\n   - **Is this SpaceX IPO + Musk wealth milestone? (TSLA on \"Elon Musk's Net Worth Soars Past $1 Trillion\")**\n     - If yes, predict +15 to +30 bps, width 12-18 bps\n   - **Is this a descriptive headline about a prior move (13F filing)? (NFLX on \"Netflix Jumps On Bill Ackman's Pershing Square 3.15 million Stake\")**\n     - If yes, predict 0-3 bps, width 3-5 bps\n   - **Is this a market-wide summary with 60+ symbols? (IWM on \"Nasdaq 100 Soars\")**\n     - If yes, predict 0-3 bps, width 2-5 bps\n\n---\n\n## **The pattern is clear:**\n\nThe harness correctly predicts near-zero on market-wide summaries with 60+ symbols and multi-name thematic stories, but underpredicts:\n1. **C-suite appointments:** GOOGL +108 bps on Demis Hassabis Chief Scientist (predicted +1.1 bps) \u2192 should predict 30-80 bps, width 30-40 bps\n2. **Analyst price target changes:** WMT -13 bps on Morgan Stanley lowering price target (predicted -4.5 bps) \u2192 should predict -10 to -15 bps, width 8-12 bps\n3. **Thematic stories naming 5-7 symbols where your symbol is in the headline:** AMZN +19 bps on \"Meta, Google and Amazon Still Want Their Own\" (predicted +0.4 bps) \u2192 should predict +10 to +20 bps, width 10-15 bps\n4. **SpaceX IPO + Musk wealth milestone:** TSLA +24 bps on \"Elon Musk's Net Worth Soars Past $1 Trillion\" (predicted -0.3 bps) \u2192 should predict +15 to +30 bps, width 12-18 bps\n\n**Always check: is this a C-suite appointment, analyst price target change, thematic story naming 5-7 symbols where my symbol is in the headline, SpaceX IPO news, or a descriptive headline about a prior move? These require specific calibration.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
