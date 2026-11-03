@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen100",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n**The core operating principle:**\n\nMost stories are either noise (whale alerts, market recaps, thematic summaries) or backward-looking descriptions of moves that already happened. The key decision is: **has the tape already absorbed this information?**\n\nWhen a headline says \"Stock Up Nearly 3%\" or describes a move in progress, the question is not whether it's bullish\u2014it's whether the move is done. If the stock is already up 200-300 bps and drifting flat when the headline breaks, predicting another 35 bps up is wrong. The headline is catching up to the tape, not leading it.\n\n**Decision framework:**\n\n**1. Check the tape first, always.**\n   - Pull candlesticks for the last 45 minutes, 1-minute bars\n   - Where is the stock now versus 10, 20, 30 minutes ago?\n   - Is it drifting flat after a move, spiking in the last 2-3 minutes, or consolidating?\n\n**2. Identify the story type and match it to the tape's timeline:**\n\n   **Pure noise (whale alerts, multi-symbol thematic lists, market recaps):**\n   - \"10 Consumer Discretionary Stocks With Whale Alerts In Today's Session\"\n   - \"Bitcoin Tops $80,000, S&P 500 Slips as Yields Reclaim 5%: Stock Market Today\" (names 20-70 symbols)\n   - These are **not catalysts**. They describe ongoing activity across many names, not stock-specific news.\n   - **Predict 0-2 bps, width 4-6 bps.** These stories have no predictive power.\n   - The feedback shows: QCOM on Bitcoin/S&P recap (+54 bps actual), AMZN on semis theme (+3 bps), TSLA on whale alert (-18 bps), NVDA on whale alert (-2 bps), BKNG on whale alert (-10 bps). The moves are random noise or continuation of prior trends, not reactions to the story.\n\n   **Descriptive headline (describes a move already happening):**\n   - \"Stock Up Nearly 3%\" / \"Stock Surging\" / \"Stock Jumps 4%\" / \"Stock Sinks\"\n   - These are **backward-looking**. The headline is reporting what already happened.\n   - **If the stock is up 200-300 bps and the move started 20+ minutes ago, predict 0-5 bps continuation with 5-8 bps width.** The move is described, not predicted.\n   - **If the stock spiked in the last 2-3 minutes (move is fresh), predict 5-15 bps continuation with 8-12 bps width.** The headline may bring follow-through.\n\n   **Prescriptive headline (new information, not describing current price action):**\n   - \"Analyst Maintains Equal-Weight, Raises Price Target\" / \"Company Joins FDA Pilot\" / \"Qualcomm Tells Customers That Prices Are Going Up by Double Digits\"\n   - These are **forward-looking**. The information may not be priced yet.\n   - **Check if the tape moved in the last 5-10 minutes.** If flat, the news is fresh.\n   - **If flat, predict a small move: analyst calls 5-15 bps, corporate news (pricing power, partnerships) 5-15 bps, width 8-12 bps.**\n   - **If already moved 20-50 bps in the headline's direction in the last 5 minutes, predict 0-5 bps (already pricing), width 5-8 bps.**\n   - The feedback shows: QCOM \"Prices Going Up by Double Digits\" predicted -0.3 bps, actual -15 bps. This was prescriptive news (pricing power is bearish for demand), tape was drifting up slowly, should have predicted -5 to -15 bps.\n\n   **Market-wide or thematic story (names 3-10 symbols, focuses on sector or broad theme):**\n   - \"Semis Volatile As Traders Wait For SK Hynix's Discount To Micron To Close\" (names 39 symbols)\n   - \"Apple, Nvidia Eye Major Entry into AI Servers: Report\" (names 3 symbols)\n   - \"Big Bank Earnings Preview: Bank of America, JPMorgan Stocks Starting to Rally\" (names 8 symbols)\n   - These are **thematic narratives**, not stock-specific catalysts.\n   - **For non-primary symbols (yours is listed among many others), predict 0-3 bps with 4-6 bps width.** Your stock is not the story's focus.\n   - **For primary symbols (the story is about you, headline names you first or second), check the tape.** If you're flat or drifting, predict 3-8 bps in direction of thesis, width 6-10 bps. If you already moved 20-50 bps in the last 20 minutes, predict 0-5 bps (already moved), width 5-8 bps.\n   - The feedback shows: AMZN on semis theme (+3 bps actual), NVDA on Apple/Nvidia AI servers (-17 bps actual), BAC on bank earnings preview (-4 bps actual). These moved modestly or not at all, correctly classified as low-signal.\n\n**3. Magnitude calibration by story type and tape status:**\n\n   **Pure noise (whale alerts, market recaps with 20+ symbols, thematic lists):**\n   - 0-2 bps, width 4-6 bps (never use 2 bps width, it's too tight even for noise)\n\n   **Fresh analyst call (upgrade, downgrade, PT change) on a flat tape:**\n   - Upgrade or raised PT: predict +5 to +15 bps, width 8-12 bps\n   - Downgrade or lowered PT: predict -5 to -15 bps, width 8-12 bps\n   - \"Maintains [rating] but raises PT\": the PT is the signal, predict +5 to +10 bps, width 8-10 bps\n   - **If the tape already moved 20-50 bps in direction of the call in the last 5-10 minutes, predict 0-5 bps (priced), width 6-8 bps**\n\n   **Fresh corporate news (pricing power, partnerships, regulatory) on a flat tape:**\n   - Positive news (price increases, new markets): predict +5 to +15 bps, width 8-12 bps\n   - Negative news (price hikes that signal demand concerns, restrictions): predict -5 to -15 bps, width 8-12 bps\n   - Minor partnerships or pilots: predict 3-8 bps, width 6-10 bps\n   - **If the tape already moved, predict 0-5 bps, width 5-8 bps**\n\n   **Descriptive headline on a move that's 15+ minutes old:**\n   - 0-5 bps continuation, width 5-8 bps (the move is described, not predicted)\n\n   **Descriptive headline on a fresh spike (last 2-3 minutes):**\n   - 5-15 bps continuation, width 8-12 bps (headline may bring follow-through)\n\n   **Thematic story, your symbol is one of many (3-10 named):**\n   - 0-3 bps, width 4-6 bps (if you're not the primary focus)\n   - 3-8 bps, width 6-10 bps (if you're the primary focus and tape is flat)\n   - 0-5 bps, width 5-8 bps (if you're the primary focus and tape already moved)\n\n**4. Width is insurance against being wrong about timing:**\n\n   - **4-6 bps: pure noise (whale alerts, market recaps with 20+ symbols, thematic lists where you're one of many)**\n   - **5-8 bps: descriptive headline on a move that's 15+ minutes old, or thematic story where you're the primary focus but tape already moved**\n   - **8-12 bps: fresh analyst call or prescriptive corporate news on a flat tape, or descriptive headline on a fresh spike (last 2-3 min)**\n   - **10-15 bps: fresh high-uncertainty news (speculative partnerships, regulatory proposals), or any situation where you're unsure if the tape already moved**\n\n   **Never use 2 bps width.** Even pure noise has 3-5 bps correlation risk. The feedback shows 2 bps width failing repeatedly\u2014use at least 4 bps.\n\n**5. The \"already moved\" heuristic:**\n\n   The most common error in the feedback is predicting a move when the tape already did it, or predicting no move when the tape will continue.\n\n   - **If the stock is up/down 50+ bps in the last 20-30 minutes and the headline describes that move (\"up 3%\", \"surging\", \"sinks\"), predict 0-5 bps continuation, not another 20-35 bps.**\n   - **If the stock is flat (within 10-20 bps range for the last 20 minutes) and the headline is prescriptive (analyst call, pricing news, corporate event), predict a small fresh move: 5-15 bps for material catalysts, 3-8 bps for softer news.**\n   - **If the stock spiked in the last 2-3 minutes (move is contemporaneous with the headline), predict modest continuation: 5-15 bps, width 8-12 bps.**\n   - **If the headline is pure noise (whale alerts, multi-symbol thematic lists), predict 0-2 bps with 4-6 bps width, regardless of recent tape action.**\n\n**6. Examples from feedback, corrected:**\n\n   **QCOM \"Bitcoin Tops $80,000, S&P 500 Slips\" at 12:55 (names 148 symbols):**\n   - Pure noise, market-wide recap\n   - **Correct forecast: 0-2 bps, width 4-6 bps** (not -1.3 bps with 2.0 width)\n   - Actual: +54 bps \u2014 this is end-of-day momentum unrelated to the headline\n   - **Learning: Multi-symbol market recaps have zero predictive power. Use 4-6 bps width minimum.**\n\n   **QCOM \"Qualcomm Tells Customers That Prices Are Going Up by Double Digits\" at 12:30:**\n   - Fresh corporate news (pricing power), but double-digit price hikes can signal demand weakness\n   - Tape: drifting up slowly from 168.3 to 169.1 over prior 40 minutes (slow grind, not a spike)\n   - **Correct forecast: -5 to -10 bps (demand concern), width 8-10 bps** (not -0.3 bps with 2.0 width)\n   - Actual: -15 bps \u2014 the market read this as negative (demand risk), not positive\n   - **Learning: \"Prices going up\" is not always bullish. Check context. Wider width for uncertain interpretation.**\n\n   **AMZN \"Semis Volatile As Traders Wait For SK Hynix\" at 12:36 (names 39 symbols):**\n   - Thematic story, AMZN is one of many, not the focus\n   - **Correct forecast: 0-2 bps, width 4-6 bps** (not -0.5 bps with 2.0 width)\n   - Actual: +3 bps \u2014 noise, correctly identified as low-signal\n\n   **TSLA \"10 Consumer Discretionary Stocks With Whale Alerts\" at 13:35 (names 10 symbols):**\n   - Pure noise, whale alert list\n   - **Correct forecast: 0-2 bps, width 4-6 bps** (not -0.9 bps with 2.0 width)\n   - Actual: -18 bps \u2014 random drift, unrelated to the headline\n\n   **NVDA \"Apple, Nvidia Eye Major Entry into AI Servers: Report\" at 12:56 (names 3 symbols):**\n   - Thematic story, NVDA is a primary symbol, prescriptive news (new product entry)\n   - Tape: up from 215.6 to 216.1 over prior 40 minutes (slow drift, not flat but not spiking)\n   - **Correct forecast: +3 to +8 bps (positive but already drifting up), width 6-10 bps** (not +0.9 bps with 2.0 width)\n   - Actual: -17 bps \u2014 reversion after a run, which 0 \u00b1 8 bps would have covered better\n\n   **NVDA \"10 Information Technology Stocks With Whale Alerts\" at 13:35 (names 10 symbols):**\n   - Pure noise, whale alert list\n   - **Correct forecast: 0-2 bps, width 4-6 bps** (not -0.9 bps with 2.0 width)\n   - Actual: -2 bps \u2014 correctly called as noise\n\n   **BKNG \"10 Consumer Discretionary Stocks With Whale Alerts\" at 13:35 (names 10 symbols):**\n   - Pure noise, whale alert list\n   - **Correct forecast: 0-2 bps, width 4-6 bps** (not -0.4 bps with 2.0 width)\n   - Actual: -10 bps \u2014 random drift, unrelated to the headline\n\n   **BAC \"Big Bank Earnings Preview: Bank of America, JPMorgan Stocks Starting to Rally\" at 11:47 (names 8 symbols):**\n   - Thematic story, BAC is a primary symbol, but headline says \"starting to rally\" (descriptive of recent action, not a catalyst)\n   - Tape: up from 58.87 to 59.20 over prior 40 minutes (the rally is already happening)\n   - **Correct forecast: 0-3 bps (rally already described), width 5-8 bps** (not +0.1 bps with 2.0 width)\n   - Actual: -4 bps \u2014 small reversion after a run\n\n**7. Cross-check before finalizing:**\n\n   - **Is this a whale alert or market recap with 10+ symbols?** Predict 0-2 bps, width 4-6 bps. These have no predictive power.\n   - **Is this headline describing a move that already happened?** If yes, predict 0-5 bps, not another leg.\n   - **Is the tape flat or did it move in the last 5-10 minutes?** If it moved, the news may already be priced.\n   - **Am I using 2 bps width?** Change it to at least 4 bps. 2 bps is too tight even for pure noise.\n   - **Am I predicting a 20-35 bps move on a descriptive headline or thematic list?** That's wrong. Descriptive = already happened, thematic list = noise.\n   - **Is this fresh prescriptive news (analyst call, pricing change, new product) on a flat tape?** Predict 5-15 bps with 8-12 bps width.\n\n**The key insight: Most headlines are either pure noise (whale alerts, thematic lists) or backward-looking (describing moves already in progress). The default should be \"already priced\" or \"no signal\" unless the tape is flat and the headline is prescriptive. When in doubt, predict smaller moves with wider bands. Never use 2 bps width.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
