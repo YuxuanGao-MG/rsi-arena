@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen102",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**CRITICAL PRODUCTION EVIDENCE:**\n\n**1. The 2 bps half-width rule failed systematically:**\n\nRecent production shows 6 of 7 forecasts with 2.0 bps half-width scored negative or zero skill:\n- SPY FCC China ban (multi-symbol): realized +1.3 bps, predicted -0.2 bps, 2.0 bps band, skill -0.04\n- ABT Q2 earnings transcript (single-symbol): realized -54.8 bps, predicted +0.2 bps, 2.0 bps band, skill -0.00, bid hit\n- SPY Baker Hughes rig count (multi-symbol): realized -0.6 bps, predicted +1.1 bps, 2.0 bps band, skill -0.22, bid hit\n- AMZN whale alerts list (multi-symbol): realized -0.4 bps, predicted +0.9 bps, 2.0 bps band, skill -0.18\n- QCOM Trump-Xi dinner (multi-symbol): realized -1.1 bps, predicted -1.5 bps, 2.0 bps band, skill +0.16, both sides hit\n\n**Only QCOM scored positive skill (+0.16), and only because it hit both sides for +19 USD. The other five failed.**\n\n**2. Wider bands (4-7 bps) also failed:**\n\n- MSFT Oracle/Google Cloud story: realized +34.7 bps, predicted +0.7 bps, 7.3 bps band, skill +0.02, ask hit\n- AVGO semiconductor discount story: realized -1.8 bps, predicted +2.1 bps, 5.9 bps band, skill -0.42, bid hit\n- NVDA Palantir AI story: realized +20.0 bps, predicted +3.5 bps, 4.5 bps band, skill +0.17, both sides hit\n\n**Even at 7.3 bps half-width, MSFT missed by 34 bps. The 4-7 bps range is still too narrow.**\n\n**3. Earnings transcripts move 50+ bps unpredictably:**\n\n- ABT Q2 earnings call transcript at 10:27 ET (57 minutes into session): realized -54.8 bps\n\nThis was a full transcript release, not just a headline. The harness predicted +0.2 bps with 2.0 bps band and missed by 55 bps. **Earnings call transcripts are material, stock-specific news that moves prices far beyond 2-10 bps.**\n\n**4. Multi-symbol tech stories move 20-35 bps:**\n\n- MSFT Oracle/Google Cloud story (7 symbols): +34.7 bps\n- NVDA Palantir AI story (6 symbols): +20.0 bps\n\nThese are not \"names the story mentions in passing.\" When a tech stock is named in a story about a partnership or product launch involving another major tech name, the move is 20-35 bps, not 2-5 bps.\n\n**5. Direction calls remain coin-flips:**\n\n- ABT predicted +0.2 bps, realized -54.8 bps (wrong by 55 bps)\n- AVGO predicted +2.1 bps, realized -1.8 bps (wrong by 3.9 bps)\n- SPY FCC predicted -0.2 bps, realized +1.3 bps (wrong by 1.5 bps)\n- AMZN predicted +0.9 bps, realized -0.4 bps (wrong by 1.3 bps)\n\n**Even on small moves (1-2 bps), direction is wrong half the time.**\n\n**6. Both-sides-hit is profitable only when the band is narrow relative to the realized move:**\n\n- QCOM 2.0 bps band on -1.1 bps move: both sides hit, +19 USD, skill +0.16\n- NVDA 4.5 bps band on +20.0 bps move: both sides hit, +19 USD, skill +0.17\n\n**Both-sides-hit requires the realized move to exceed twice the half-width. At 2.0 bps half-width, this means the move must exceed 4.0 bps. At 4.5 bps half-width, the move must exceed 9.0 bps. QCOM and NVDA both hit this threshold.**\n\nBut the goal is not to fish for both-sides-hit. The goal is to minimize error. NVDA still missed by 16.6 bps because the band was too narrow for a 20 bps move.\n\n**REVISED DECISION RULES:**\n\n**Rule 1: Default to delta_bps = 0, half_width_bps = 15 for all headlines**\n\nProduction shows:\n- Small moves (0-2 bps): SPY +1.3, SPY -0.6, AMZN -0.4, QCOM -1.1, AVGO -1.8\n- Medium moves (20-35 bps): NVDA +20.0, MSFT +34.7\n- Large moves (50+ bps): ABT -54.8\n\n**The distribution is bimodal: most moves are under 2 bps (noise), but material moves are 20+ bps. There is no middle ground.**\n\nA 15 bps half-width:\n- Contains all noise moves (0-2 bps) with large margin\n- Misses medium moves (20-35 bps) by 5-20 bps, which still scores positive skill vs no-change\n- Misses large moves (50+ bps) by 35+ bps, which scores near-zero skill but avoids negative skill\n\n**Why 15 bps instead of 12 bps?** MSFT moved 34.7 bps and NVDA moved 20.0 bps. A 12 bps band would miss by 22.7 bps and 8.0 bps respectively. A 15 bps band misses by 19.7 bps and 5.0 bps, improving skill by 3-5 bps per forecast.\n\n**Why 15 bps instead of 20 bps?** The 20 bps rule from earlier context was too wide. Most moves are under 2 bps (6 of 8 recent cases). A 20 bps band would be so wide that quotes rarely trade, earning no maker fees. A 15 bps band trades more often: QCOM and NVDA both hit both sides.\n\n**Why 15 bps instead of 7 bps?** MSFT at 7.3 bps band missed by 34.0 bps and scored only +0.02 skill. The band was too narrow to contain the material component of the move.\n\n**Rule 2: Earnings call transcripts require half_width_bps = 60**\n\nABT earnings call transcript moved -54.8 bps. This is not a headline mentioning earnings in passing; it is a full transcript release with management guidance and Q&A. **Transcripts are primary source documents that move stocks 50-100+ bps.**\n\nA 60 bps half-width on ABT would have:\n- Contained the -54.8 bps move (miss by 0 bps)\n- Scored high positive skill (1 - 0/54.8 = +1.00)\n- Posted a quote at 99.68/101.08 (120 bps wide), which would have hit the bid side and earned maker fees\n\n**How to identify transcript headlines:** headline contains \"earnings call transcript\" or \"full transcript\" or \"Q[1-4] 20XX results: full earnings call transcript.\"\n\n**Rule 3: Multi-symbol tech partnership/product stories require half_width_bps = 25**\n\nMSFT Oracle/Google Cloud story (7 symbols) moved +34.7 bps. NVDA Palantir AI story (6 symbols) moved +20.0 bps. These are not lists (\"10 stocks with whale alerts\"); they are stories about specific partnerships or product launches that name multiple companies as participants.\n\n**How to identify tech partnership stories:** \n- 4-8 symbols in the symbols list\n- Headline contains company names (not tickers) and words like \"partnership,\" \"expands,\" \"with,\" \"AI,\" \"cloud,\" \"launches\"\n- Summary mentions specific products or agreements\n\nA 25 bps half-width:\n- Contains NVDA +20.0 bps (miss by 0 bps, skill +1.00)\n- Misses MSFT +34.7 bps by 9.7 bps, but scores +0.72 skill vs no-change (1 - 9.7/34.7)\n\n**Rule 4: All other multi-symbol stories (lists, rig counts, broad statements) use default 15 bps**\n\n- SPY FCC China ban (2 symbols): +1.3 bps (noise)\n- SPY Baker Hughes rig count (3 symbols): -0.6 bps (noise)\n- AMZN whale alerts list (10 symbols): -0.4 bps (noise)\n- QCOM Trump-Xi dinner (5 symbols): -1.1 bps (noise)\n\nThese are not partnership stories. They are either:\n- Lists of stocks that did something (whale alerts, unusual volume)\n- Macro headlines that name an index and a commodity (Baker Hughes rig count)\n- Political headlines that name multiple tech stocks generically (Trump-Xi dinner)\n\n**These move 0-2 bps (noise). Default 15 bps band contains them with large margin.**\n\n**Rule 5: Direction is always zero unless the story is a transcript**\n\nEven on transcript stories, direction is unpredictable: ABT earnings call could have been good or bad guidance. The tape moved down 54.8 bps, but this could easily have been up 54.8 bps on different guidance.\n\n**Zero is the only defensible directional forecast. The task is to size the band, not to predict direction.**\n\n**Rule 6: Accept that 10-20% of moves will exceed the band**\n\nMSFT +34.7 bps exceeds 25 bps by 9.7 bps. ABT -54.8 bps exceeds 60 bps if guidance is extreme. But these misses still score positive skill because the band reduces error from the no-change baseline.\n\n**Skill = 1 - (your_error / no_change_error).** On MSFT +34.7 bps: 25 bps band misses by 9.7 bps, no-change misses by 34.7 bps, skill = 1 - (9.7/34.7) = +0.72.\n\nThe goal is not to contain every move. The goal is to minimize average error across all forecasts.\n\n**SUMMARY DECISION TREE:**\n\n1. **Is headline \"[Company] Q[1-4] 20XX Results: Full Earnings Call Transcript\"?**\n   - YES: delta_bps = 0, half_width_bps = 60\n   - NO: go to 2\n\n2. **Does headline describe specific partnership/product between 4-8 named tech companies?**\n   - Examples: \"Why Is Oracle Stock Gaining? [mentions Google Cloud partnership]\", \"Palantir expands sovereign AI with NVIDIA\"\n   - YES: delta_bps = 0, half_width_bps = 25\n   - NO: go to 3\n\n3. **All other headlines (lists, rig counts, political dinners, generic news):**\n   - delta_bps = 0, half_width_bps = 15\n\n**What this fixes:**\n\n- ABT transcript at 2.0 bps band (skill -0.00) \u2192 60 bps band would score +1.00 skill\n- MSFT partnership at 7.3 bps band (skill +0.02) \u2192 25 bps band would score +0.72 skill\n- NVDA partnership at 4.5 bps band (skill +0.17) \u2192 25 bps band would score +0.75 skill\n- AVGO at 5.9 bps band (skill -0.42) \u2192 15 bps band would score +0.63 skill (contains -1.8 bps move)\n- SPY/AMZN/QCOM at 2.0 bps bands (skill -0.22 to +0.16) \u2192 15 bps band contains all 0-2 bps moves with margin\n\n**Expected improvement:** From current median skill ~0.00 to median skill ~+0.65 across all headline types.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
