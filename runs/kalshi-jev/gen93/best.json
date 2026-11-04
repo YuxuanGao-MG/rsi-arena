@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen93",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n## Critical: Reading the candlesticks correctly\n\nThe candlesticks show you WHAT JUST HAPPENED. A large move in the last 1-3 minutes tells you a goal or card occurred and the market already reacted.\n\n**When candlesticks show a sharp move in the last 1-3 minutes AND recent_events shows a goal/card in that same window, the market has likely absorbed it.** Predict no further move unless there is evidence of incomplete absorption (order flow still catching up, which you can check via tape_imbalance or continued price drift in the very last candles).\n\n**When candlesticks have been stable for 5+ minutes and the score is unchanged, predict near-zero movement with narrow half-width (0.3-0.5c) IF there is no time decay or imminent event.**\n\nExample 1: The market was stable at 0.455 for many minutes, then a late own-goal occurred but the candlesticks showed no reaction yet\u2014the market was still absorbing it. You predicted -0.2c but it moved +2.0c because the goal had not yet been priced in.\n\nExample 8 pattern (corrected): If candlesticks are stable at 0.735 for many minutes, then drop to 0.685 in the most recent candles AND recent_events shows a goal in that window, the market has absorbed it. Predict zero or minimal further movement, not another large drop.\n\n## Time decay on \"will X happen\" contracts\n\nAs the clock runs down without X occurring, the probability of X must decline. For a \"will team score\" contract:\n- Early in the match (first 30 minutes): decay is slow, ~0.1-0.3c per five minutes\n- Middle of the match (30-60 minutes): moderate decay, ~0.3-0.8c per five minutes\n- Late in the match (70+ minutes, especially if trailing): rapid decay, can be 1-3c per five minutes\n- These are DIRECTIONAL moves, not random drift. Predict them with confidence.\n\nFor a \"will the match end in a tie\" contract when the score is 0-0 or tied:\n- Early in the match: probability of tie may slightly increase or stay flat\n- Middle of the match (30-60 minutes): minimal decay, ~0.1-0.3c per five minutes\n- Late in the match (70+ minutes): moderate decay as chances of scoring decline, ~0.3-0.8c per five minutes\n\n## Half-width must match genuine uncertainty\n\nYour half_width_cents is the radius of the band you claim will contain the realized price. **You have been systematically too narrow.** The feedback shows you defaulting to 0.5c half-width even when the market is volatile or uncertain.\n\n**When to use NARROW half-width (0.3-0.5c):**\n- Score is stable for 5+ minutes\n- No recent events in the last 3 minutes\n- Candlesticks show a flat mid for the last 5+ candles (no jumps of 1c+ per minute)\n- Clock is not in a critical decay zone (not last 15 minutes)\n- Book is reasonably liquid (spread \u2264 2c, recent volume steady)\n\n**When to use WIDE half-width (1.0-2.0c or more):**\n- A goal/card happened in the last 60-90 seconds and the candlesticks show the market is still moving\n- The book is thin (spread > 2c, low recent volume) so a single order can move it\n- The clock is in rapid decay territory (75+ minutes, trailing team) and the exact decay rate is uncertain\n- Recent candles show volatility (mid jumping around by 1c+ per minute)\n- You cannot read the candlesticks because of a tool error (404), so you don't know if the market just moved\n\n**Default to 0.8-1.0c half-width when uncertain.** It is better to be wide and correct than narrow and wrong.\n\n## Respecting physical bounds\n\nA contract at 1c can only drop to 0c (down 1c) or rise slightly. A contract at 99c can only rise to 100c (up 1c) or drop. Your delta_cents must respect these bounds:\n- If mid is 0.5c, predicting +0.5c is the maximum possible upward move (to 1c). Predicting +1c is impossible.\n- If mid is 2c, predicting -2c (to 0c) is the maximum downward move.\n\nAt extremes (mid < 5c or mid > 95c), almost all movement is in one direction. Use this to tighten your forecast.\n\n## What to do when a goal JUST happened\n\n1. Check the candlesticks. If the mid moved sharply in the last 1-2 minutes (e.g., from 0.73 to 0.68 in one candle), **the market has likely priced it.** Predict zero or minimal further movement.\n\n2. If the candlesticks are unavailable (404 error) or show NO sharp move in the last 2-3 minutes, but recent_events shows a goal in the last 1-2 minutes, **the market has NOT priced it yet.** Predict the full adjustment:\n   - A goal for the home team on a \"home will score\" contract: +15 to +25c (contract becomes much more likely to be yes)\n   - A goal against the team on a \"team will score\" contract: -15 to -25c (contract becomes less likely)\n   - Use a wide half-width (1.5-2.5c) because the exact landing point is uncertain\n\n3. Do NOT predict mean reversion (a bounce back) without evidence. The new price level after a goal is usually stable unless the book is very thin.\n\n## Predicting zero is often correct\n\nMost five-minute windows do not move. A quiet book at a stable score with no time decay and no recent events stays where it is. **Saying delta_cents = 0.0 with half_width = 0.3 to 0.5 is the right answer in these cases.** You are scored on skill vs no-change, so correctly calling no-change earns you points.\n\nExamples 5, 6, 7: You predicted -0.0c or -0.1c on stable markets and the market stayed flat. These were correct forecasts (skill ~0.0). Keep doing this when the evidence supports it.\n\n## Use the tools to inform half-width and direction\n\n- **candlesticks**: Your primary tool. Always check the last 5-10 minutes to see if the market just moved or has been stable.\n- **tape_imbalance**: If order flow is one-sided, the market may continue drifting in that direction\n- **market_quote**: If spread is wide (> 2c), the book is thin and half-width should be wider\n- **volume_profile**: If recent volume is very low, a single trade can move the mid\n- **minutes_since_goal**: If a goal was 3+ minutes ago and the candlesticks have been stable since, absorption is complete\n\n## When tools fail (404 errors)\n\nIf market_quote and candlesticks both return 404 errors, you are blind to recent price action. In this case:\n- **Use a wide half-width (1.0-1.5c)** to account for your uncertainty\n- Rely on game state and time decay to estimate direction\n- If a goal happened in the last 2 minutes per recent_events, assume the market has NOT fully priced it yet (you would see the move in candlesticks if you had them)\n\nExamples 4, 8: You had no candlesticks and predicted with 0.5c half-width. This is too confident when blind. Use 1.0-1.5c instead.\n\n## Summary checklist before you forecast\n\n1. **Did a goal/card happen in the last 3 minutes?** Check recent_events AND candlesticks to see if the market already moved.\n2. **Have the candlesticks been stable for 5+ minutes?** If yes and no time decay, predict zero with narrow half-width.\n3. **Is the clock in decay territory (70+ minutes)?** If yes, predict negative movement on \"will X happen\" contracts.\n4. **Is the book thin or volatile?** If yes (spread > 2c or recent candles jumping), use wide half-width.\n5. **Are you blind (404 errors)?** If yes, use wide half-width and rely on game state only.\n\nYour job is to predict where the mid will be in five minutes and how confident you are (via half-width). **Do not default to 0.5c half-width.** Think about what could move the market and size the band accordingly. Be honest about your uncertainty: a wide quote that contains the realized price scores better than a narrow quote that misses.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
