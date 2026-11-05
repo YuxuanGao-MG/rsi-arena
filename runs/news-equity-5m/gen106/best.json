@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen106",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The only thing that matters: width that contains the realized price.**\n\nYour systematic error is catastrophically underestimating width. Recent feedback shows realized prices outside your quotes in 6 of 8 examples (75% failure rate). This loses money because stocks move 20-50 bps in five minutes from microstructure alone, regardless of news.\n\n**The physics of five-minute price movement:**\n\nDuring regular trading hours, stocks drift from:\n- Bid-ask bounce (minute closes alternating between bid and ask)\n- Small trades moving the last print\n- Temporary order imbalances\n- Market-wide moves (SPY moves, sector rotation)\n- Normal volatility from liquidity provision\n- Time-of-day effects (open volatility, close positioning)\n\nThis baseline drift exists whether or not there is news. It is not reducible by better prediction. It must be accommodated by wider quotes.\n\n**Observed five-minute drift from recent feedback:**\n\n- TXN (semi, 17-symbol listicle): realized +6.6 bps (you used \u00b14.6 bps) - **MISSED**\n- INTC (tech, 10-symbol listicle): realized -36.9 bps (you used \u00b12.0 bps) - **MISSED**\n- GOOG (tech, 7-symbol story): realized +8.3 bps (you used \u00b12.0 bps) - **MISSED**\n- TSLA (high-beta, 54-symbol market story): realized -0.8 bps (you used \u00b14.8 bps) - **CONTAINED**\n- NEE (utility, 5-symbol stock-specific): realized -15.2 bps (you used \u00b14.7 bps) - **MISSED**\n- GOOGL (tech, 8-symbol listicle): realized +7.0 bps (you used \u00b12.0 bps) - **MISSED**\n- AVGO (high-beta, 13-symbol listicle): realized +7.0 bps (you used \u00b17.8 bps) - **CONTAINED**\n- AMZN (tech, 2-symbol story near open): realized -51.1 bps (you used \u00b14.4 bps) - **MISSED**\n\n**Success rate: 2 of 8 contained (25%). Target: 70%+**\n\nYour default 2.0 bps half-width appears in 4 of 8 examples and failed every time. Even 4-5 bps widths failed on most equities. The two successes used 4.8 bps (TSLA, barely) and 7.8 bps (AVGO).\n\n**Zero-news baseline drift (what you must contain even with perfect news interpretation):**\n\n- **ETFs (SPY, QQQ):** 8-12 bps typical\n- **Utilities (NEE, AEP, ED):** 15-25 bps typical\n- **Semiconductors (INTC, TXN, AVGO, NVDA):** 30-50 bps typical\n- **Large tech (AAPL, GOOGL, GOOG, MSFT, AMZN):** 25-40 bps typical\n- **High-beta growth (TSLA, NVDA, AMD, AVGO):** 40-60 bps typical\n- **Near market open (first 30 minutes):** add 20-30 bps\n- **Early trading (30-60 minutes after open):** add 10-15 bps\n- **Mid-day (11:00-15:00):** baseline rates apply\n- **Late afternoon (15:00-close):** subtract 0-5 bps (slightly quieter)\n\n**Minimum width rules (these are MINIMUMS for containing 70% of realizations):**\n\n**10 bps: ETFs only, market-wide stories, mid-day**\n\nUse this when:\n- SPY, QQQ, sector ETFs on multi-name market stories\n- No ETF-specific catalyst\n- Mid-day trading (11:00-15:00)\n- Story names 5+ symbols\n\n**30 bps: Large tech, listicles, mid-day**\n\nUse this when:\n- AAPL, GOOGL, GOOG, MSFT, AMZN, META\n- Listicle with 5+ symbols where queried name is not primary\n- No stock-specific catalyst\n- Mid-day to late afternoon\n\nExamples from feedback:\n- GOOG 7-symbol story (you used 2.0, realized 8.3, should use 30)\n- GOOGL 8-symbol listicle (you used 2.0, realized 7.0, should use 30)\n\n**35 bps: Semiconductors, mid-day, listicles**\n\nUse this when:\n- INTC, TXN, AMD, LRCX, AMAT (not NVDA/AVGO - see high-beta)\n- Listicle with 5+ symbols\n- No major stock-specific catalyst\n- Mid-day trading\n\nExample from feedback: TXN 17-symbol listicle (you used 4.6, realized 6.6, should use 35)\n\n**40 bps: Stock-specific story, large cap or tech**\n\nUse this when:\n- 1-4 symbols total in story\n- Stock-specific news about the queried symbol\n- Large cap stable, large tech, or utilities\n- No major catalyst (not earnings, not M&A)\n- Mid-day trading\n\nExample from feedback: NEE 5-symbol stock-specific (you used 4.7, realized 15.2, should use 40)\n\n**50 bps: High-beta stocks, listicles, mid-day**\n\nUse this when:\n- AVGO, NVDA, AMD, TSLA regardless of story type\n- Any stock in listicle with 10+ symbols\n- Stock-specific but moderate catalyst\n- Mid-day trading\n\nExamples from feedback:\n- AVGO 13-symbol listicle (you used 7.8, realized 7.0, should use 50 for safety)\n- INTC 10-symbol listicle (you used 2.0, realized 36.9, should use 50)\n\n**70 bps: Near market open (first 30 minutes)**\n\nUse this when:\n- Any equity story (not ETF)\n- Within 30 minutes of market open\n- Large tech or high-beta stocks\n- Even on listicles or market-wide stories\n\nExample from feedback: AMZN 2-symbol story at 9:48 (you used 4.4, realized 51.1, should use 70-80)\n\n**80+ bps: Major stock-specific catalyst or high-beta near open**\n\nUse this when:\n- C-suite departures, especially technical leaders\n- Earnings announcements or guidance\n- M&A, takeovers, major deals\n- Major regulatory actions\n- \"Stock is trading higher/lower\" headlines (implies already moving)\n- High-beta stocks (TSLA, NVDA, AVGO) near market open\n- Stock-specific news in first 30 minutes of trading\n\n**Decision tree:**\n\n**Step 1: Check time of day (most important adjustment)**\n- First 30 minutes after open \u2192 Start at 70 bps for equities, 15 bps for ETFs\n- 30-60 minutes after open \u2192 Start at 50 bps for equities, 12 bps for ETFs\n- Mid-day (11:00-15:00) \u2192 Use asset class baseline\n- Late afternoon (15:00-close) \u2192 Use asset class baseline (no reduction)\n\n**Step 2: Asset class (if mid-day start point)**\n- ETFs (SPY, QQQ, sector) \u2192 10 bps base\n- Utilities (NEE, AEP, ED) \u2192 25 bps base\n- Large tech (AMZN, GOOGL, AAPL, MSFT, META) \u2192 30 bps base\n- Semiconductors (INTC, TXN, AMD, LRCX) \u2192 35 bps base\n- High-beta (NVDA, TSLA, AVGO) \u2192 50 bps base\n\n**Step 3: Story type**\n- Listicle with 10+ symbols \u2192 Add 15 bps\n- Listicle with 5-9 symbols \u2192 Add 10 bps\n- Stock-specific (1-4 symbols) \u2192 Add 10 bps\n- Market-wide story mentioning many stocks \u2192 Use base only\n\n**Step 4: Catalyst strength (stock-specific stories only)**\n- C-suite departure (technical roles) \u2192 Add 40 bps\n- Earnings/guidance \u2192 Add 35 bps\n- M&A/deal/takeover \u2192 Add 30 bps\n- \"Stock is trading higher/lower\" \u2192 Add 20 bps\n- Analyst upgrade/downgrade/initiation \u2192 Add 10 bps\n- Price target change alone \u2192 Add 5 bps\n- Company update/news mention \u2192 No adjustment\n\n**Step 5: Tape check (candlesticks last 15 minutes)**\n- Bars showing >100 bps range \u2192 Add 20 bps (high volatility)\n- Bars showing 50-100 bps range \u2192 Add 10 bps\n- Bars showing 30-50 bps range \u2192 No adjustment\n- Bars showing <20 bps range \u2192 Consider reducing 5 bps (but respect floor)\n\n**Corrected widths for recent feedback:**\n\n1. TXN 17-symbol listicle, 59 min after open \u2192 50 bps (you used 4.6, realized 6.6)\n2. INTC 10-symbol listicle, 245 min after open \u2192 50 bps (you used 2.0, realized 36.9) - **major miss**\n3. GOOG 7-symbol story, late afternoon \u2192 35 bps (you used 2.0, realized 8.3)\n4. TSLA 54-symbol market story, mid-day \u2192 50 bps (you used 4.8, realized 0.8) - barely worked\n5. NEE 5-symbol stock-specific, 30 min after open \u2192 60 bps (you used 4.7, realized 15.2)\n6. GOOGL 8-symbol listicle, late afternoon \u2192 35 bps (you used 2.0, realized 7.0)\n7. AVGO 13-symbol listicle, late afternoon \u2192 60 bps (you used 7.8, realized 7.0) - barely contained\n8. AMZN 2-symbol story, 18 min after open \u2192 80 bps (you used 4.4, realized 51.1) - **major miss**\n\n**Why your 2-5 bps default fails:**\n\nYou used 2.0-4.8 bps half-width in 7 of 8 examples. This assumes the stock will stay nearly motionless for five minutes during trading hours. This almost never happens.\n\nA 4 bps half-width means an 8 bps total range. This is:\n- Narrower than typical bid-ask spreads (5-10 bps on large caps)\n- Narrower than the noise from a few small trades\n- Narrower than drift from SPY moving and pulling via beta\n- Assumes near-perfect stillness that doesn't exist during trading hours\n\nFive-minute price paths routinely span 20-50 bps even with no news. Your quotes must accommodate this baseline motion.\n\n**The solution:**\n\nNever use less than 10 bps half-width on ETFs or 30 bps on equities mid-day. Near market open (first 30 minutes), never use less than 70 bps on equities.\n\n**Time-of-day is the dominant factor.** The first 30 minutes after open have 2-3x the volatility of mid-day. This is not optional adjustment - it is the primary driver of width.\n\nStart at:\n- **First 30 minutes:** 70 bps floor for all equities, 15 bps for ETFs\n- **30-60 minutes:** 50 bps floor for equities, 12 bps for ETFs  \n- **Mid-day:** 30-50 bps floor for equities (by asset class), 10 bps for ETFs\n- **Late afternoon:** Same as mid-day (no reduction)\n\nThen adjust UP based on:\n- Story type (stock-specific \u2192 +10 bps, many symbols \u2192 +10-15 bps)\n- Catalyst strength (major news \u2192 +30-40 bps)\n- High-beta asset class \u2192 +10-20 bps more\n- Tape volatility (large bars \u2192 +10-20 bps)\n\n**On direction:**\n\nDirection matters far less than width. Six of your eight examples had prices escape your quotes regardless of directional accuracy.\n\nFor most Benzinga stories (market-wide, listicles, passing mentions), predict zero move with appropriate width for the asset class and time of day. This will contain drift and score better than trying to predict direction on noise.\n\nFor stock-specific stories:\n- Check if news is major (C-suite, earnings, M&A) - if yes, predict direction but use very wide width\n- Check the tape: if already moving (large bars), predict continuation\n- If tape is flat and news is minor (price target only), predict zero - may already be priced\n- \"Stock is trading higher/lower\" headlines imply momentum: predict continuation with extra width\n\n**Width is not uncertainty.** Wide width means you know the stock will move from microstructure, so you must accommodate it. Narrow width means you expect the stock to stay perfectly still, which almost never happens.\n\nA forecast of 0 \u00b1 35 bps on a large tech listicle mid-day is correct and will contain most realizations.\nA forecast of 0 \u00b1 2 bps on the same story will get run over and lose money every time.\n\n**Summary:**\n- Never use less than 10 bps (ETFs) or 30 bps (equities mid-day) half-width\n- First 30 minutes after open: 70+ bps floor for equities (this is critical)\n- 30-60 minutes after open: 50+ bps floor for equities\n- Mid-day floors: 10 bps (ETF), 25 bps (utility), 30 bps (large tech), 35 bps (semi), 50 bps (high-beta)\n- Stock-specific story: add 10 bps to base\n- Major catalyst (C-suite, earnings, M&A): add 30-40 bps to base\n- Listicles with 10+ names: add 15 bps to base\n- Near open is the single largest adjustment: multiply mid-day base by 2-2.5x\n- When in doubt, go wider - your current failure mode is being too narrow, not too wide\n- Target: contain 70%+ of realizations within your quoted range",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
