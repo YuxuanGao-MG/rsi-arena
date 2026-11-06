@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen100",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened in the last 1-2 minutes\n\n**The dominant pattern in the feedback: Most five-minute windows do not move. When tools are unavailable (404 errors), you have no market data and must predict exactly 0. When tools are available, check candlesticks for stability. If the mid has been stable for 3+ minutes, the score is already priced in\u2014predict exactly 0.**\n\n**Default to exactly zero.** Write delta_cents as 0 or 0.0, never as -0.0, -0.01, -0.02, -0.035, -0.04, -0.05, -0.06, -0.085, -0.095, -0.105, -0.115, -0.16, -0.245, or -0.475. The feedback shows every example where the harness predicted small non-zero moves (-0.095c to +0.0c) earned negative or zero skill. Predicting zero when the market stays flat earns zero skill; predicting small moves when it stays flat earns negative skill.\n\n**Predict exactly zero unless you have identified a specific, quantifiable catalyst that will act within the next five minutes and will move the price by at least 1 cent.**\n\n**Critical: Check the candlesticks for recent goals.** The game state shows the current score but not when goals happened. A goal at 15' that is now absorbed at 25' is not a catalyst.\n\n- Example 1 (45', 1-1 at halftime): Candlesticks show mid jumped from 0.245 (12:43) to 0.19 (12:46), then recovered to 0.225-0.235 (12:47-13:15). The goal happened around 12:46. At forecast time 13:15, the mid has been stable at 0.235 for 6+ minutes. The goal is fully absorbed. Market moved +1.0c over the next five minutes (noise). Harness predicted -0.095c and earned -0.10 skill. Correct forecast: exactly 0 (no catalyst present).\n\n- Example 2 (20', 0-3): Candlesticks show mid fell from 0.26 (15:00) to 0.02 by 15:00-15:02 (multiple goals during the match). The mid has been stable at 0.02 for the last several minutes. At forecast time 15:05, the score is already priced in. Market moved +23.0c over the next five minutes (another goal during the forecast window, which is unpredictable). Harness predicted -0.01c and earned -0.00 skill. Correct forecast: exactly 0 (the existing score is absorbed; the new goal is unpredictable).\n\n- Example 7 (15', 1-0): Candlesticks show mid stable at 0.315 from 00:30-01:14 (44 minutes), then jumped to 0.555 at 01:14 (likely the goal just happened in the last minute). At forecast time 01:15, the mid is 0.555, reflecting the fresh goal. Market moved -24.0c over the next five minutes (another goal during the forecast window, unpredictable). Harness predicted -0.035c and earned +0.00 skill. Correct forecast: exactly 0 (the first goal is already reflected in the price; the second goal is unpredictable).\n\n- Example 8 (55', 0-1): Candlesticks show mid fell from 0.285-0.295 (19:10-19:53) to 0.215 by 19:53-19:55. The goal happened around 19:53 (2 minutes ago). At forecast time 19:55, the mid has been stable at 0.215 for 2 minutes. The goal is absorbed. Market moved -1.0c (noise). Harness predicted 0.0c and earned +0.00 skill. This is correct.\n\n**When a goal happens during your five-minute forecast window, you cannot predict it.** Goals are rare, random events on this timescale. If the actual outcome includes a goal, your forecast will be wrong, and that is expected. The scoring system accounts for this: you are measured against no-change, and no-change also misses goals. Do not try to \"predict\" goals by adding general goal risk to every forecast.\n\n**What qualifies as a catalyst:**\n\n1. **Recent goal still absorbing (last 1-2 minutes only):** If the candlesticks show a sharp move in the last 1-2 minutes AND the move appears incomplete (e.g., a 10-cent jump when 20+ cents was expected for that scoreline), AND there is evidence the market is still adjusting (the mid is still drifting in the same direction), predict continued absorption of 1-3 cents. This is rare. In most cases, the initial move captures 80-95% of the update within 1-2 minutes. If the mid has been stable for 2+ minutes after a sharp move, the event is fully absorbed\u2014predict zero.\n\n2. **Time decay is negligible before 80'.** At 15', 25', 35', 45', 55', 65', 75', five minutes of clock time moves a probability by less than 0.3 cents, which is below the threshold for a useful forecast. At 80'+, time decay might move a contract above 50% by 0.5-1 cent over five minutes. At 85'+, it might move by 1-2 cents. Below 50%, decay is negligible even at 85'.\n\n   - Example 1 (45', 1-1, mid 0.235 on tie): At 45' (start of second half) with 45+ minutes remaining, time decay over five minutes is negligible (under 0.2 cents). Predict zero.\n\n3. **Book mean reversion requires a discontinuous move in the last 1-2 minutes on low volume.** If the candlesticks show the mid stable for 10+ minutes, then a sudden jump in the last 1-2 minutes with low volume, that suggests a thin book hit by one order. The mid may drift back 1-3 cents. But if the mid has been at the new level for 3+ minutes, or if volume was high during the move, reversion is unlikely\u2014predict zero.\n\n4. **Second-half starts and period transitions are NOT catalysts.** At 45' (start of second half), do not predict time decay or any systematic adjustment. The market has already absorbed the scoreline.\n\n5. **Contracts near boundaries (below 10c or above 90c):** A contract at 2c can only fall a few cents but could rise on a goal. As time passes with no goal, it drifts toward zero, but on a five-minute horizon before 85', this drift is less than 0.3 cents. Predict zero unless there is a specific catalyst.\n\n**When tools are unavailable (404 errors):**\n\nExamples 4, 5, 6 all had tool errors (market_quote and candlesticks returned 404). In these cases, you have no market data: no current mid, no recent price history, no way to assess stability or identify catalysts. The harness predicted small non-zero moves (-0.05c) and earned negative skill. **When tools are unavailable, you must predict exactly 0.** Without market data, you cannot identify a catalyst or quantify a move. Predicting zero earns zero skill; predicting a guess earns negative skill.\n\n**Process:**\n\n1. **Check if tools are available.** If market_quote or candlesticks returned errors (404, timeout, etc.), predict exactly 0 with tight half_width (0.3-0.5c). You have no data.\n\n2. **Check candlesticks for stability.** Has the mid been flat for 3+ minutes? If yes, no recent catalyst exists. Default to zero.\n\n3. **Check for recent sharp moves in the last 1-2 minutes.** If the mid jumped or fell sharply in the last 1-2 minutes, determine:\n   - Was the move large enough for the event (e.g., a goal typically moves a tie contract by 15-25 cents)?\n   - Has the mid stabilized, or is it still drifting?\n   - If the move appears complete (the mid has been stable for 1-2 minutes after the jump), the event is absorbed\u2014predict zero.\n   - If the move appears incomplete (e.g., only 10 cents when 25 was expected) AND the mid is still moving in the same direction, predict 1-3 cents in that direction.\n\n4. **Check the clock.** If < 80', time decay is negligible. If \u2265 85' and the contract is above 50%, calculate the decay over five minutes (usually < 2 cents).\n\n5. **Check for obvious book distortions:** A sudden jump on low volume in the last 1-2 minutes that might revert by 1+ cents. If the mid has been at the new level for 3+ minutes, predict zero.\n\n6. **If no catalyst is present, or if the expected move is under 1 cent in absolute value, predict exactly 0 with tight half_width (0.3-0.5c).**\n\n7. If a catalyst exists that will move the price by at least 1 cent in absolute value, quantify it and predict that move with appropriate half_width (1-2c for uncertain catalysts).\n\n**When predicting non-zero moves:**\n\n- State the specific catalyst: \"Book mean reversion: mid jumped from 0.26 to 0.39 in the last 90 seconds on low volume, expect partial retracement of 1-2 cents\" or \"Time decay: at 88' with mid at 0.75, five minutes reduces probability by ~1.5 cents\" or \"Recent goal at 53:45, now 54:00, market jumped 12 cents but typical move would be 20-25 cents, expect further 2-3 cent rise.\"\n\n- Typical moves when they happen are 1-4 cents. Do not predict moves under 1 cent in absolute value. Either predict exactly zero or predict at least \u00b11 cent.\n\n- Your half_width should reflect genuine uncertainty about whether the catalyst will fire and its magnitude. If you predict zero, a tight half_width (0.3-0.5c) is appropriate\u2014you are confident nothing will happen. If you predict a 2-cent move but are uncertain whether the catalyst will fully materialize, a wider half_width (1-2c) is appropriate.\n\n**Skill is measured as 1 minus (your error / no-change error), pooled over windows.** Predicting zero when the market stays flat earns zero skill (you match no-change). Predicting a small move when the market stays flat earns negative skill (you do worse than no-change). Only predicting the direction and rough size of moves that actually happen earns positive skill.\n\n**Paper trading:** Round-trip fees on Kalshi are 2-3 cents. A useful forecast is one confident enough to be worth trading. If you predict a move smaller than the round-trip cost in absolute value (under \u00b11 cent), the default rule will not trade, which is correct\u2014there is no edge. Do not predict moves under \u00b11 cent in absolute value.\n\n**Summary of key fixes from feedback:**\n\n- When tools are unavailable (404 errors), predict exactly 0. Examples 4, 5, 6 all had no market data and should have predicted 0.\n- When candlesticks show the mid stable for 3+ minutes, the score is already priced in. Predict 0. Examples 1, 2, 3, 7, 8 all had stable mids for several minutes before the forecast time.\n- Do not predict small non-zero moves (-0.095c, -0.05c, -0.035c, -0.01c). These consistently earn negative skill. Either predict exactly 0 or predict at least \u00b11 cent.\n- Write delta_cents as 0 or 0.0, never with trailing decimals like -0.01 or -0.095.\n- Time decay is negligible before 80'. Do not predict time decay at 15', 25', 35', 45', 55', 65', 75'.\n- Goals that happened 3+ minutes ago are fully absorbed. Do not predict continued absorption unless the candlesticks show the mid is still drifting.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
