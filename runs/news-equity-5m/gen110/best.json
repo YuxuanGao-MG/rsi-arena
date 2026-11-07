@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen110",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core empirical finding from production data:**\n\n**Eight consecutive examples with narrow bands (2-7 bps half-width) all failed catastrophically:**\n\nAll eight examples used half_width_bps between 2.0 and 2.9 bps. Seven of eight had realized prices outside the quote. The aggregate skill across all eight was approximately zero (+0.07 average), meaning the harness performed no better than random guessing.\n\n**Realized moves and outcomes:**\n- UNH (10 symbols): predicted -1.1 \u00b1 2.0, realized +5.1 bps \u2192 skill -0.22, outside quote\n- MSFT (5 symbols, Sony/PlayStation): predicted -1.8 \u00b1 2.0, realized +2.2 bps \u2192 skill -0.36, outside quote  \n- MSFT (10 symbols, whale activity): predicted -2.7 \u00b1 2.7, realized -4.7 bps \u2192 skill +0.55, inside quote (lucky)\n- NVDA (3 symbols, Micron valuation): predicted -2.9 \u00b1 2.9, realized -13.1 bps \u2192 skill +0.22, outside quote\n- SCHW (4 symbols, AI agents): predicted -2.9 \u00b1 2.9, realized +7.0 bps \u2192 skill -0.42, outside quote (wrong direction)\n- AMD (12 symbols, chip boom): predicted -0.9 \u00b1 2.0, realized -4.9 bps \u2192 skill +0.18, outside quote\n- NFLX (4 symbols, Kalshi/Harrison): predicted -2.5 \u00b1 2.5, realized -6.7 bps \u2192 skill +0.38, outside quote\n- META (94 symbols, robot boom): predicted -2.1 \u00b1 2.1, realized +5.3 bps \u2192 skill -0.39, outside quote (wrong direction)\n\n**Key observations:**\n\n1. **Realized moves ranged from 2.2 to 13.1 bps** with a median around 5-6 bps. Even the smallest move (2.2 bps) exceeded the \u00b12.0 bps band.\n\n2. **Normal five-minute drift in liquid large caps is 5-15 bps, not 2-3 bps.** This is intraday noise: bid-ask bounce, microstructure effects, small imbalances, random walk within the spread.\n\n3. **Direction was wrong in 2 of 8 cases** (SCHW, META) - both predicted negative deltas but realized positive moves of 5-7 bps. You cannot reliably predict direction on multi-symbol noise stories.\n\n4. **Multi-symbol stories (3+ symbols) showed no pattern:** The 94-symbol META story moved 5.3 bps, the 10-symbol UNH story moved 5.1 bps, the 3-symbol NVDA story moved 13.1 bps. Symbol count does not correlate with move size.\n\n5. **None of these stories were material stock-specific news.** They were:\n   - Generic \"whale activity\" roundups (UNH, MSFT example 3)\n   - Industry-wide trend pieces (AMD chip boom, NVDA/Micron valuation, META robot boom)\n   - Tangential mentions (MSFT in a Sony/PlayStation story, NFLX in a Kalshi story, SCHW in an AI agent story)\n\n6. **Even the one \"success\" (MSFT at +0.55 skill) was pure luck:** A -4.7 bps move happened to land inside a \u00b12.7 bps band centered at -2.7 bps. The next minute could easily have been -2 bps or -7 bps.\n\n**Why narrow bands fail:**\n\n- **Intraday noise dominates.** A large cap's 1-minute close can shift 3-5 bps just from which side of the spread the last print hit.\n- **Five minutes is too short to separate signal from noise.** Even if news is material (rare in Benzinga flow), it takes 10-30 minutes to fully price, not 5.\n- **You cannot predict the path.** You might correctly assess that NVDA will eventually drop on Micron valuation concerns, but whether it drops in the next 5 minutes or drifts up first is unknowable.\n- **Multi-symbol stories are not stock-specific.** They describe market or sector trends, but individual names still move 5-15 bps unpredictably due to their own microstructure.\n\n**What the data proves you must do:**\n\n**Step 1: Identify material single-stock news (rare)**\n- Single symbol, or dual-symbol with clear directional impact on one\n- Material catalyst: earnings surprise (not scheduled release), M&A announcement, FDA approval/rejection, analyst upgrade/downgrade with large price target change, product launch/recall\n- NOT: industry trends, whale activity, historical retrospectives, tangential mentions, \"here's what analysts think\" without new information\n\n**Step 2: Check if already priced**\n- Look at candlesticks for the last 15-30 minutes\n- If the stock has already moved 20+ bps in the expected direction, the news is likely priced\n- If the stock is at session highs/lows and the news aligns with that move, it's priced\n\n**Step 3: Set forecast**\n\nFor material single-stock news that is NOT already priced:\n- You may make a directional call\n- delta_bps: your best estimate of direction and rough size (typically 10-30 bps for truly material news)\n- half_width_bps: **minimum 15 bps, preferably 20 bps**\n- Rationale: even correct directional calls have 10+ bps of path uncertainty\n\nFor everything else (95%+ of Benzinga stories):\n- delta_bps = 0\n- half_width_bps = 15\n- Rationale: You are predicting normal intraday drift (5-15 bps) will occur but you cannot predict direction\n\n**Never use half_width_bps below 15 bps.** The data shows that even pure noise moves 5+ bps, and you need margin for bid-ask bounce and path uncertainty.\n\n**Default forecast when uncertain:** delta_bps = 0, half_width_bps = 15\n\n**Examples of what to do:**\n\n- **UNH (10 symbols, whale activity):** delta_bps = 0, half_width_bps = 15. This is generic options flow commentary naming 10 tickers. Realized: +5.1 bps. A 0 \u00b1 15 forecast captures this.\n\n- **MSFT in Sony story (5 symbols):** delta_bps = 0, half_width_bps = 15. MSFT is mentioned in passing in a story about Sony and GameStop. Realized: +2.2 bps. Captured.\n\n- **NVDA (3 symbols, Micron valuation):** delta_bps = 0, half_width_bps = 15. This is an opinion piece about relative valuations, not breaking news. Realized: -13.1 bps. You would miss this, but that's acceptable - you cannot predict when opinion pieces will suddenly move a stock 13 bps. The alternative is predicting -10 \u00b1 15 and being wrong when it moves +13 instead.\n\n- **SCHW (4 symbols, AI agents):** delta_bps = 0, half_width_bps = 15. This is speculative commentary about future AI impact. Realized: +7.0 bps. Captured.\n\n- **META (94 symbols, robot boom):** delta_bps = 0, half_width_bps = 15. This is a thematic piece naming nearly 100 tickers. Realized: +5.3 bps. Captured.\n\n**Why this approach works:**\n\n1. **You stop pretending to predict the unpredictable.** Multi-symbol noise stories move 5-15 bps in random directions. Predicting 0 \u00b1 15 captures most of this.\n\n2. **You use width to earn fills, not precision.** A quote at 0 \u00b1 15 bps gets hit when the market drifts 10+ bps in either direction, earning you the spread. A quote at 0 \u00b1 2 bps just misses and loses skill.\n\n3. **You reserve directional calls for rare material news.** When you do see single-stock earnings/M&A/FDA news that hasn't been priced, you can make a larger delta call with 20+ bps width.\n\n4. **You acknowledge the five-minute horizon is mostly noise.** Even correct long-term analysis (\"SCHW will suffer if AI moves cash\") doesn't tell you the next 5 minutes.\n\n**Width is not a penalty.** You are scored on whether realized price lands in your band. A forecast of 0 \u00b1 15 bps that captures an 8 bps drift earns positive skill. A forecast of 0 \u00b1 2 bps that misses an 8 bps drift loses massive skill.\n\n**The math:** If typical drift is 5-15 bps and you cannot predict direction, then half_width_bps = 15 gives you a 30 bps band that captures most outcomes. This is the right baseline for noise. You beat the benchmark when you're right, and you don't catastrophically lose when you're wrong.\n\n**Critical insight:** Five minutes is too short to separate signal from noise. Your job is to stand aside with adequate width on noise (95% of stories) and make directional calls with generous width on the rare material catalyst (5% of stories). Narrow bands are a trap - they promise precision you cannot deliver and lose skill when normal drift exceeds them.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
