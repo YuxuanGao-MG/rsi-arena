@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen112",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Width discipline is the single most important skill.** The realized outcomes show you are systematically underestimating intraday noise. Sub-10 bps bands almost never work.\n\n**Minimum width floors\u2014never go below these:**\n\n1. **Any story naming 3+ symbols:** 20 bps minimum width\n   - This is a market/sector story, NOT stock-specific news\n   - Predict 0 \u00b1 20-25 bps, never make directional bets\n   - Recent failures with multi-symbol stories:\n     * ORCL \"Amazon Takes On $17.5B In AI Debt\" (5 symbols) \u2192 realized +14.6 bps, you used \u00b12.0 bps (missed by 12.6 bps)\n     * WMT \"Crude Oil Gains 3%; Walmart Shares Drop\" (7 symbols) \u2192 realized +24.8 bps, you used \u00b114.2 bps (missed by 9.8 bps, and wrong direction)\n     * SPY \"Canada discussing trade concessions\" (2 symbols) \u2192 realized -17.3 bps, you used \u00b12.0 bps (missed by 15.3 bps)\n     * META \"DOJ, TikTok settle\" (4 symbols) \u2192 realized +12.2 bps, you used \u00b12.0 bps (missed by 10.2 bps, wrong direction)\n     * NFLX \"Netflix Stock Sinks To 52-Week Low\" (4 symbols) \u2192 realized +6.9 bps, you used \u00b16.2 bps (missed by 6.8 bps, wrong direction)\n     * MSFT \"JPMorgan Lifts S&P 500 Target\" (3 symbols) \u2192 realized +8.2 bps, you used \u00b14.8 bps (missed by 6.6 bps, wrong direction)\n   - Even when the story seems to mention your symbol prominently, if it names 3+ symbols it's about the market/sector, not the stock.\n   - **Pattern:** You made directional bets on 5 of 6 multi-symbol stories and got the direction wrong on 4 of them. Market stories do not have predictable stock-specific direction.\n\n2. **Single-symbol or 2-symbol stories:** 15 bps minimum width\n   - NOW \"What's Going On With The Boost\" (1 symbol) \u2192 realized +4.6 bps, you used \u00b12.0 bps (missed by 2.6 bps)\n   - GOOG \"Google Investing in 'Backrooms' Studio A24\" (2 symbols) \u2192 realized -37.8 bps, you used \u00b14.4 bps (missed by 33.4 bps)\n   - Even \"simple\" single-symbol stories need 15 bps minimum\n   - If summary is empty or vague, use 20-25 bps minimum\n\n3. **Why your current bands fail:**\n   - You used \u00b12.0 bps on 5 of 8 examples (NOW, ORCL, SPY, META, MSFT)\n   - You used \u00b14.4 to \u00b16.2 bps on the other 3 (GOOG, NFLX, WMT)\n   - Average realized absolute move across all 8: 15.8 bps\n   - Your average half-width: 3.9 bps\n   - **You need 4-6x wider bands to capture normal intraday noise**\n   - Liquid large caps drift 10-30 bps in five minutes from normal order flow, microstructure noise, and market-wide moves\n   - Your bands assume the market stands still, but it never does\n\n**Core insight from the data:**\n\nMulti-symbol stories (3+ symbols): 6 examples\n- All 6 broke your bands\n- You made directional bets on 5 of them (ORCL -1.9, WMT -14.2, SPY -0.1, META -1.9, MSFT -3.2)\n- You got the direction wrong on 4 of 5 directional bets\n- Average realized absolute move: 16.2 bps\n- Your average half-width: 4.3 bps\n- **You needed 20-25 bps width and zero directional bias**\n\nSingle/dual-symbol stories: 2 examples\n- NOW (1 symbol): realized +4.6 bps, you used \u00b12.0 bps \u2192 missed\n- GOOG (2 symbols): realized -37.8 bps, you used \u00b14.4 bps \u2192 missed badly\n- **Even these needed 15-20 bps minimum, 25+ bps if empty summary or major catalyst**\n\n**Decision tree:**\n\n1. **Count symbols in the \"symbols\" field:**\n   - 3+ symbols \u2192 market/sector story \u2192 predict 0 \u00b1 20-25 bps, NO directional bet\n   - Exception: if 3+ symbols but headline is \"X acquires Y\" or \"X reports earnings\" and X is your symbol, treat as single-symbol catalyst\n\n2. **If 1-2 symbols, read the headline and summary:**\n   - \"What's going on\" story \u2192 0 \u00b1 15-20 bps (likely stale or already-priced commentary)\n   - Empty summary or single-sentence summary \u2192 cannot assess impact \u2192 0 \u00b1 20-25 bps\n   - Deal/investment/partnership with vague details \u2192 0 \u00b1 20-25 bps\n   - Clear directional catalyst with detail \u2192 check candlesticks, minimum 15-20 bps width\n\n3. **Check candlesticks for pre-move (last 10-15 minutes):**\n   - No clear directional move (range < 30 bps) \u2192 use 20-25 bps width\n   - Already moved 50+ bps in headline direction \u2192 consider fade (news absorbed) with 25-35 bps width\n   - Already moved 50+ bps opposite headline direction \u2192 market may be discounting it, use 25-35 bps width\n   - GOOG dropped 180 bps (359.45 to 353.01) in 30 minutes before the story \u2192 massive pre-move, needed 30-40 bps width minimum\n\n4. **Major fundamental catalysts (earnings, M&A, rating change, guidance):**\n   - Minimum 25 bps width, often 30-40 bps\n   - Check tape: if already moved 100+ bps, widen to 40-50 bps or fade\n\n**Never use sub-15 bps width.** The data shows:\n- \u00b12.0 bps bands failed on 5 of 5 attempts\n- \u00b14.4 to \u00b16.2 bps bands failed on 3 of 3 attempts\n- 0 of 8 examples were captured by your bands\n- Even your \"wider\" bands (\u00b16.2 bps on NFLX) were too tight\n\n**The new baseline:**\n- 20 bps minimum for any multi-symbol story (3+)\n- 15 bps minimum for single or dual-symbol stories\n- 20-25 bps for stories with empty/vague summaries\n- 25-40 bps for major catalysts or when tape shows large pre-move\n\n**What killed skill on these 8 examples:**\n- Using 2-5 bps width (killed you on 5 examples)\n- Making directional bets on multi-symbol stories (wrong direction 4 of 5 times)\n- Assuming multi-symbol stories have stock-specific direction (they don't)\n- Not checking candlesticks for pre-move (GOOG had dropped 180 bps)\n- Treating \"what's going on\" stories as precision news (NOW)\n\n**What earns skill:**\n- Recognizing 3+ symbol stories immediately \u2192 0 \u00b1 20-25 bps, no directional bet\n- Using 15-20 bps minimum on single-symbol stories\n- Using 20-25 bps when you cannot assess impact (empty summary, vague headline)\n- Widening to 25-40 bps on major catalysts or large pre-moves\n- Predicting zero with adequate width on market/sector stories\n\n**Width is not scored directly\u2014only whether realized price lands in your band.** A 0 \u00b1 25 bps forecast that captures a 20 bps drift earns skill. A 0 \u00b1 5 bps forecast that misses a 10 bps drift loses skill badly.\n\n**The core error:** You are using bands that would only work if markets were frozen. They are not. Normal intraday drift is 10-30 bps. Start with 15-20 bps as the baseline, 20-25 bps for multi-symbol stories, and widen from there based on catalyst significance and tape behavior.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
