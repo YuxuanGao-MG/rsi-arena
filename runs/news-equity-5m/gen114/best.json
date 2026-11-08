@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen114",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n## Recent Performance Analysis\n\nThe harness is **systematically underthrowing both move size and width**. Eight recent examples show a clear pattern:\n\n**1. COP** (Truist maintains hold, lowers PT to $115): predicted -0.1 bps, actual +29.1 bps, width 2.0 bps, skill -0.00. **Analyst PT change moved 29 bps, not 0. Width of 2 bps run over by 27 bps.**\n\n**2. AAPL** (Korea semi/Taiwan semi/China AI models, 12+ symbols including NVDA/MSFT/META): predicted -2.0 bps, actual +13.9 bps, width 2.0 bps, skill -0.14. **Multi-symbol sector story with substance (Apple boosting China AI models) moved 14 bps. Wrong direction, width too tight by 12 bps.**\n\n**3. ORCL** (New Mexico gas pipeline for data center delayed to 2027): predicted +0.1 bps, actual -15.3 bps, width 2.0 bps, skill -0.01. **Infrastructure delay for data center is material operational news. Moved 15 bps, not 0. Wrong direction, width too tight by 13 bps.**\n\n**4. UNH** (9 health care stocks whale activity, generic options flow story): predicted +0.1 bps, actual -12.2 bps, width 2.0 bps, skill -0.01. **Generic whale activity story naming 9 symbols. Even this moved 12 bps. Width inadequate.**\n\n**5. CVX** (BofA maintains buy, raises PT to $227): predicted +1.6 bps, actual -8.0 bps, width 2.0 bps, skill -0.20. **Analyst PT raise moved 10 bps in opposite direction (tape disagreed or already priced). Width too tight by 6 bps, wrong direction.**\n\n**6. META** (Meta remains top large-cap pick, Citizens and Piper Sandler bullish): predicted +0.2 bps, actual -8.6 bps, width 2.0 bps, skill -0.03. **Analyst reiteration moved 9 bps opposite direction. Width too tight by 7 bps.**\n\n**7. TSLA** (Walmart outlook/Treasury/Samsung/Bitcoin, 79+ symbols, macro story): predicted -0.6 bps, actual -12.6 bps, width 2.0 bps, skill +0.05. **Broad macro story naming 79 symbols. Even this moved 13 bps. Width inadequate. Got lucky on direction but magnitude underestimated.**\n\n**8. JPM** (JPMorgan plans $750B in US housing through 2035): predicted +5.9 bps, actual -31.1 bps, width 5.9 bps, skill -0.19. **Company-specific $750B commitment moved 31 bps opposite direction. This is the only example with width above 2 bps, but still insufficient and wrong direction. Major capital allocation announcement is material.**\n\n## Key Lessons\n\n### Width is catastrophically too tight\n\n**The evidence is overwhelming: 2 bp width fails on everything.**\n\n- COP: 2 bp width on 29 bp move (analyst PT)\n- AAPL: 2 bp width on 14 bp move (multi-symbol sector story)\n- ORCL: 2 bp width on 15 bp move (infrastructure delay)\n- UNH: 2 bp width on 12 bp move (generic options flow)\n- CVX: 2 bp width on 10 bp swing (analyst PT raise)\n- META: 2 bp width on 9 bp move (analyst reiteration)\n- TSLA: 2 bp width on 13 bp move (79-symbol macro story)\n- JPM: 5.9 bp width on 31 bp move (company capital commitment)\n\n**Every single example was run over. The quote was hit on both sides in 7 of 8 cases. Even JPM with 5.9 bp width (the widest) was insufficient by 25 bps.**\n\n### Move size is systematically underpredicted\n\n**The harness predicts 0-6 bps on stories that move 9-31 bps:**\n\n- **COP, CVX analyst PT changes**: moved 29 and 10 bps. Predicted near zero. Analyst PT changes (even maintaining rating) move 10-30 bps routinely.\n- **JPM company capital commitment**: moved 31 bps. Predicted +6 bps. $750B housing commitment over 10 years is material strategic announcement. Moved opposite direction (market interprets as dilutive or low-return).\n- **ORCL infrastructure delay**: moved 15 bps. Predicted +0.1 bps. Data center gas pipeline delayed by a year is operational setback.\n- **Multi-symbol sector stories** (AAPL, TSLA, UNH): moved 12-14 bps. Predicted 0-2 bps. Even generic stories naming your stock move 10+ bps.\n\n### Direction is wrong 50% of the time on analyst and company news\n\n**5 of 8 examples had wrong sign:**\n- COP: predicted -0.1, actual +29 (PT lowered but stock rose)\n- AAPL: predicted -2, actual +14 (sector negative but Apple AI China mention positive)\n- ORCL: predicted +0.1, actual -15 (infrastructure delay is negative)\n- CVX: predicted +1.6, actual -8 (PT raised but stock fell)\n- META: predicted +0.2, actual -9 (bullish reiteration but stock fell)\n\n**The pattern: analyst and company announcements are more uncertain in direction than the harness assumes. When rating/guidance is maintained or headline seems positive, the tape often moves opposite because the news is already priced or the market disagrees.**\n\n### Story types and their actual move ranges (from these 8 examples)\n\n**1. Analyst PT changes (rating maintained):**\n- **COP** (Truist maintains hold, lowers PT): moved +29 bps\n- **CVX** (BofA maintains buy, raises PT): moved -8 bps\n- **Range: 10-30 bps. Direction: uncertain (tape matters more than PT direction). Minimum width: 15 bps.**\n\n**2. Analyst reiterations without PT change:**\n- **META** (top large-cap pick, bullish commentary): moved -9 bps\n- **Range: 5-12 bps. Direction: uncertain. Minimum width: 12 bps.**\n\n**3. Company strategic/capital allocation announcements:**\n- **JPM** ($750B housing commitment through 2035): moved -31 bps despite seemingly positive headline\n- **Range: 20-50 bps depending on market interpretation. Direction: highly uncertain (market may view as dilutive, low-return, or opportunity cost). Minimum width: 25 bps.**\n\n**4. Company operational news (delays, setbacks, expansions):**\n- **ORCL** (gas pipeline for data center delayed to 2027): moved -15 bps\n- **Range: 10-25 bps. Direction: usually clear (delays negative, expansions positive). Minimum width: 15 bps.**\n\n**5. Multi-symbol sector stories (3-20 symbols):**\n- **AAPL** (Korea/Taiwan semi, Apple China AI models, 12 symbols): moved +14 bps\n- **UNH** (9 health care stocks whale activity): moved -12 bps\n- **Range: 8-20 bps depending on substance. Direction: uncertain unless story has clear catalyst for your specific symbol. Minimum width: 15 bps.**\n\n**6. Broad macro stories (50+ symbols):**\n- **TSLA** (Walmart/Treasury/Samsung, 79 symbols): moved -13 bps\n- **Range: 8-15 bps. Direction: follows market if no specific catalyst. Minimum width: 12 bps.**\n\n## Revised Decision Framework\n\n### Minimum width rules (non-negotiable)\n\n**Never use less than 10 bp width on any story. The data proves 2 bp width fails 100% of the time.**\n\n**Width by story type:**\n\n1. **Company strategic announcements** (major capital commitments, M&A, restructuring):\n   - **Minimum 25 bps.** JPM moved 31 bps on $750B housing commitment.\n\n2. **Company operational news** (infrastructure, facility delays/expansions, supply chain):\n   - **Minimum 15 bps.** ORCL moved 15 bps on pipeline delay.\n\n3. **Analyst PT changes** (rating maintained):\n   - **Minimum 15 bps.** COP moved 29 bps, CVX moved 10 bps on PT changes. Direction is uncertain.\n\n4. **Analyst reiterations/commentary** (no rating or PT change):\n   - **Minimum 12 bps.** META moved 9 bps on bullish reiteration.\n\n5. **Multi-symbol sector stories** (3-20 symbols) with substance:\n   - **Minimum 15 bps.** AAPL moved 14 bps, UNH moved 12 bps.\n\n6. **Broad macro stories** (50+ symbols):\n   - **Minimum 12 bps.** TSLA moved 13 bps on 79-symbol macro story.\n\n### Move size calibration (realistic ranges)\n\n**The harness underpredicts by 3-10x. Reality check:**\n\n1. **Analyst PT changes**: 10-30 bps. Direction uncertain (check tape). COP moved 29 bps.\n\n2. **Company strategic announcements**: 20-50 bps. Direction uncertain (market interpretation matters). JPM moved 31 bps.\n\n3. **Company operational news**: 10-25 bps. Direction usually clear. ORCL moved 15 bps.\n\n4. **Analyst reiterations**: 5-12 bps. Direction uncertain. META moved 9 bps.\n\n5. **Multi-symbol sector stories**: 8-20 bps. Direction depends on specific mention. AAPL moved 14 bps, UNH moved 12 bps.\n\n6. **Broad macro stories**: 8-15 bps. Direction follows market. TSLA moved 13 bps.\n\n### Direction: When it's uncertain, admit it\n\n**The examples show 50% wrong direction rate on analyst and company news. This is not bad luck\u2014it's the nature of these stories.**\n\n**When direction is uncertain:**\n- Analyst PT changes where rating is maintained: **direction is 50/50. Check tape for recent momentum.**\n- Company announcements that sound positive but involve large capital deployment: **market may view as dilutive. Direction is 50/50.**\n- Analyst reiterations without new information: **market has already heard this. Direction is 50/50.**\n\n**When this happens:**\n1. Check tape: if stock moved 10+ bps in one direction in last 20 minutes, that move may continue or reverse. Don't fight strong momentum without evidence.\n2. Predict **zero delta** but **wide width** (15-25 bps) to capture the uncertainty.\n3. Accept that you cannot know direction and express that in the forecast.\n\n### Tape check (critical, but not sufficient)\n\n**Check tape, but don't over-rely on it:**\n\n1. **Has stock moved 15+ bps in one direction in last 30 minutes?**\n   - If yes: news may be describing that move, or may accelerate/reverse it.\n   - Don't assume stabilization. Width must still match story type.\n\n2. **Is tape highly volatile** (range > 50 bps in last 30 min)?\n   - If yes: expect continued volatility. Add 5-10 bps to minimum width.\n\n3. **Time of day:**\n   - First 30 minutes (9:30-10:00 ET): higher volume, moves are larger. JPM at 9:40am moved 31 bps.\n   - Mid-day (11am-2pm ET): lower volume, but material news still moves full amount.\n   - Last hour (3-4pm ET): higher volume, moves can accelerate.\n\n### Examples of what to do differently\n\n**COP analyst PT** (actual):\n- \u274c Predicted -0.1 bps, width 2.0 bps\n- \u2713 Should predict: \u00b115 bps (direction uncertain), width 18 bps\n- **Why**: Truist maintains hold but lowers PT to $115. PT lower is mildly negative, but rating unchanged. Stock at 109.90, so PT is still 5% above. Direction uncertain. Recent tape drifting down (110.76 to 109.90, -78 bps over 30 min). Could continue or bounce. Predict 0 delta, width 18 bps to capture 10-30 bp range.\n\n**AAPL multi-symbol sector story** (actual):\n- \u274c Predicted -2.0 bps, width 2.0 bps\n- \u2713 Should predict: +8 bps, width 15 bps\n- **Why**: Story mentions \"Apple Boosts China AI Models\" specifically. 12+ symbols but Apple gets specific mention. Tape falling (333 to 330, -90 bps over 30 min). Story could stabilize or reverse. Apple China AI is positive specific catalyst. Predict +5 to +10 bps, width 15 bps.\n\n**ORCL infrastructure delay** (actual):\n- \u274c Predicted +0.1 bps, width 2.0 bps\n- \u2713 Should predict: -12 bps, width 15 bps\n- **Why**: Gas pipeline for data center delayed to 2027 (presumably from 2026). Infrastructure delay is operational setback. Tape falling (152 to 150.47, -101 bps over 45 min). Delay is negative. Predict -10 to -15 bps, width 15 bps.\n\n**JPM capital commitment** (actual):\n- \u274c Predicted +5.9 bps, width 5.9 bps\n- \u2713 Should predict: \u00b120 bps, width 25 bps\n- **Why**: $750B housing commitment through 2035 is $75B/year. Sounds positive, but market may view as low-return deployment or opportunity cost. Published at 9:40am (high volume period, just after open). Tape volatile (354.08 to 354.19 in 10 minutes, small sample). Direction highly uncertain. Magnitude certain (20-50 bps). Predict 0 delta, width 25-30 bps.\n\n**CVX analyst PT raise** (actual):\n- \u274c Predicted +1.6 bps, width 2.0 bps\n- \u2713 Should predict: \u00b110 bps, width 15 bps\n- **Why**: BofA maintains buy, raises PT to $227. Stock at 188.38, so PT is 20% above. PT raise is positive, but rating unchanged (still buy). Tape falling (187.9 to 188.38, drifting). Could be already priced. Direction uncertain. Predict 0 delta, width 15 bps to capture 10-20 bp range.\n\n**META analyst reiteration** (actual):\n- \u274c Predicted +0.2 bps, width 2.0 bps\n- \u2713 Should predict: \u00b18 bps, width 12 bps\n- **Why**: \"Remains top large-cap pick\" from Citizens and Piper Sandler. Bullish commentary but no rating change, no PT change. Tape volatile (670.72 to 668.90, -27 bps over 45 min). Reiteration unlikely to reverse trend. Direction uncertain. Predict 0 delta, width 12 bps.\n\n**TSLA macro story** (actual):\n- \u274c Predicted -0.6 bps, width 2.0 bps\n- \u2713 Should predict: -8 bps, width 12 bps\n- **Why**: 79 symbols, macro story (Walmart outlook, Treasury, Samsung). TSLA named in list. Tape drifting down (342.88 to 342.44, -13 bps over 45 min). Macro negative tone (cautious spending). Predict -8 to -12 bps continuation, width 12 bps.\n\n**UNH generic options flow** (actual):\n- \u274c Predicted +0.1 bps, width 2.0 bps\n- \u2713 Should predict: 0 bps, width 15 bps\n- **Why**: \"9 Health Care Stocks Whale Activity\" is generic options flow story. UNH named in list of 9. No specific catalyst. Tape drifting up (400.92 to 401.70, +19 bps over 45 min). Generic flow stories move 8-15 bps unpredictably. Predict 0 delta, width 15 bps.\n\n## Summary: New Baseline Rules\n\n**Width (non-negotiable minimums):**\n- Company strategic announcements: **25 bps minimum**\n- Company operational news: **15 bps minimum**\n- Analyst PT changes: **15 bps minimum**\n- Analyst reiterations: **12 bps minimum**\n- Multi-symbol sector stories (3-20 symbols): **15 bps minimum**\n- Broad macro stories (50+ symbols): **12 bps minimum**\n\n**Never use less than 10 bp width. 2 bp width fails 100% of the time per the data.**\n\n**Move size (realistic expectations):**\n- Analyst PT changes: **10-30 bps** (not 0-2 bps)\n- Company strategic announcements: **20-50 bps** (not 5 bps)\n- Company operational news: **10-25 bps** (not 0 bps)\n- Analyst reiterations: **5-12 bps** (not 0 bps)\n- Multi-symbol sector stories: **8-20 bps** (not 0-2 bps)\n- Broad macro stories: **8-15 bps** (not 0-2 bps)\n\n**Direction: Admit when it's uncertain**\n\n**Stories with uncertain direction (50/50):**\n- Analyst PT changes where rating is maintained\n- Company announcements involving large capital deployment (market may view as dilutive)\n- Analyst reiterations without new information\n\n**When direction is uncertain:**\n- Predict **zero delta**\n- Use **wide width** (15-25 bps) to capture range\n- Check tape for momentum but don't over-rely on it\n\n**Tape check (always do, but don't over-weight):**\n- Stock moved 15+ bps in one direction (last 30 min)? \u2192 May continue or reverse. Don't assume stabilization.\n- Tape volatile (range > 50 bps)? \u2192 Add 5-10 bps to minimum width.\n- First 30 min of trading? \u2192 Expect larger moves.\n\n**Final checklist before submitting:**\n1. Is my width less than 10 bps? \u2192 **REJECT. Increase to 10 minimum.**\n2. Is this analyst news or company strategic announcement? \u2192 **Width must be 15-25 bps.**\n3. Am I predicting under 5 bps on a story naming my symbol? \u2192 **Increase to 8-15 bps based on story type.**\n4. Is direction uncertain (analyst reiteration, PT change with maintained rating, company capital announcement)? \u2192 **Predict zero delta, wide width.**\n5. Did I check the tape? \u2192 **Yes, but don't over-rely. Width must still match story type.**\n\n**The data proves: 2 bp width fails 100% of the time. 10-30 bp moves are routine on analyst and company news. Direction is uncertain 50% of the time on these stories. Express uncertainty through zero delta and wide width, not through tight bands.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
