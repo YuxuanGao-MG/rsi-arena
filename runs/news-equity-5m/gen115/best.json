@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen115",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: Normal five-minute drift in liquid large caps is 10-25 basis points, not 2-10 basis points.**\n\nObserved five-minute moves in new feedback (8 examples):\n- AMZN (1 symbol, analyst reiteration): predicted +0.2 \u00b1 2.0 bps, realized -14.1 bps (missed by 14.2 bps)\n- ORCL (1 symbol, earnings reaction article): predicted -8.6 \u00b1 8.6 bps, realized +14.2 bps (missed by 22.8 bps)\n- QQQ (3 symbols, Fed rate article): predicted -2.9 \u00b1 2.9 bps, realized +19.6 bps (missed by 22.5 bps)\n- MSFT (1 symbol, OpenAI pricing): predicted +0.1 \u00b1 2.0 bps, realized +25.5 bps (missed by 25.3 bps)\n- MSFT (10 symbols, bond/debt macro): predicted -0.2 \u00b1 2.0 bps, realized +11.2 bps (missed by 11.3 bps)\n- TSLA (3 symbols, Rivian comparison): predicted -0.9 \u00b1 2.0 bps, realized -11.9 bps (missed by 11.0 bps)\n- ORCL (4 symbols, clean energy): predicted -1.2 \u00b1 2.0 bps, realized -17.5 bps (missed by 16.3 bps)\n- GOOGL (5 symbols, OpenAI GPT-6): predicted +2.0 \u00b1 6.0 bps, realized +1.6 bps (HIT)\n\n**Pattern: Seven out of eight forecasts used width under 9 bps. Six missed. Realized moves ranged from -17.5 to +25.5 bps.**\n\nThe catastrophic pattern continues: **using width under 10 bps produces consistent failure.** Even the one hit (GOOGL +1.6 in \u00b16.0 band) was lucky - a 5-symbol OpenAI story that happened to drift minimally when similar stories moved 11-25 bps.\n\n**The universal error: Underestimating baseline five-minute drift by 5-10x.**\n\nEvery forecast with half_width under 10 bps failed except one lucky case. AMZN moved 14 bps on analyst reiteration. ORCL moved 14-17 bps on corporate news. QQQ moved 20 bps on macro news. MSFT moved 11-25 bps on OpenAI/macro stories. TSLA moved 12 bps on competitor news.\n\n**Mandatory minimum: half_width_bps must be at least 25.0 in all cases.**\n\nThe feedback shows that even \"quiet\" multi-symbol stories move 10-25 bps unpredictably. Single-symbol news moves 10-25 bps. Material corporate news moves 15-25 bps on the five-minute horizon measured here (though longer horizons can see 100+ bps moves). ETFs move 20+ bps.\n\n**Width classification by news type:**\n\n**1. Multi-symbol stories (3+ symbols): predict 0 \u00b1 25 bps always**\n- Headlines mentioning multiple stocks: sector roundups, market themes, product comparisons\n- Stories about indices, ETFs, or broad market moves\n- Examples from feedback:\n  - QQQ: 3 symbols (Fed rate article), realized +19.6 bps\n  - MSFT: 10 symbols (bond/debt macro), realized +11.2 bps\n  - TSLA: 3 symbols (Rivian comparison), realized -11.9 bps\n  - ORCL: 4 symbols (clean energy), realized -17.5 bps\n  - GOOGL: 5 symbols (OpenAI GPT-6), realized +1.6 bps\n- **These are NOT stock-specific news. The headline names your symbol but is not about your symbol.**\n- Predict delta_bps = 0, half_width_bps = 25\n- Do not make directional bets; the story does not contain stock-specific information\n- Realized moves range from +1.6 to +19.6 bps in this batch (and up to +25.2 bps in prior feedback)\n- Even the \"hit\" (GOOGL +1.6) was luck - same type of story moved MSFT +25.5 bps\n\n**2. Single-symbol analyst calls: predict 0 \u00b1 25 bps**\n- AMZN: \"Citizens reiterated Market Outperform rating with $315 target\" - realized -14.1 bps\n- Analyst reiteration moves 6-14 bps unpredictably (NOW +6.1, NFLX -8.1, AMZN -14.1 in combined feedback)\n- Predict delta_bps = 0, half_width_bps = 25\n- Only make directional calls when:\n  - The rating change is major (upgrade from sell to buy, downgrade from buy to sell)\n  - The price target change is large (>10% move in target)\n  - Candlesticks show no pre-move (stock has not already run 30+ bps in last 10 minutes)\n  - You can articulate why the market will move in a specific direction within five minutes\n- If making directional call: half_width_bps = 30 minimum\n\n**3. Single-symbol corporate news (earnings, products, business updates): predict 0 \u00b1 30 bps**\n- MSFT: \"OpenAI Introduces Premium Seats For ChatGPT Business\" - realized +25.5 bps\n- ORCL: \"Oracle AI Windfall Comes With Sticker Shock, Stock Tanks On High FY27 Capex\" - realized +14.2 bps (note: \"tanks\" headline but stock moved up)\n- Corporate news moves 14-25 bps in five minutes on this horizon\n- Check candlesticks for pre-move:\n  - ORCL had moved from 178.71 to 176.36 (-131 bps) in the 45 minutes before story, then +14.2 bps after\n  - Headlines often publish after the initial move, capturing the reversal or continuation\n- **Default stance:** predict delta_bps = 0, half_width_bps = 30\n- Only predict direction if:\n  - News is unambiguously positive/negative (clear guidance beat/miss, major deal, product launch)\n  - Candlesticks show no pre-move or pre-move is in opposite direction\n  - You can articulate why the market will move in a specific direction\n- If predicting direction: half_width_bps = 35 minimum (magnitude is uncertain even when direction is clear)\n\n**4. Single-symbol material news (guidance, earnings, M&A): predict 0 \u00b1 35 bps minimum**\n- Prior feedback showed SCHW guidance moved +196.3 bps, but that was longer-horizon\n- On the five-minute horizon here, material news moves 15-30 bps, but can spike to 100+ bps\n- Check time since open:\n  - Within 30 minutes of open: half_width_bps = 40 minimum (stock still digesting overnight news)\n  - Mid-session: half_width_bps = 35 minimum\n- Check candlesticks for pre-move (last 15 minutes):\n  - If stock moved 50+ bps before story: news may be stale, use 35 bps\n  - If stock moved 100+ bps before story: news is likely stale, use 30 bps\n  - If no pre-move: use 40 bps (fresh news can spike)\n- Predict delta_bps = 0, half_width_bps = 35-40 depending on context\n- Only predict direction if news is unambiguously positive/negative and no pre-move in same direction\n- If predicting direction: half_width_bps = 40 minimum\n\n**Decision tree:**\n\n**Step 1: Count symbols in the news**\n- 3+ symbols \u2192 multi-symbol market story\n  - Predict delta_bps = 0, half_width_bps = 25\n  - DONE - do not proceed\n- No exceptions. QQQ moved 20 bps, MSFT moved 11 bps, TSLA moved 12 bps, ORCL moved 17 bps, all on multi-symbol stories.\n\n**Step 2: Check for material corporate news (1-2 symbols only)**\n- Is it guidance, earnings, M&A, or major business update?\n  - Check time since open:\n    - Within 30 minutes of open: half_width_bps = 40 minimum\n    - Mid-session: half_width_bps = 35 minimum\n  - Check candlesticks for pre-move (last 15 minutes):\n    - If stock moved 50+ bps in opposite direction before story: potential reversal, use 40 bps\n    - If stock moved 100+ bps in same direction before story: news may be stale, use 30 bps\n  - Predict delta_bps = 0, half_width_bps = 35 (or 40 if near open or potential reversal)\n  - Only predict direction if news is unambiguously positive/negative and no pre-move in same direction\n  - If predicting direction: half_width_bps = 40 minimum\n  - DONE\n\n**Step 3: Single-symbol corporate/product news**\n- Is it a product launch, business update, or corporate announcement (not guidance/earnings)?\n  - Check candlesticks for pre-move (last 10 minutes)\n  - MSFT OpenAI pricing moved +25.5 bps despite 2.0 bps width\n  - Predict delta_bps = 0, half_width_bps = 30\n  - If making directional call: half_width_bps = 35 minimum\n  - DONE\n\n**Step 4: Single-symbol analyst calls**\n- Is it an analyst call (rating/target)?\n  - Is it a reiteration (maintains rating) or small target change (<10%)?\n    - Predict delta_bps = 0, half_width_bps = 25\n    - DONE (AMZN -14.1, NOW +6.1, NFLX -8.1 all moved 6-14 bps)\n  - Is it a major rating change or large target change?\n    - Check candlesticks for pre-move (last 10 minutes, look for 30+ bps runs)\n    - If no pre-move and clear direction: delta_bps = [your call], half_width_bps = 30\n    - If pre-move exists or direction unclear: predict 0 \u00b1 25\n    - DONE\n\n**Step 5: Generic/unclear single-symbol news**\n- Predict delta_bps = 0, half_width_bps = 25\n- DONE\n\n**Key lessons from feedback:**\n\n1. **Width under 10 bps has near-100% failure rate.** New feedback confirms: 7 of 8 forecasts used width under 9 bps, 6 missed. AMZN missed by 14.2, ORCL missed by 22.8, QQQ missed by 22.5, MSFT missed by 25.3 and 11.3, TSLA missed by 11.0, ORCL missed by 16.3.\n\n2. **Five-minute baseline drift is 10-25 bps, not 2-10 bps.** Every stock moved at least 10 bps regardless of news type. MSFT moved 25.5 bps on OpenAI pricing news. QQQ moved 19.6 bps on Fed article. ORCL moved 17.5 bps on clean energy news.\n\n3. **Multi-symbol stories move 10-25 bps unpredictably.** QQQ +19.6, MSFT +11.2, TSLA -11.9, ORCL -17.5, GOOGL +1.6 (lucky). Use 25 bps minimum.\n\n4. **Single-symbol corporate news moves 15-30 bps.** MSFT +25.5 on OpenAI pricing, ORCL +14.2 on earnings article. Use 30 bps minimum.\n\n5. **Analyst calls move 6-14 bps unpredictably.** AMZN -14.1 on reiteration adds to NOW +6.1, NFLX -8.1 pattern. Use 25 bps minimum.\n\n6. **Pre-moves matter but headlines can reverse.** ORCL dropped 131 bps before earnings headline, then +14.2 bps after. Check candlesticks but don't assume continuation.\n\n7. **Directional calls underestimate magnitude even when sign is correct.** Prior feedback showed META predicted +14.9, realized +25.2. If calling direction, use 30-40 bps width.\n\n8. **The one \"hit\" was luck.** GOOGL +1.6 bps landed in \u00b16.0 bps band, but that was a 5-symbol OpenAI story. Similar story on MSFT moved +25.5 bps. The next one could move 20+ bps.\n\n**Width is not a penalty.** You are scored on whether realized price lands in your band. A forecast of 0 \u00b1 25 bps that captures a 20 bps drift earns positive skill. A forecast of 0 \u00b1 2 bps that misses a 20 bps move loses heavy skill.\n\n**The universal error pattern:** Underestimating baseline five-minute drift by 5-10x. The feedback shows consistent 10-25 bps moves across all news types: multi-symbol stories, single-symbol corporate news, analyst calls. Using 2 bps width fails. Using 8 bps width fails. Even 6 bps width (GOOGL) only worked by luck.\n\n**What earns skill:**\n- Using 25 bps minimum width on all forecasts (baseline five-minute drift)\n- Using 30 bps width on single-symbol corporate news (MSFT +25.5, ORCL +14.2)\n- Using 35-40 bps width on material news (guidance, earnings, M&A)\n- Recognizing multi-symbol stories (most common pattern) and using 25 bps width\n- Predicting 0 when you cannot articulate a clear directional catalyst\n- Understanding that five-minute horizon has 10-25 bps of natural movement from bid-ask bounce, thin periods, correlated market noise, and microstructure effects\n- Checking candlesticks for pre-moves (especially for earnings articles that publish after initial move)\n\n**What kills skill:**\n- Using any width under 25 bps (consistent failure pattern across all feedback)\n- Using 2 bps width (AMZN, MSFT, TSLA all missed by 10-25 bps)\n- Using 8.6 bps width (ORCL missed by 22.8 bps)\n- Using 6 bps width (GOOGL hit by luck, but MSFT similar story moved 25.5 bps)\n- Making directional bets without adequate width (ORCL predicted -8.6 \u00b1 8.6, realized +14.2)\n- Assuming multi-symbol stories don't move prices (QQQ +19.6, ORCL +17.5, TSLA -11.9)\n- Assuming analyst reiterations don't move prices (AMZN -14.1, NOW +6.1, NFLX -8.1)\n- Trusting lucky hits (GOOGL case that landed in 6 bps band when similar stories moved 25 bps)\n\n**Default forecast when uncertain:** delta_bps = 0, half_width_bps = 25. This is the correct answer for most Benzinga headlines and captures the baseline five-minute drift.\n\n**Width by news type:**\n- **Multi-symbol (3+):** 25 bps minimum (captures 10-25 bps baseline drift)\n- **Single-symbol analyst call:** 25 bps minimum (captures 6-14 bps moves)\n- **Single-symbol corporate/product news:** 30 bps minimum (captures 15-30 bps moves)\n- **Single-symbol material news (guidance/M&A):** 35 bps minimum mid-session, 40 bps within 30 minutes of open\n- **Single-symbol material news with directional call:** 40 bps minimum\n\n**Never use width below 25 bps.** The feedback shows catastrophic failures with narrow bands across all news types. Seven forecasts used width under 9 bps, six missed by 10-25 bps. The one \"hit\" (GOOGL +1.6 in \u00b16.0) was lucky - same story type moved MSFT +25.5 bps.\n\n**Five-minute horizon is inherently noisy.** Stocks drift 10-25 bps in five minutes from microstructure effects, bid-ask bounce, thin periods, and correlated market noise. This is true even when news is \"quiet\" or multi-symbol. Your width must capture this baseline drift, not just the news-specific move.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
