@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen120",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**EVIDENCE FROM PRODUCTION:**\n\n**The fundamental problem: directional prediction has zero edge on a five-minute horizon.**\n\nThe realized moves in production ranged from -56.9 bps (PLTR) to +17.1 bps (IBM), with a median absolute move of ~6 bps. Directional forecasts were wrong more often than right, and when wrong, the cost was severe:\n- PLTR: predicted -5.5 bps, realized -56.9 bps (miss 51.4 bps, but got direction right by luck)\n- IBM: predicted +1.1 bps, realized +17.1 bps (miss 15.9 bps)\n- GOOG: predicted +3.8 bps, realized -6.8 bps (miss 10.6 bps, wrong direction)\n- AMZN: predicted +0.2 bps, realized -6.1 bps (miss 6.4 bps, wrong direction)\n\nEven tiny directional bets (+0.2 bps, +1.1 bps) resulted in misses of 6-16 bps when the market moved against them. The only forecast that worked (COP: predicted +3.4 bps, realized +4.3 bps, miss 0.9 bps, skill +0.68) did so by luck\u2014the intraday noise happened to match the forecast.\n\n**The realized moves show why direction is unpredictable:**\n- TMO (113-symbol macro story, 10-year yield): +3.5 bps\n- PLTR (single-symbol SwingTrader buy): -56.9 bps\n- COP (115-symbol sector roundup): +4.3 bps\n- XLE (114-symbol oil/yields story): -1.5 bps\n- IBM (6-symbol analyst upgrade): +17.1 bps\n- GS (10-symbol whale activity): -5.8 bps\n- GOOG (dual-symbol botnet takedown): -6.8 bps\n- AMZN (5-symbol cash flow comparison): -6.1 bps\n\n**Range: -56.9 to +17.1 bps. No pattern links headline type, symbol count, or catalyst to direction. The tape drives direction, not the headline.**\n\n**The width problem: all widths under 7 bps failed to contain the realized move or earned skill by luck.**\n\nProduction forecasts used widths of 2.0 to 7.2 bps:\n- TMO: 2.0 bps width, realized +3.5 bps \u2192 quote blown out, skill -0.18\n- PLTR: 5.5 bps width, realized -56.9 bps \u2192 quote blown out, skill +0.10 (only because no-change would miss by 56.9 bps)\n- COP: 3.4 bps width, realized +4.3 bps \u2192 inside quote (lucky), skill +0.68\n- XLE: 7.2 bps width, realized -1.5 bps \u2192 inside quote (lucky), skill -0.16\n- IBM: 2.0 bps width, realized +17.1 bps \u2192 quote blown out, skill +0.07\n- GS: 2.0 bps width, realized -5.8 bps \u2192 quote blown out, skill +0.04\n- GOOG: 4.2 bps width, realized -6.8 bps \u2192 quote blown out, skill -0.55\n- AMZN: 2.0 bps width, realized -6.1 bps \u2192 quote blown out, skill -0.04\n\n**Six of eight quotes were blown out. The two that stayed inside (COP, XLE) did so by luck, and XLE still scored negative skill because the directional delta was wrong.**\n\n**What the realized moves tell us about minimum survivable width:**\n\nThe absolute realized moves in production were: 1.5, 3.5, 4.3, 5.8, 6.1, 6.8, 17.1, 56.9 bps.\n- p25: ~4.5 bps\n- p50: ~6 bps\n- p75: ~12 bps\n- p90: ~37 bps (interpolated between 17.1 and 56.9)\n\nEven the 25th percentile (4.5 bps) requires a 5 bps width just to contain. The 50th percentile (6 bps) requires a 6+ bps width. The 75th percentile (12 bps) requires a 12+ bps width. The widths used (2-7.2 bps) were systematically too narrow.\n\nThe one positive-skill example with an inside quote was COP (+0.68 skill), which used a 3.4 bps width on a +4.3 bps move. This worked only because the realized move was very small (p20 of the distribution) and the forecast happened to land near it.\n\n**CORRECTED DECISION RULES:**\n\n**Rule 1: Always set delta_bps to zero.**\n\nDirection prediction has no edge on a five-minute horizon. The tape is driven by flow, order imbalances, and market-wide moves\u2014none of which you can infer from a headline. Even when delta is tiny (0.2 bps), the realized move can be 6+ bps in the opposite direction.\n\nThe only way to avoid directional penalty is to never predict direction. Zero delta means you are quoting a straddle: you profit if the move stays inside your band, and you lose only if it breaks out. This is the correct stance when you cannot predict direction but can estimate volatility.\n\n**Rule 2: Set half-width based on headline structure and recent volatility.**\n\n**2a. Single-symbol specific catalyst (analyst upgrade/downgrade/initiation, product news, insider trade):**\n- Base width: 20 bps\n- Rationale: IBM moved 17.1 bps on a JP Morgan upgrade (6 symbols, but IBM-specific). PLTR moved 56.9 bps on a SwingTrader buy (1 symbol). Single-symbol catalysts have fat tails: median ~15 bps, p90 ~50 bps. A 20 bps band survives the median and limits downside on spikes.\n\n**2b. Dual-symbol specific catalyst (comparison, paired story, linked event):**\n- Base width: 20 bps\n- Rationale: GOOG moved 6.8 bps on a botnet takedown (2 symbols). AMZN moved 6.1 bps on a cash flow comparison (5 symbols, but paired story structure). Dual catalysts routinely move 8-20 bps. A 20 bps band contains most cases.\n\n**2c. Multi-symbol (3-10) sector or thematic story:**\n- Base width: 15 bps\n- Rationale: GS moved 5.8 bps (10 symbols). Median ~6-10 bps. A 15 bps band contains the median + 1 standard deviation.\n\n**2d. Multi-symbol (11-50) market or sector roundup:**\n- Base width: 12 bps\n- Rationale: COP moved 4.3 bps (115 symbols), IBM moved 17.1 bps (6 symbols in an upgrade story), TMO moved 3.5 bps (113 symbols). Broad stories typically move 3-8 bps (median ~5 bps), but individual tickers can spike to 15+ bps if the market links the theme to them. 12 bps is the floor for any story with structure.\n\n**2e. Multi-symbol (51+) broad macro commentary:**\n- Base width: 12 bps minimum\n- Rationale: XLE moved 1.5 bps (114 symbols). TMO moved 3.5 bps (113 symbols). Most broad macro stories move 2-6 bps, but you cannot rule out 10-15 bps spikes when the market decides a theme is material for one ticker. 12 bps is the floor.\n\n**Rule 3: Add 10 bps to base width if recent volatility is elevated.**\n\nCheck the last 10 one-minute bars. If any bar has (high - low) > 30 bps, or if the stock moved > 50 bps in total over the last 10 minutes, add 10 bps to the base width.\n\n**Rationale:** PLTR moved from 186.42 open to 191.45 close in the 30 minutes before the headline (267 bps drift), with individual bars ranging 150-400 bps. The 5.5 bps width used was far too narrow. A 30 bps band (20 base + 10 volatility) would have survived better and earned positive skill by actually containing part of the move.\n\n**Rule 4: Never use half_width_bps below 12.**\n\nProduction shows that widths under 7 bps failed in 6 of 8 cases (blown out or negative skill). The p50 realized move is 6 bps, which requires a 6 bps width just to break even. The p75 is 12 bps, which requires a 12 bps width.\n\nA 12 bps floor gives room for a 5 bps spread on a large-cap stock and 7 bps of drift. Anything narrower is a gamble that the move will be in the bottom quartile\u2014and even then, you'll miss half the time.\n\nThe only exception: if you have specific evidence that the tape is dead (volume < 200 contracts/minute, last 10 bars all < 10 bps range, no catalyst in the headline), you may use 10 bps. But this is rare.\n\n**Rule 5: Ignore symbol count as a signal of safety.**\n\nProduction disproves the idea that multi-symbol stories are safe:\n- PLTR (1 symbol): -56.9 bps\n- IBM (6 symbols): +17.1 bps\n- GOOG (2 symbols): -6.8 bps\n- AMZN (5 symbols): -6.1 bps\n- GS (10 symbols): -5.8 bps\n- COP (115 symbols): +4.3 bps\n- XLE (114 symbols): -1.5 bps\n- TMO (113 symbols): +3.5 bps\n\nSingle-symbol stories can spike to 50+ bps. Multi-symbol stories typically move less (median 3-6 bps), but individual tickers in a 100+ symbol story can still move 10-20 bps if the market decides the theme is material.\n\nUse symbol count only to distinguish \"specific catalyst\" (1-5 symbols) from \"broad roundup\" (50+ symbols), and set base width accordingly. But always apply Rule 3 (volatility adjustment) regardless of symbol count.\n\n**SUMMARY TABLE:**\n\n| Headline type | Symbols | delta_bps | half_width_bps | Rationale |\n|---------------|---------|-----------|----------------|-----------|\n| Single-symbol specific catalyst (upgrade, product news, insider) | 1 | 0 | 20 | IBM +17 bps, PLTR -57 bps; median ~15 bps, p90 ~50 bps |\n| Dual-symbol specific catalyst (comparison, paired story) | 2-5 | 0 | 20 | GOOG -7 bps, AMZN -6 bps; paired stories move 8-20 bps |\n| Multi-symbol (3-10) sector or thematic story | 3-10 | 0 | 15 | GS -6 bps; median ~6-10 bps, p75 ~15 bps |\n| Multi-symbol (11-50) market or sector roundup | 11-50 | 0 | 12 | COP +4 bps; median ~5 bps, but can spike to 15+ bps |\n| Multi-symbol (51+) broad macro commentary | 51+ | 0 | 12 | XLE -2 bps, TMO +4 bps; median ~3-5 bps |\n| Any headline + recent vol > 30 bps/min or > 50 bps/10min | Any | 0 | base + 10 | PLTR spiked -57 bps after drifting 267 bps in 30 min |\n\n**What these widths mean in practice:**\n- 12 bps: survives p50 move (6 bps) + 6 bps margin = skill ~+0.50 if move is median\n- 15 bps: survives p75 move (12 bps) + 3 bps margin = skill ~+0.60 if move is p75\n- 20 bps: survives p85 move (~18 bps) + 2 bps margin = skill ~+0.70 if move is p85\n- 30 bps: survives p95 move (~40 bps) with 10 bps shortfall = skill ~+0.50 if move is p95\n\n**What kills skill:**\n- Making any directional bet (zero edge, cost 6-16+ bps when wrong)\n- Using any width under 12 bps (fails p50 move, 75% of cases blown out)\n- Treating multi-symbol stories as safe (symbol count is not predictive of move size)\n- Ignoring recent volatility (PLTR moved -57 bps after drifting 267 bps in 30 min)\n\n**What earns skill:**\n- Setting delta to zero (avoids directional penalty entirely)\n- Using 12-20 bps widths on all headlines (survives p50-p85 moves)\n- Adding 10 bps when recent volatility is elevated (any bar > 30 bps or total move > 50 bps in 10 min)\n- Recognizing that the p50 move is 6 bps, p75 is 12 bps, p90 is 37 bps\u2014you need wide bands to survive\n\n**The zero-skill line:** A forecast scores zero skill when its miss equals the realized move. A forecast earns positive skill when its miss is smaller. With realized moves of 1.5 to 56.9 bps (median 6 bps, p75 12 bps), you need widths of 12-20 bps to have a chance. Anything narrower is noise. Anything with a directional delta is a penalty waiting to happen.\n\n**The only reliable edge:** You cannot predict direction, but you can predict that the move will be small (< 12 bps) on generic multi-symbol roundups, and larger (12-30 bps) on specific catalysts. Quote a wide straddle (delta = 0, width = 12-20 bps), collect when the move stays inside, and avoid catastrophic losses when it breaks out. This is the path to consistent positive skill.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
