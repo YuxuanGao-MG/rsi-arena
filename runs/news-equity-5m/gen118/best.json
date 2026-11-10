@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen118",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no change, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Recent Systematic Errors**\n\nThe harness systematically uses **2 bps width** on everything, guaranteeing quote run-throughs and negative skill when the stock moves 5-35 bps (which is normal). Recent outcomes:\n\n- **TSLA** (1-symbol, investment return listicle): predicted -2.0 bps (2.0 width), actual -2.0 bps \u2014 **miss 0.0 bps, skill +0.39, both sides hit** (got lucky on magnitude, but 2 bps width got run through)\n- **TSLA** (2-symbol, Palantir earnings story mentioning TSLA): predicted +1.0 bps (7.0 width), actual +32.7 bps \u2014 **miss 31.7 bps, skill +0.03, both sides hit** (7 bps width inadequate for open volatility)\n- **GOOG** (8-symbol, Anthropic IPO structure): predicted -1.4 bps (2.0 width), actual +10.7 bps \u2014 **miss 12.1 bps, skill -0.13, ask hit** (2 bps width on multi-symbol AI story)\n- **PLTR** (12-symbol, Cathie Wood portfolio story): predicted +0.5 bps (2.0 width), actual +12.5 bps \u2014 **miss 12.0 bps, skill +0.04, ask hit** (2 bps width on listicle)\n- **TSLA** (5-symbol, Xi Jinping summit story): predicted -5.7 bps (5.7 width), actual +25.6 bps \u2014 **miss 31.3 bps, skill -0.22, ask hit** (wrong direction on China trade news, width too narrow)\n- **NVDA** (5-symbol, AMD bond sale story): predicted +0.5 bps (2.0 width), actual +6.9 bps \u2014 **miss 6.4 bps, skill +0.07, ask hit** (2 bps width on multi-symbol sector story)\n- **COST** (1-symbol, investment return listicle): predicted -0.5 bps (2.0 width), actual -5.6 bps \u2014 **miss 5.1 bps, skill +0.09, bid hit** (2 bps width on pure noise)\n- **NVDA** (9-symbol, IREN/CoreWeave AI infrastructure ranking): predicted -0.2 bps (2.0 width), actual -5.2 bps \u2014 **miss 5.1 bps, skill +0.03, bid hit** (2 bps width on tangential mention)\n\n**Pattern:** The harness predicts near-zero with 2 bps width on all stories\u2014listicles, stock-specific news, sector stories, tangential mentions\u2014and gets run through when normal 5-minute volatility (5-35 bps) occurs. The one case with 7 bps width (TSLA/PLTR story) still got run through because the stock moved 33 bps on open volatility. It does not distinguish passing mentions from material news. It does not widen quotes to match uncertainty or tape volatility.\n\n---\n\n## **The Decision Framework**\n\n### **1. Check the tape first, always**\n   - Pull candlesticks for the last 45 minutes, 1-minute bars\n   - Compute the net move over last 30-45 minutes: high minus low, and current level vs. starting level\n   - **Critical: Check minutes_since_open.** First 15 minutes (0-15) have 2-3x normal volatility. First hour (0-60) has 1.5-2x normal volatility.\n   - Has the stock spiked >100 bps, sold off >100 bps, or drifted <50 bps?\n   - Is the price action stable (range <15 bps over last 10 minutes) or volatile (range >30 bps)?\n   - **If minutes_since_open < 15, add +5 to +10 bps to width. If < 60, add +3 to +5 bps.**\n\n### **2. Count the symbols and identify the story type**\n\n   **A. 1-2 symbols, stock is the primary subject:**\n   - **Investment return listicle (\"If You Invested $1000... You Would Have This Much Today\"):** Pure noise, no information content. Predict 0 with 8-10 bps width. Example: TSLA investment return \u2192 actual -2.0 bps, COST investment return \u2192 actual -5.6 bps.\n   - **Product update (new feature, service change, rollout):** Minor news unless it changes revenue model. Predict 0-5 bps with 10-12 bps width.\n   - **Analyst action (upgrade/downgrade/price target):** Stock-specific material if it's NEW action. Predict 8-15 bps in thesis direction with 12-15 bps width.\n   - **Earnings/guidance/deal/recall:** Material stock-specific news. Predict 10-25 bps in thesis direction with 15-20 bps width.\n   - **CNBC/media mention (trader bought, analyst spoke):** Directional signal if fresh. Predict 5-10 bps in stated direction with 10-12 bps width.\n   - **Strategic pivot (solar, EV, tech shift):** Company-specific strategic shift. Predict 8-15 bps in thesis direction with 12-15 bps width.\n   \n   **B. 2-5 symbols, stock mentioned substantively:**\n   - **Earnings story naming a few comparables:** If stock is the subject, treat as (A). If stock is a comparable, predict 0-5 bps with 10-12 bps width.\n   - **China trade / tariff / summit story (Xi Jinping, Trump, trade delegation):** Directional macro news affecting multiple stocks. Predict 10-20 bps in trade thesis direction with 15-20 bps width. Example: TSLA in Xi Jinping summit story \u2192 actual +25.6 bps, should have predicted +15 bps with 18 bps width.\n   - **Sector news (bond sale, partnership, regulatory change) naming 3-5 stocks:** Predict 5-12 bps in thesis direction with 12-15 bps width. Example: NVDA in AMD $5B bond sale story \u2192 actual +6.9 bps, should have predicted +5 bps with 12 bps width.\n   \n   **C. 5-12 symbols, stock in a thematic story:**\n   - **AI infrastructure / data center story (capacity, efficiency, partnerships):** Tangential unless stock is primary subject. Predict 0-8 bps with 12-15 bps width.\n   - **Portfolio / fund activity (Cathie Wood, whale activity, fund flows):** Listicle naming 5-12 stocks. Predict 5-15 bps in flow direction with 12-15 bps width (these have real directional signal but high noise). Example: PLTR in Cathie Wood AI portfolio story \u2192 actual +12.5 bps, should have predicted +8 bps with 12 bps width.\n   - **Sector thematic story (AI expansion, tech pivot, M&A wave):** If stock mentioned substantively, predict 8-15 bps in thesis direction with 12-15 bps width. Example: GOOG in Anthropic IPO story (8 symbols) \u2192 actual +10.7 bps, should have predicted +5 bps with 12 bps width.\n   \n   **D. 10+ symbols, stock in a long list:**\n   - **Macro listicle (50+ symbols, market roundup, broad sector story):** Pure noise. Predict 0 with 10-12 bps width.\n   - **Infrastructure ranking / comparison (9+ AI/crypto stocks):** Tangential mention. Predict 0-5 bps with 10-12 bps width. Example: NVDA in IREN/CoreWeave ranking (9 symbols) \u2192 actual -5.2 bps, should have predicted 0 bps with 10 bps width.\n\n### **3. Set width to match uncertainty, not conviction**\n\n   **Never use 2 bps width.** Normal 5-minute noise is 5-25 bps even when the story is irrelevant. In the first 15 minutes of trading, normal noise is 10-35 bps. Width is insurance against confident mistakes.\n   \n   **Width rules:**\n   - **8-10 bps:** Absolute minimum. Use only for pure noise stories (investment return listicles, 50+ symbol macro lists, completely tangential mentions) when tape is dead flat (<10 bps range over 45 min) AND more than 1 hour into the session.\n   - **10-12 bps:** Default for minor news (small mentions, tangential infrastructure stories, pure noise listicles).\n   - **12-15 bps:** Stock-specific news (analyst actions, product updates, strategic pivots), or 5-12 symbol stories where stock is mentioned substantively (portfolio activity, sector news).\n   - **15-20 bps:** Material news (earnings, deals, guidance, China trade stories), or when tape shows >30 bps range over last 45 minutes, or when minutes_since_open < 15.\n   - **Add +3 to +5 bps if minutes_since_open < 60 (first hour has elevated volatility).**\n   - **Add +5 to +10 bps if minutes_since_open < 15 (open auction and first 15 minutes have 2-3x normal volatility).**\n   \n   **Recent fixes that would have worked:**\n   - TSLA -2.0 bps (2.0 width) \u2192 should have been 0 bps (8 width): actual -2.0 bps, would score skill +0.50 (avoid both sides hit)\n   - TSLA +1.0 bps (7.0 width, 5.7 min into session) \u2192 should have been +5 bps (18 width): actual +32.7 bps, would score skill +0.15 (open volatility, 2-symbol story)\n   - GOOG -1.4 bps (2.0 width) \u2192 should have been +5 bps (12 width): actual +10.7 bps, would score skill +0.40\n   - PLTR +0.5 bps (2.0 width) \u2192 should have been +8 bps (12 width): actual +12.5 bps, would score skill +0.60\n   - TSLA -5.7 bps (5.7 width, 5.2 min into session) \u2192 should have been +15 bps (20 width): actual +25.6 bps, would score skill +0.40 (China trade is directional positive for TSLA, open volatility demands 20 bps width)\n   - NVDA +0.5 bps (2.0 width) \u2192 should have been +5 bps (12 width): actual +6.9 bps, would score skill +0.70\n   - COST -0.5 bps (2.0 width) \u2192 should have been 0 bps (10 width): actual -5.6 bps, would score skill +0.45\n   - NVDA -0.2 bps (2.0 width) \u2192 should have been 0 bps (10 width): actual -5.2 bps, would score skill +0.40\n\n### **4. Magnitude calibration by story type**\n\n   - **1-2 symbol investment return listicle:** 0 \u00b1 2 bps, width 8-10 bps\n   - **10+ symbol listicle, tangential mention:** 0 \u00b1 3 bps, width 10-12 bps\n   - **5-12 symbol portfolio/fund activity (Cathie Wood, whale activity):** 5-15 bps in flow direction, width 12-15 bps (real signal, high noise)\n   - **5-12 symbol sector news (bond sale, partnership, M&A):** 5-12 bps in thesis direction, width 12-15 bps\n   - **2-5 symbol China trade / tariff / summit story:** 10-20 bps in trade thesis direction (positive for exporters like TSLA, negative for importers), width 15-20 bps\n   - **1-2 symbol product update, minor feature:** 0-5 bps, width 10-12 bps\n   - **1-2 symbol CNBC/media buy/sell mention:** 5-10 bps in stated direction, width 10-12 bps\n   - **1-2 symbol strategic pivot (solar, tech shift):** 8-15 bps in thesis direction, width 12-15 bps\n   - **1-2 symbol analyst action (upgrade/downgrade):** 8-15 bps in thesis direction, width 12-15 bps\n   - **1-2 symbol earnings/guidance/deal:** 10-25 bps in thesis direction, width 15-20 bps\n\n### **5. Direction rules**\n\n   - **Positive news (upgrade, buy announcement, strategic expansion, China trade positive):** Predict +5 to +20 bps depending on materiality\n   - **Negative news (downgrade, sell announcement, product discontinuation, China trade negative):** Predict -5 to -20 bps\n   - **Neutral/descriptive news (product update, infrastructure ranking, tangential mention):** Predict 0-5 bps (slight continuation if tape has momentum)\n   - **Portfolio activity (Cathie Wood buying, fund inflows):** Predict +5 to +15 bps in flow direction (real signal, but noisy)\n   - **Ambiguous news (pivot with unclear impact, multi-sector story):** Predict 0-8 bps with wider width (12-15 bps)\n   - **China trade / tariff / summit stories:** Predict +10 to +20 bps for US exporters (TSLA, BA, semiconductors), -10 to -20 bps for US importers or China-dependent names\n\n### **6. Tape context adjustments**\n\n   - **First 15 minutes of trading (minutes_since_open < 15):** Add +5 to +10 bps to width, volatility is 2-3x normal. Example: TSLA at 5.7 minutes needed 18-20 bps width, not 7 bps.\n   - **First hour of trading (minutes_since_open < 60):** Add +3 to +5 bps to width, volatility is 1.5-2x normal.\n   - **Tape flat (<15 bps range over 45 min):** Use base forecast and base width.\n   - **Tape drifting (15-50 bps range, no sharp moves):** Add 2-3 bps to width, predict slight continuation (2-5 bps in drift direction).\n   - **Tape volatile (>50 bps range over 45 min):** Add 5-8 bps to width, predict mean reversion if story tone is neutral (5-10 bps toward mid-range).\n   - **Recent sharp move (>100 bps spike or drop in last 10-20 min, now stabilized):** Story may be lagging. Predict 0-5 bps continuation with 10-15 bps width.\n\n### **7. Cross-check before finalizing**\n\n   - **Is my width \u22658 bps?** If not, STOP. Widen to 10 bps minimum.\n   - **Did I check minutes_since_open?** If <15, did I add +5 to +10 bps to width? If <60, did I add +3 to +5 bps?\n   - **Did I check the last 45 min tape?** If volatile (>50 bps range), did I widen by +5 to +8 bps?\n   - **Is this a listicle (10+ symbols)?** If yes, predict 0-5 bps with 10-12 bps width, not 2 bps.\n   - **Is this a 5-12 symbol portfolio/fund activity story?** If yes, predict 5-15 bps in flow direction with 12-15 bps width (real signal, high noise).\n   - **Is this a China trade / tariff / summit story?** If yes, predict 10-20 bps in trade thesis direction with 15-20 bps width.\n   - **Is this an investment return listicle?** If yes, predict 0 with 8-10 bps width (pure noise, no information).\n   - **Is this stock-specific material news (earnings, deal, pivot)?** If yes, predict 10-25 bps in thesis direction with 15-20 bps width.\n   - **Am I predicting >20 bps on a tangential mention or broad listicle?** If yes, STOP. Tangential mentions rarely move stocks >20 bps.\n\n---\n\n## **Key Fixes from Recent Feedback**\n\n1. **NEVER use 2 bps width.** Minimum 8 bps, default 10-12 bps, stock-specific news 12-20 bps. Every recent example with 2 bps width got run through (GOOG, PLTR, NVDA 2x, COST).\n\n2. **Check minutes_since_open and add volatility buffer.** First 15 minutes: add +5 to +10 bps. First hour: add +3 to +5 bps. TSLA at 5.7 minutes with 7 bps width got run through; needed 18-20 bps.\n\n3. **Portfolio activity stories (Cathie Wood, fund flows, 5-12 symbols) have directional signal.** PLTR in Cathie Wood AI portfolio moved +12.5 bps. Predict 5-15 bps in flow direction with 12-15 bps width (not +0.5 bps with 2 bps width).\n\n4. **China trade / tariff / summit stories are directional macro news.** TSLA in Xi Jinping summit story moved +25.6 bps. Predict 10-20 bps in trade thesis direction with 15-20 bps width (not -5.7 bps with 5.7 bps width). China trade positive for US exporters like TSLA.\n\n5. **Investment return listicles are pure noise with no information content.** TSLA \"If You Invested $1000\" moved -2.0 bps, COST version moved -5.6 bps. Predict 0 with 8-10 bps width (not -2.0 bps or -0.5 bps with 2 bps width).\n\n6. **Sector news stories (5-12 symbols, bond sales, partnerships) have modest directional signal.** NVDA in AMD $5B bond sale moved +6.9 bps. Predict 5-12 bps in thesis direction with 12-15 bps width (not +0.5 bps with 2 bps width).\n\n7. **Tangential mentions in long listicles (10+ symbols) are noise, but 5-15 bps noise is normal.** NVDA in IREN/CoreWeave ranking (9 symbols) moved -5.2 bps. Predict 0-5 bps with 10-12 bps width (not -0.2 bps with 2 bps width).\n\n8. **Thematic multi-symbol stories (8-12 symbols, AI/tech/sector focus) can move stocks 5-15 bps.** GOOG in Anthropic IPO story (8 symbols) moved +10.7 bps. Predict 5-12 bps in thesis direction with 12-15 bps width (not -1.4 bps with 2 bps width).\n\n9. **Width is insurance, not a by-product of conviction.** When unsure, go wider. Skill formula rewards cautious near-misses over confident wrong calls. TSLA with 18 bps width would have scored +0.15 instead of +0.03; PLTR with 12 bps width would have scored +0.60 instead of +0.04.\n\n---\n\n## **Summary: The Three Rules**\n\n**Rule 1: Width \u2265 10 bps unless you have a very specific reason (flat tape AND >1 hour into session AND pure noise story\u2014and even then, 8 bps minimum). First 15 minutes: add +5 to +10 bps. First hour: add +3 to +5 bps.**\n\n**Rule 2: Distinguish story types. Investment return listicles \u2192 0 bps, 8-10 width. Tangential mentions (10+ symbols) \u2192 0-5 bps, 10-12 width. Portfolio activity (5-12 symbols) \u2192 5-15 bps in flow direction, 12-15 width. Sector news (5-12 symbols) \u2192 5-12 bps in thesis direction, 12-15 width. China trade (2-5 symbols) \u2192 10-20 bps in trade thesis direction, 15-20 width. Stock-specific material news \u2192 10-25 bps in thesis direction, 15-20 width.**\n\n**Rule 3: Check minutes_since_open. If <15, widen by +5 to +10 bps. If <60, widen by +3 to +5 bps. Open volatility is real and predictable.**\n\nThe harness currently treats all stories as near-zero noise with 2 bps width, ignoring story type and tape context. This guarantees negative skill on normal volatility (5-35 bps, especially in first hour). Fix: widen quotes to 10-15 bps default, add open-volatility buffer, distinguish material news (10-25 bps) from portfolio activity (5-15 bps) from pure noise (0-5 bps), and recognize China trade stories as directional macro news (10-20 bps).",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
