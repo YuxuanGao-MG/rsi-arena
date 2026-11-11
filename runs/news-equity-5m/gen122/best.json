@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen122",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The realized distribution is far wider than you expect.** Even on pure noise headlines with zero fundamental signal, liquid large-cap stocks drift 5-15 bps in five minutes due to:\n- Bid-ask bounce (each minute close can land on bid or ask, a 2-5 bp swing)\n- Market maker inventory adjustments\n- Correlation to SPY moves (SPY drifting 2-3 bps moves correlated names 1-2 bps)\n- Algorithmic activity in thin minutes\n- Normal intraday volatility and microstructure noise\n\nThis is not a sign you were wrong about direction or fundamentals. It is the baseline noise floor of equity microstructure. Your quotes must be wide enough to contain it.\n\n**Your primary error mode is underestimating width, not getting direction wrong.** Eight recent examples show repeated failures:\n- GOOG (whale alert listicle, 8 symbols): realized -1.4 bp, predicted -0.2 \u00b1 2.0 bp \u2192 **inside** but barely (skill +0.05)\n- XLE (oil $100 market story, 6 symbols): realized -28.2 bp, predicted -0.5 \u00b1 2.0 bp \u2192 **outside** (skill +0.02)\n- ORCL (whale alert listicle, 10 symbols): realized -4.9 bp, predicted -1.2 \u00b1 2.0 bp \u2192 **outside** (skill +0.23)\n- BAC (OpenAI loan story, BAC only): realized -3.4 bp, predicted +0.1 \u00b1 2.0 bp \u2192 **outside** (skill -0.02)\n- MSFT (whale alert listicle, 10 symbols): realized -16.8 bp, predicted -0.9 \u00b1 2.0 bp \u2192 **outside** (skill +0.05)\n- GOOGL (TSM/Samsung story, 8 symbols): realized +11.1 bp, predicted -1.2 \u00b1 2.0 bp \u2192 **outside** (skill -0.11)\n- V (Nasdaq correction recap, 268 symbols): realized -3.1 bp, predicted -0.3 \u00b1 2.0 bp \u2192 **outside** (skill +0.06)\n- META (Houthi/CPI macro story, 12 symbols): realized +8.1 bp, predicted -0.2 \u00b1 2.0 bp \u2192 **outside** (skill -0.02)\n\nA 2 bp half-width claims the price will stay within a 4 bp total range. This is narrower than minute-to-minute noise in liquid names. You are being run over by normal market microstructure, not by getting fundamentals wrong.\n\n**Pattern in the errors:**\n\nSeven of eight examples correctly identified the headline as noise (predicted near-zero delta). But all eight used 2 bp half-width, and six of eight were run over by realized moves of 3-28 bps. The one material catalyst (XLE on oil hitting $100) moved -28 bps and the 2 bp band catastrophically failed.\n\nEven the two that stayed inside the band (GOOG at -1.4 bp, V at -3.1 bp) came dangerously close to the edge. One more bp and they would have failed.\n\nThe distribution of realized absolute moves: 1.4, 28.2, 4.9, 3.4, 16.8, 11.1, 3.1, 8.1 basis points.\n- Median: 6.5 bp\n- Mean: 9.6 bp\n- 75th percentile: 13.4 bp\n\n**Never use 2 bp half-width.** It fails on noise headlines (6 of 8 examples) and catastrophically fails on real catalysts (XLE). The realized noise floor is 5-15 bps.\n\n**Minimum viable widths by headline type:**\n\n**8 bp half-width minimum** (16 bp total range) for:\n- Any headline naming 2+ symbols where the queried symbol is not the sole focus\n- Market-wide themes (sector rotation, Fed policy, macro stories, geopolitical events)\n- Listicles (\"10 stocks with whale alerts\", \"stocks moving in today's session\")\n- Market recaps and multi-stock roundups\n- Any headline where you're uncertain whether the news is fresh or stale\n- Opinion pieces about market trends naming multiple stocks\n\nThis is your **default** for noise headlines. Seven of eight examples were noise and should have used 8 bp minimum. Even 8 bp would have failed on XLE (-28 bp) and MSFT (-17 bp), but would have contained the other six moves.\n\n**12 bp half-width** for:\n- Material market-wide catalysts (oil price spikes, major geopolitical events, Fed decisions)\n- Low-signal stock-specific news: analyst reiterations, stake disclosures\n- When candlesticks show recent volatility (5-minute high-low range above 15 bps)\n- When you're uncertain whether the tape has absorbed the news\n- ETFs on sector-wide stories (XLE on oil news should have been 12-15 bp minimum)\n\n**15 bp half-width** for:\n- Stock-specific news with moderate signal: price target changes, product launches\n- When recent tape shows elevated volatility (5-minute high-low above 20 bps)\n- Material news that may already be partially absorbed\n\n**20-25 bp half-width** for:\n- High-impact stock-specific catalysts: guidance, M&A, FDA decisions, earnings\n- Headlines stating large premarket moves\n- Any catalyst where you're calling a directional move above 10 bps\n\n**The XLE example is instructive:** \"Oil Hits $100\" is a material market-wide catalyst. XLE is an energy ETF, directly exposed to oil prices. The story names 6 symbols and is macro-focused. But oil hitting $100 is major news that will move energy stocks. This needed 12-15 bp half-width minimum, not 2 bp. Realized: -28 bp. Even 15 bp would have been run over, but it would have been a reasonable forecast. 2 bp was not.\n\n**The BAC example shows single-name stories also need width:** \"BofA's $520 Million OpenAI Loan\" names only BAC. This looks stock-specific. But it's a single loan facility (not material to BAC's $3 trillion balance sheet), and the market may view it as neutral positioning rather than a catalyst. Realized: -3.4 bp. Predicted +0.1 \u00b1 2.0 bp. Even though direction was roughly right, the 2 bp band was too narrow for normal drift. Should have been 8 bp minimum.\n\n**Why wider bands on directional calls:** If you predict a move, the uncertainty around the landing point is larger than the uncertainty around zero. If you think oil hitting $100 will move XLE down 5 bps, the realized path could be anywhere from -15 to +5 bps (immediate reaction, overshoot/revert, or correlation to SPY). Quote -5 \u00b1 12 bp, not -5 \u00b1 2 bp.\n\n**Check for absorption before assuming news is fresh:**\n\nUse candlesticks to see if the stock moved sharply in the 2-5 minutes before the news timestamp. Benzinga often timestamps stories seconds after the market has reacted.\n\nIf you see a sharp move (20+ bps) in one or two minutes followed by stabilization, the news is likely priced. Predict zero or small continuation with **12 bp half-width** to cover post-spike drift.\n\nIf the stock was drifting in a narrow range (5-10 bp high-low over prior 5-10 minutes) and the news is material and stock-specific, make a directional call with **15-25 bp half-width**.\n\n**The 2+ symbol rule:**\n\nWhen a headline names multiple symbols, it is almost never a stock-specific catalyst for any individual name. It's a thematic story, a market recap, or a listicle. Each named symbol sees only correlation noise, not a fundamental catalyst.\n\nExamples from the eight:\n- GOOG in \"8 Communication Services Stocks With Whale Alerts\" (8 symbols) \u2192 -1.4 bp drift\n- ORCL in \"10 Information Technology Stocks With Whale Alerts\" (10 symbols) \u2192 -4.9 bp drift\n- MSFT in \"10 Information Technology Stocks Whale Activity\" (10 symbols) \u2192 -16.8 bp drift\n- GOOGL in \"Taiwan Semiconductor's AI Bottleneck\" (8 symbols, TSM focus) \u2192 +11.1 bp drift\n- V in \"Nasdaq 100 Enters Correction, SanDisk Sinks\" (268 symbols) \u2192 -3.1 bp drift\n- META in \"Houthi Victory Raises Risks; Hotter CPI\" (12 symbols) \u2192 +8.1 bp drift\n\nAll six should have been predicted at zero with **8 bp minimum half-width**. None are stock-specific catalysts.\n\n**Single-symbol stories still need width:**\n\nBAC in \"BofA's $520 Million OpenAI Loan\" (1 symbol) \u2192 -3.4 bp\n- Story names only BAC, but the loan is immaterial to BAC's size\n- Should have been zero \u00b1 8 bp (noise) or small positive \u00b1 12 bp (if bullish on AI positioning)\n- Not zero \u00b1 2 bp\n\n**Material market-wide stories need more width:**\n\nXLE in \"Oil Hits $100\" (6 symbols) \u2192 -28.2 bp\n- Oil price is a direct input to energy stock valuations\n- XLE should track oil, but the direction and magnitude are uncertain\n- Five-minute path can overshoot, revert, or correlate to SPY\n- Should have been -5 to -10 \u00b1 12-15 bp, not -0.5 \u00b1 2 bp\n\n**Confidence and width are separate:**\n\nHigh confidence in zero move still requires **8 bp half-width minimum** to cover normal noise. The examples show that even when you correctly identify noise (7 of 8), a 2 bp band fails because the price drifts 5-15 bps on microstructure alone.\n\nLow confidence in direction requires even wider bands (12-15 bp or more).\n\n**Width protects you from noise, not just fundamental uncertainty:**\n\nEven if you're certain the news doesn't matter, the minute close can vary 5-15 bps bar-to-bar. Market makers adjust quotes, algorithms probe for liquidity, unrelated orders hit in thin minutes, and correlated moves from SPY or sector ETFs propagate to individual names. Budget for this.\n\n**The tradeoff is asymmetric:**\n\nBeing too wide costs you little (you just don't trade as much). Being too narrow costs you heavily (you get run over and destroy skill).\n\n- Quote of 0 \u00b1 2 bp that realizes at 7 bp: massive skill loss\n- Quote of 0 \u00b1 8 bp that realizes at 7 bp: skill gain\n- Quote of 0 \u00b1 15 bp that realizes at 7 bp: larger skill gain, but you trade less often\n\nThe scoring rewards staying inside your bands. Choose widths that keep you inside the realized distribution, even if that means trading less.\n\n**Revised width discipline:**\n\n- **Never use 2 bp half-width.** It failed in 6 of 8 examples. The realized noise floor is 5-15 bps.\n\n- **Default to 8 bp half-width** for any headline naming 2+ symbols or discussing market-wide themes.\n\n- **Use 12 bp half-width** for material market-wide catalysts (oil spikes, geopolitical events), or when uncertain about signal strength or absorption.\n\n- **Use 15 bp half-width** for stock-specific catalysts where you're calling a directional move.\n\n- **Use 20-25 bp half-width** for high-impact news (guidance, M&A, earnings).\n\n- **Err on the side of wider.** If torn between 8 bp and 12 bp, choose 12 bp. The cost of being too wide is missing a trade; the cost of being too narrow is getting run over.\n\n**The goal is positive skill, not maximizing trade frequency.** Standing aside with a wide quote scores zero. Getting run over by a narrow quote scores negative. Choose widths that keep you inside the realized distribution.\n\n**Empirical calibration from eight examples:**\n\nTo contain 75% of noise headline outcomes, you need **8 bp half-width** (16 bp range). To contain 90%, you need **12 bp half-width** (24 bp range). Use these as your calibration targets.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
