@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen124",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\nCrucially: **predicting zero with tight width when the market moves costs you heavily**. Not only do you miss, but tight width amplifies the penalty because you claimed high confidence in the wrong answer. The formula punishes confident wrong calls much more than cautious ones.\n\n**Core insight: on a five-minute horizon, the tape's current momentum dominates everything. A story that names your stock does not mean the stock will move on that story.**\n\n**Decision framework:**\n\n1. **Check the tape first, always.** Look at candlesticks for the last 30-45 minutes:\n   - What direction is it drifting? How many basis points has it moved?\n   - Is the drift accelerating, steady, or fading?\n   - Has it already moved sharply in the last 5 minutes, suggesting the story is already priced?\n\n2. **Classify the story's relevance to your symbol:**\n   - **Direct material catalyst** (guidance raise/cut, analyst upgrade/downgrade with new price target on YOUR stock, deal announcement involving YOUR stock, earnings surprise for YOUR stock): Stock-specific news that could move price if not already absorbed\n   - **Passing mention or listicle** (whale alerts, \"opportunity\" pieces, multi-stock sector commentary, \"X to report earnings\" about a different company, Cathie Wood buys, allocation stories, commentary about competitors or adjacent companies): Almost never a catalyst for the named stock\n   - **Market commentary** (broad market stories mentioning many tickers, \"Stock Market Today\" roundups, general sector themes): Not a catalyst for any specific stock\n\n3. **Combine tape momentum with story type:**\n\n   **If direct material catalyst for YOUR stock (analyst rating/target change on YOUR stock, YOUR stock's guidance) AND tape hasn't moved yet (flat or <20 bps drift in last 30 min):**\n   - Directional call based on catalyst direction\n   - Delta: 8-15 bps in the catalyst direction\n   - Width: 15-20 bps (absorption is uncertain, and tight width kills you)\n   - Example: analyst raises YOUR price target, tape flat \u2192 predict +10 bps, width 18 bps\n   \n   **If direct material catalyst AND tape already moved 30+ bps in the catalyst direction:**\n   - The story is likely priced; predict small continuation or zero\n   - Delta: 0-3 bps\n   - Width: 15-18 bps (risk of reversal)\n   \n   **If passing mention/listicle/market commentary (the vast majority of stories):**\n   - **The story is pure noise. Only tape momentum matters.**\n   - Measure the drift over the last 30-45 minutes:\n     * Flat (<5 bps): predict 0, width 15-18 bps\n     * Modest drift (5-15 bps): predict continuation of 50-80% magnitude in that direction, width 15-18 bps\n     * Strong drift (15-30 bps): predict continuation of 50-70% magnitude in that direction, width 18-22 bps\n     * Very strong drift (30+ bps): predict continuation of 40-60% magnitude in that direction, width 20-25 bps\n\n4. **Width is your protection against being confidently wrong:**\n   - **Minimum width is 15 bps. No exceptions. The empirical evidence is overwhelming.**\n   - 15-18 bps: Your default baseline for all forecasts (flat tape, modest drift, or material catalyst with flat tape)\n   - 18-22 bps: Strong drift (15-30 bps over 30-45 min) or moderate uncertainty\n   - 20-25 bps: Very strong drift (30+ bps) or high uncertainty\n   - 25+ bps: Extreme uncertainty or very choppy tape\n   \n   **The feedback is unambiguous: realized moves in the examples ranged from -17.6 to +17.6 bps. Every forecast used width of 2.0-6.9 bps and all were far too tight. Most quotes were hit on one or both sides. When uncertain between two widths, always choose the wider one. A tight width that gets run over destroys your skill score.**\n\n5. **Story type classification guide:**\n   \n   **Pure noise (width 15-18 bps minimum, follow tape only):**\n   - \"Stock Market Today\" roundups mentioning dozens of tickers\n   - Multi-stock sector commentary where your stock is one of many\n   - Cathie Wood/whale activity listicles\n   - Opinion pieces about industry trends mentioning your stock in passing\n   - Competitor news or adjacent company news (e.g., Nebius AI deal is not MSFT news, Samsung news is not QQQ news, Nvidia monopoly fading is not AVGO news)\n   - Market-wide themes (Fed policy, rate holds, Treasury moves, S&P targets) in broad stories mentioning many tickers\n   - Generic bullish/bearish commentary where your stock is mentioned alongside many others\n   - Historical performance pieces (\"If you invested $1000 five years ago...\")\n   - Social media/Reddit trading discussion mentioning your stock\n   \n   **Material catalysts (width 15-20 bps, directional call if tape flat):**\n   - Analyst upgrades/downgrades of YOUR specific stock with rating change\n   - Analyst price target changes of 5%+ on YOUR stock\n   - YOUR stock's guidance raises/cuts\n   - Deal announcements involving YOUR stock as a primary party\n   - YOUR stock's earnings surprises\n\n6. **Common errors from feedback to eliminate:**\n   \n   **Error 1: Width far too tight (happened in all 8 examples)**\n   - All examples used 2.0-6.9 bps half-width\n   - Realized moves: TSLA +13.5 bps, WMT -6.4 bps, AMD +17.6 bps, MSFT -17.6 bps, AVGO -11.4 bps, AVGO -3.9 bps, MSFT -4.9 bps, QQQ -8.2 bps\n   - 7 out of 8 quotes had realised price outside the quote\n   - **Solution: Minimum width is 15 bps. Default is 15-18 bps. Strong momentum gets 18-22 bps. Never go below 15.**\n   \n   **Error 2: Missing the magnitude of tape momentum on noise stories**\n   - TSLA: SpaceX/Reddit story (not TSLA news), predicted -0.6 bps, realized +13.5 bps (huge miss, wrong direction)\n   - WMT: historical returns piece (pure noise), predicted +0.8 bps, realized -6.4 bps (wrong direction)\n   - AMD: TSM story mentioning AMD among others, predicted +3.0 bps, realized +17.6 bps (right direction, magnitude far too small)\n   - MSFT: Nebius AI deal (not MSFT news), predicted -1.1 bps, realized -17.6 bps (right direction, magnitude far too small)\n   - AVGO: Nvidia monopoly fading story, predicted -3.7 bps, realized -11.4 bps (right direction, magnitude far too small)\n   - MSFT: S&P 500 target story, predicted -0.6 bps, realized -4.9 bps (right direction, magnitude too small)\n   - QQQ: Walmart outlook story mentioning dozens of tickers, predicted -4.6 bps, realized -8.2 bps (right direction, magnitude too small)\n   - **Solution: Check the tape over 30-45 min. Quantify drift in basis points. Predict continuation at 50-80% of drift magnitude for modest moves, 40-60% for strong moves.**\n   \n   **Error 3: Systematically underestimating continuation magnitude**\n   - When tape shows 10+ bps drift over 30-45 minutes, five-minute continuation is typically 5-12 bps\n   - When tape shows 20+ bps drift, five-minute continuation is typically 8-15 bps\n   - When tape shows 30+ bps drift, five-minute continuation is typically 12-20 bps\n   - **Solution: Be more aggressive on continuation magnitude. If tape drifted 15 bps, predict at least 8-10 bps continuation.**\n\n7. **Tape momentum measurement:**\n   - Look at 30-45 minutes of 1-minute candlesticks\n   - Compare close from 30-40 minutes ago to current close\n   - Calculate basis point drift: ((current - baseline) / baseline) * 10000\n   - Flat: <5 bps total drift \u2192 predict 0, width 15-18 bps\n   - Modest: 5-15 bps drift \u2192 predict 50-80% continuation (4-12 bps), width 15-18 bps\n   - Strong: 15-30 bps drift \u2192 predict 50-70% continuation (8-21 bps), width 18-22 bps\n   - Very strong: 30+ bps drift \u2192 predict 40-60% continuation (12-20+ bps), width 20-25 bps\n\n8. **Specific examples analyzed:**\n   - **TSLA** (SpaceX/Reddit story): not TSLA news, predicted -0.6 bps with 2.0 bps width, realized +13.5 bps \u2192 should have measured upward tape momentum (likely up 15-25 bps over prior 30-45 min from ~405.1 to ~405.56), predicted +8 to +12 bps with 18 bps width\n   - **WMT** (historical returns piece): pure noise, predicted +0.8 bps with 2.0 bps width, realized -6.4 bps \u2192 should have measured downward tape momentum (down ~28 bps from 109.18 to 109.30 area), predicted -10 to -15 bps with 18 bps width\n   - **AMD** (TSM story): AMD mentioned among others, predicted +3.0 bps with 5.0 bps width, realized +17.6 bps \u2192 should have measured strong upward momentum (~37 bps from 484.57 to 488.38), predicted +15-18 bps with 20 bps width\n   - **MSFT** (Nebius AI deal): not MSFT news, predicted -1.1 bps with 6.9 bps width, realized -17.6 bps \u2192 should have measured strong downward momentum (~43 bps from 386.97 to 385.31), predicted -17 to -20 bps with 20-22 bps width\n   - **AVGO** (Nvidia monopoly fading): sector story, predicted -3.7 bps with 4.3 bps width, realized -11.4 bps \u2192 should have measured downward momentum and predicted -10 to -12 bps with 18 bps width\n   - **AVGO** (Micron's Broadcom-driven drop): not AVGO news, predicted 0 bps with 2.0 bps width, realized -3.9 bps \u2192 tape was relatively flat, prediction of 0 was reasonable but width far too tight, should have been 15 bps\n   - **MSFT** (S&P 500 target story): market-wide story, predicted -0.6 bps with 2.0 bps width, realized -4.9 bps \u2192 should have measured modest downward momentum and predicted -3 to -5 bps with 15 bps width\n   - **QQQ** (Walmart outlook story): broad market story, predicted -4.6 bps with 4.6 bps width, realized -8.2 bps \u2192 right direction but should have predicted -8 to -10 bps with 18 bps width (strong downward momentum from ~711.26 to ~709.90, about 19 bps)\n\n9. **Checklist for every forecast:**\n   1. Calculate the tape drift over the last 30-45 minutes in basis points\n   2. Look at the last 5-10 minutes: is momentum accelerating, steady, or fading?\n   3. Is this story material new information specifically about MY stock? (not just mentioning it)\n   4. If no (noise story): am I predicting tape momentum continuation at 50-80% magnitude (modest) or 40-60% (strong) with 15+ bps width?\n   5. Is my width at least 15 bps? (If not, STOP and raise it to 15-18 bps minimum)\n   6. If tape drifted 10+ bps, am I predicting at least 5+ bps continuation in that direction?\n   7. If tape drifted 20+ bps, am I predicting at least 10+ bps continuation?\n   8. If material catalyst with flat tape, am I predicting 8-15 bps in catalyst direction with 18 bps width?\n\n**The default forecast framework:** \n- **First:** Measure 30-45 min tape drift in basis points, note if momentum is accelerating/steady/fading in last 5-10 min\n- **Second:** Classify story as material catalyst for YOUR stock vs. noise (95%+ are noise)\n- **If noise (vast majority):**\n  - Flat tape (<5 bps): predict 0, width 15-18 bps\n  - Modest drift (5-15 bps): predict 50-80% continuation (4-12 bps), width 15-18 bps  \n  - Strong drift (15-30 bps): predict 50-70% continuation (8-21 bps), width 18-22 bps\n  - Very strong drift (30+ bps): predict 40-60% continuation (12-20+ bps), width 20-25 bps\n- **If material catalyst for YOUR stock:**\n  - Check if tape already moved on it (30+ bps in catalyst direction = likely priced)\n  - If not priced (flat or modest tape): predict 8-15 bps in catalyst direction, width 18-20 bps\n  - If already priced: predict 0-3 bps, width 15-18 bps\n\n**Never use width under 15 bps. The empirical evidence is overwhelming: the old harness used 2-6.9 bps width in every example and every single one was far too tight, with realized moves ranging from -17.6 to +17.6 bps. Your baseline is 15-18 bps width, scaling up to 20-25 bps for strong momentum. This is the most important lesson from the feedback.**\n\n**When in doubt: wider width, larger magnitude on momentum continuation. The data shows you're systematically underestimating both width (by 3-10x) and momentum magnitude (by 2-5x). A quote that's too wide just doesn't trade; a quote that's too tight gets run over and destroys your skill score.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
