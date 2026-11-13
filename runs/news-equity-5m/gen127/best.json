@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen127",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n**Width is not a confidence interval. It is insurance against being wrong.**\n\nHalf-width determines whether you get filled and whether the path runs through your quote. A quote that is never touched scores zero (same as standing aside). A quote that gets run through loses money on paper and magnifies the skill penalty. The right width is the one that:\n1. Gives you credit when you're directionally right\n2. Doesn't get you run over when you're directionally wrong or the move is larger than expected\n3. Reflects the realistic range of outcomes given the story type and tape state\n\n**The core insight from recent feedback: intraday noise alone is 5-10 bps. Even when you correctly predict \"no material move,\" the stock will drift 3-15 bps from normal market activity. Width must cover this baseline volatility or you will systematically get run over.**\n\n**Recent examples demonstrate the problem:**\n\n- GOOGL on \"CNBC Halftime Report Final Trades\" (4 symbols): predicted -1.5 bps (2.0 width), moved +15.0 bps. Width failed.\n- TLT on \"Fed's Waller Favors Holding Rates\" (3 symbols, macro news): predicted +0.2 bps (2.0 width), moved 0.0 bps. Lucky but unjustified width.\n- GOOG on \"Waymo Premier Membership\" (2 symbols, GOOG-specific): predicted -0.7 bps (2.0 width), moved -6.2 bps. Width failed.\n- LLY on \"Mounjaro Health Canada Approval\" (1 symbol, stock-specific procedural): predicted +1.5 bps (6.5 width), moved -9.5 bps. Width still too narrow.\n- GOOG on \"Reddit Tumbles\" (2 symbols, potential Google impact): predicted -5.0 bps (5.0 width), moved +6.5 bps. Width failed on direction miss.\n- AAPL on \"Developing Fitness Tracker\" (1 symbol, product news): predicted -1.4 bps (2.0 width), moved +3.8 bps. Width failed.\n- V on \"What's Going On\" (5 symbols, explaining existing move): predicted -0.1 bps (2.0 width), moved +8.5 bps. Width failed.\n- TXN on \"Morgan Stanley Underweight\" (1 symbol, analyst rating): predicted -4.0 bps (4.0 width), moved -17.2 bps. Width too narrow but directionally right scored +0.23.\n\n**Pattern: 2-6.5 bps width failed in 7 of 8 cases. Realized moves ranged from 0 to 17 bps, with median around 8 bps.**\n\n**Decision framework by story type:**\n\n**1. \"What's Going On With [Stock]?\" or \"Why Is [Stock] Moving?\" headlines**\n- These appear AFTER a move has already started\n- The story is explaining the move, not causing it\n- Check candlesticks: if the stock has been trending 20-60 minutes, the move is likely priced\n- Predict: stabilization or small continuation\n- Width: 8-12 bps (path may continue, reverse, or stabilize)\n- Confidence: 65-80%\n- Example: V \"What's Going On\" moved another +8.5 bps with 2 bps width - failed\n\n**2. Multi-name lists (3-20 symbols)**\n- Story names your symbol among others in sector/theme/market commentary\n- Even if your symbol is not the focus, it can move from attention/correlation\n- Observed moves: 0-15 bps in recent data\n- Width: 8-12 bps minimum\n- If your symbol is prominently featured: 10-15 bps\n- If buried in list: 8-10 bps\n- Confidence: 70-85%\n- Examples: GOOGL in 4-name list moved 15 bps with 2 bps width - failed; TLT in 3-name macro list moved 0 bps but 2 bps width was unjustified\n\n**3. Two-name stories**\n- Both symbols are subjects, not context\n- Examples: Waymo program (GOOG/GOOGL), Reddit-Google story (GOOG/RDDT)\n- Both can move significantly\n- Observed moves: 6-15 bps\n- Width: 10-15 bps\n- Confidence: 65-80%\n- Examples: GOOG on Waymo moved -6.2 bps with 2 bps width - failed; GOOG on Reddit moved +6.5 bps with 5 bps width - failed\n\n**4. Single-name procedural/contextual news**\n- Your symbol is the clear subject\n- News may not be a fundamental catalyst but stock is the focus\n- Examples: product announcements, regulatory approvals, analyst ratings\n- Observed moves: 4-17 bps in recent data\n- Width: 10-15 bps for minor news\n- Width: 15-20 bps for analyst ratings, product news, regulatory news\n- Confidence: 60-75%\n- Examples: LLY approval moved -9.5 bps with 6.5 bps width - failed; AAPL fitness tracker moved +3.8 bps with 2 bps width - failed; TXN analyst rating moved -17.2 bps with 4 bps width - failed but scored positive\n\n**5. Single-name material catalyst (earnings beat + guidance, major deals, significant regulatory action)**\n- High uncertainty in magnitude even when direction is clear\n- Observed moves: can be 10-50+ bps\n- Width: 15-25 bps\n- For major catalysts early in session: 18-25 bps\n- For major catalysts late in session: 12-18 bps (moves muted near close)\n- Confidence: 50-70%\n\n**Width floors - never go below these:**\n\nThe key insight: **intraday noise is 5-10 bps baseline.** Even if the news is immaterial, the stock will drift this much from normal trading activity.\n\n- Any forecast on 3+ symbol list: 8 bps minimum\n- Any forecast on 2-name story: 10 bps minimum\n- Any forecast on single-name procedural news: 10 bps minimum\n- Any forecast on single-name product/rating/regulatory news: 12 bps minimum\n- Any forecast on material catalyst: 15 bps minimum\n- \"What's going on\" / \"Why is moving\" stories: 8 bps minimum\n\n**Never use 2-5 bps width unless the story is purely tangential (your symbol mentioned once in passing in another company's story with no thematic connection). Even then, 5-8 bps is safer.**\n\n**The math of width:**\n\n- Stock drifts 5-10 bps from noise alone over five minutes\n- News can add 0-20+ bps depending on materiality\n- If you predict zero with 2 bps width, you need the stock to stay within \u00b12 bps\n- But baseline noise is 5-10 bps, so you're already likely to get run over\n- Width of 8-12 bps covers baseline noise plus small news reactions\n- Width of 12-20 bps covers baseline noise plus moderate news reactions\n\n**Confidence must reflect uncertainty:**\n\nRecent feedback shows high confidence (84-97%) on 2-6.5 bps width was systematically wrong. Appropriate confidence:\n\n- 85-95%: true tangential mentions only (very rare)\n- 70-85%: multi-name lists, \"Why is stock moving\" when tape shows exhaustion\n- 65-80%: two-name stories, smaller multi-name lists\n- 60-75%: single-name procedural news, directional calls\n- 50-70%: material catalysts, analyst ratings with uncertain market reaction\n\n**Never assign 90%+ confidence to a 2-8 bps width on any story where your symbol is a subject (even one of several).**\n\n**Check the tape first:**\n\nPull candlesticks for last 45 minutes, 1-minute bars:\n- Is the stock drifting directionally over 10-30 minutes? (ongoing move)\n- Has it spiked then stabilized? (news may be priced)\n- Is volume elevated or thin? (thin = close is noisy, needs wider width)\n- What's the recent realized volatility? If bars are moving 5-10 bps per minute, your width needs to be at least 10-15 bps\n\n**Time of day matters:**\n\n- Early session (first 90 minutes): higher volatility, use upper end of width ranges\n- Mid-session (90-300 minutes in): normal width ranges\n- Late session (last 60 minutes): moves can be more muted but don't go below minimums\n\n**The successful example from prior feedback:**\n\nTMO \"Thermo Fisher Points to Improving End-Market Activity\" (1 symbol, earnings beat + guidance):\n- Predicted +7.7 bps with 15.7 bps width\n- Realized +5.9 bps\n- Skill +0.71\n- This worked because: (1) directionally correct, (2) width covered realistic range including being wrong\n\n**Final check before submitting:**\n\n1. Am I using 2-7 bps width? **Only acceptable for true tangential mentions. Otherwise minimum is 8-12 bps.**\n2. Does the story have 3+ symbols? **Minimum 8 bps width.**\n3. Does the story have 2 symbols as subjects? **Minimum 10 bps width.**\n4. Is my symbol the sole or primary subject? **Minimum 10-15 bps width depending on news type.**\n5. Am I assigning 85%+ confidence on less than 10 bps width? **Lower confidence and widen.**\n6. What's the baseline volatility from the tape? **Width must cover typical bar-to-bar moves.**\n7. If I'm wrong about direction, will this width save me? **If no, widen.**\n\n**Core principle: The downside of too-wide is zero skill (same as standing aside). The downside of too-narrow is negative skill and paper losses. When in doubt, widen. A quote never touched scores zero. A quote run through scores negative.**\n\n**Minimum safe width for most forecasts: 8-12 bps. Only go narrower if you have strong evidence the stock is pinned (very late day, very thin volume, truly immaterial mention).**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
