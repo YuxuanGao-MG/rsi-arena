@@ -1,0 +1,119 @@
+{
+  "name": "kalshi-horizon-5m-jev+gen120",
+  "description": "The five-minute forecast asked of a decisions model: the same frozen tools, and one typed question - a distribution over cent moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the short-term path of a Kalshi sports contract while the match is being played.\n\nYou are not asked who wins. You are asked where this contract's mid price will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon:\n- the game state changing: a goal, a red card, a period ending\n- time simply passing, which decays any \"will happen\" contract toward no, faster as the clock runs down\n- the book being thin, so a single order moves the mid and it drifts back\n- the market absorbing a goal that happened two or three minutes ago\n\n**The default prediction is zero.** Most five-minute windows do not move.\n\n**Process for every forecast:**\n\n1. **Check candlesticks for recent price movement - this is the PRIMARY signal**\n   - Look at the last 10-15 minutes of candlestick data\n   - Focus on the \"mid\" column (quote midpoint), not \"last\" (most recent trade)\n   - The mid values in the most recent 3-5 rows are what matter most\n\n2. **Critical lesson from recent feedback:**\n\n   **The biggest error pattern: predicting movement when markets don't move**\n   \n   All eight examples above show markets that stayed flat (0.0c change over 5 minutes):\n   - Example 1: Predicted -0.3c, actual 0.0c, skill -0.27\n   - Example 2: Predicted -0.2c, actual 0.0c, skill -0.21\n   - Example 3: Predicted -0.1c, actual 0.0c, skill -0.06\n   - Example 4: Predicted +0.3c, actual +15.5c, skill +0.02 (right direction, wrong magnitude)\n   - Example 5: Predicted +0.5c, actual -1.0c, skill -0.47 (wrong direction)\n   - Example 6: Predicted -0.3c, actual 0.0c, skill -0.30\n   - Example 7: Predicted +0.0c, actual 0.0c, skill -0.05\n   - Example 8: Predicted +0.7c, actual -2.0c, skill -0.37 (wrong direction)\n   \n   **Only 2 of 8 had positive skill, and both were near-zero predictions:**\n   - Example 4: Massive goal-driven move that was unpredictable from candlesticks\n   - Example 3: Tiny prediction (-0.1c) when market didn't move, lost only -0.06 skill\n\n3. **Key insight: Most 5-minute windows are FLAT**\n\n   When candlesticks show stable mid prices (within 1-2 cents for the last 10+ minutes):\n   - **The market is telling you it won't move**\n   - Predicting any movement loses skill unless you're right\n   - The cost of a wrong 0.3c prediction is 0.3 skill points when market doesn't move\n   - The benefit of predicting zero is you lose no skill when market is flat\n   \n   **Examples of stable markets that didn't move:**\n   - Example 1: Mid 0.255 \u2192 0.255 for 15+ minutes, stayed at 0.355\n   - Example 2: Mid 0.055 \u2192 0.055 for 10+ minutes, then dropped to 0.045 but stayed there\n   - Example 6: Mid 0.315 \u2192 0.315 for 30+ minutes (entire visible window), stayed at 0.045\n   - Example 7: Mid 0.545 stable for 20+ minutes, stayed at 0.545\n\n4. **When to predict ZERO (most of the time):**\n\n   **Zero is the right prediction when:**\n   - Candlesticks show stable mid (< 1 cent range in last 10 minutes)\n   - No recent goal in the game events (last 3-5 minutes)\n   - Probability is extreme (< 0.10 or > 0.90) - market already priced in\n   - Book spread is narrow (0.01-0.02) - efficient market, hard to move\n   - No tool failures (when you have good data showing stability)\n   \n   **Zero is also the safe fallback when:**\n   - Tools fail (404 errors on candlesticks or market_quote)\n   - Probability is extreme and you have no candlestick data\n   - You're uncertain about direction\n\n5. **When to predict NON-ZERO movement (rare, but important):**\n\n   **Pattern 1: Recent sharp move visible in candlesticks (last 3-5 minutes)**\n   - Look at the most recent 3-5 candlestick rows\n   - If mid jumped by 5+ cents in last few minutes: potential mean reversion OR trend\n   - Check volume: high volume suggests real move, low volume suggests noise\n   - Example 4: Mid jumped from 0.315 to 0.155 (-16 cents), then goal happened (+15.5c)\n   - Example 8: Mid jumped from 0.065 to 0.165 (+10 cents), then fell back (-2.0c)\n   \n   **Pattern 2: Goal absorption (check recent_events)**\n   - If a goal happened in last 2-3 minutes, check if candlesticks show the move yet\n   - Compare game score to ticker market:\n     - WIN market for team A: Team A goal \u2192 price rises, Team B goal \u2192 price falls\n     - DRAW market: Any goal \u2192 price falls (draw less likely)\n   - If recent goal not yet in candlesticks, predict the absorption move\n   - Example 4: Goal at 52' (3 minutes before timestamp), market jumped +15.5c\n   \n   **Pattern 3: Extreme probability with thin book**\n   - Example 7: Mid 0.545 with massive 0.87 spread (0.11 bid, 0.98 ask)\n   - This is a thin, illiquid market - one order can move it\n   - But: it still didn't move! Thin books don't guarantee movement\n   - Only predict movement if you see it ALREADY HAPPENING in candlesticks\n\n6. **Understanding the ticker (critical for getting direction right):**\n   - Ticker ending in team code (e.g., \"-AUS\", \"-JUA\", \"-DAL\") = that team to WIN\n   - Ticker ending in \"-TIE\" = match ends in a DRAW\n   - **For WIN markets:** \n     - Team scores \u2192 probability rises (positive move)\n     - Opponent scores \u2192 probability falls (negative move)\n     - Time passing with team ahead \u2192 probability rises slightly\n     - Time passing with team behind \u2192 probability falls\n   - **For DRAW markets:**\n     - Any goal \u2192 probability falls (negative move)\n     - Match stays 0-0 or tied \u2192 probability stable or rises slightly with time\n     - Late in match at 0-0: draw probability should be rising\n\n7. **Examples of getting direction wrong:**\n\n   - Example 5 (KXLIGAMXGAME-26SEP13SLAJUA-JUA): Juarez to WIN market\n     - Predicted +0.5c (team to get stronger), actual -1.0c\n     - Game was 0-0 at 5', very early\n     - Time passing early in a 0-0 game slightly favors draw, not either team\n     - Should have predicted zero or tiny negative\n   \n   - Example 8 (KXINTLFRIENDLYGAME-26SEP25AUSBRA-AUS): Australia to WIN market\n     - Predicted +0.7c (Australia to get stronger), actual -2.0c\n     - Game was 0-0 at 35', candlesticks showed huge rise from 0.065 to 0.165\n     - This was a 10-cent spike, likely speculative or thin book\n     - Market fell back -2.0c (mean reversion after spike)\n     - Should have recognized the 10-cent rise as unsustainable\n\n8. **Revised decision framework:**\n\n   **Step 1: Check if candlesticks are available**\n   - If 404 errors: go to fallback mode (Step 6)\n   - If available: proceed to Step 2\n   \n   **Step 2: Calculate price stability in last 10-15 candlestick rows**\n   - Find max and min mid values in most recent 10 rows\n   - Range = max - min\n   - If range < 0.01 (1 cent): Market is STABLE \u2192 predict ZERO\n   - If range 0.01-0.05 (1-5 cents): Market is QUIET \u2192 likely predict ZERO\n   - If range > 0.05 (5+ cents): Market is VOLATILE \u2192 proceed to Step 3\n   \n   **Step 3: If volatile, check for recent sharp moves (last 3-5 rows)**\n   - Compare mid 3-5 rows ago to current mid\n   - If spike up 10+ cents in last few minutes: likely mean reversion DOWN\n   - If spike down 10+ cents in last few minutes: likely mean reversion UP\n   - If steady trend 3-5 cents: possible continuation, but be cautious\n   - Examples: \n     - Example 8: 0.065 \u2192 0.165 (+10c spike) \u2192 fell back -2.0c\n     - Example 4: 0.315 \u2192 0.155 (-16c drop) \u2192 but goal caused +15.5c jump\n   \n   **Step 4: Check recent_events for goals in last 2-3 minutes**\n   - If goal just happened (within 2-3 minutes), check if price already moved\n   - Compare timestamp of goal to candlestick pattern\n   - If goal not yet absorbed, predict the move (5-15 cents depending on game state)\n   - Get direction right based on ticker:\n     - WIN market for scoring team: positive move\n     - WIN market for conceding team: negative move\n     - DRAW market: negative move (any goal)\n   \n   **Step 5: Check probability extremes**\n   - If current mid < 0.10 or > 0.90: market is near certainty\n   - Extreme probabilities rarely move unless something dramatic happens\n   - If stable candlesticks AND extreme probability: predict ZERO\n   - Example 6: Mid 0.045 (4.5%, very low), stable, no move \u2192 predicted -0.3c, lost skill\n   \n   **Step 6: Fallback mode (no candlesticks or unclear signal)**\n   - Predict ZERO unless:\n     - Recent goal in last 2 minutes (predict absorption)\n     - Probability is moderate (0.20-0.80) AND you have game reason for move\n   - Use narrow half-width: 0.5c\n   - Better to predict zero and miss a small move than predict wrong direction\n\n9. **Half-width strategy (how confident are you?):**\n\n   - **0.5 cents (narrow):** \n     - Stable market, predicting zero\n     - High confidence, efficient market\n     - Most predictions should use this\n   \n   - **0.8-1.0 cents (medium):**\n     - Moderate volatility visible\n     - Some trend but not strong\n     - Uncertain about magnitude\n   \n   - **1.5-2.0 cents (wide):**\n     - Recent sharp move, expecting mean reversion\n     - Goal absorption expected\n     - High volatility in candlesticks\n   \n   - **Example 7 used 0.5c half-width for zero prediction: correct approach**\n   - **Example 8 used 1.7c half-width for +0.7c prediction: too wide for wrong direction**\n\n10. **Critical rules to avoid negative skill:**\n\n    **Rule 1: When in doubt, predict ZERO**\n    - Zero is the modal outcome (most common)\n    - Losing -0.06 skill (Example 3) is better than losing -0.30 skill (Example 6)\n    - The cost of predicting movement when there is none is your delta magnitude\n    \n    **Rule 2: Stable candlesticks \u2192 ZERO prediction**\n    - If mid hasn't moved 1+ cents in last 10 minutes, don't predict it will\n    - 6 of 8 examples had stable candlesticks and no movement\n    - All non-zero predictions on stable markets lost skill\n    \n    **Rule 3: Extreme probabilities \u2192 ZERO prediction**\n    - < 0.10 or > 0.90 means outcome is nearly certain\n    - Market has already priced in the result\n    - Example 6: 0.045 (4.5%) stayed flat, -0.3c prediction lost -0.30 skill\n    \n    **Rule 4: Get direction right when you do predict movement**\n    - Example 5: Wrong direction (-0.47 skill, largest loss)\n    - Example 8: Wrong direction (-0.37 skill)\n    - Check ticker carefully: WIN vs DRAW market\n    - Check which team scored if there's a recent goal\n    \n    **Rule 5: Mean reversion after spikes**\n    - 10+ cent spike in 3-5 minutes often reverses partially\n    - Example 8: 0.065 \u2192 0.165 (+10c) \u2192 fell back -2.0c\n    - But be careful: Example 4 had spike then goal, continued in new direction\n    \n    **Rule 6: Don't predict decay without reason**\n    - Examples 1, 2, 6: Predicted small decay (-0.2 to -0.3c), all lost skill\n    - Time decay is real but tiny (< 0.5c per 5 minutes)\n    - Only predict decay if there's a specific reason (probability near 0.50, clock running out)\n\n11. **Practical checklist before predicting:**\n\n    - [ ] Are candlesticks available? If not, default to ZERO unless recent goal.\n    - [ ] What is the range of mid prices in last 10 candlesticks? If < 1 cent, predict ZERO.\n    - [ ] Is current probability extreme (< 0.10 or > 0.90)? If yes, predict ZERO.\n    - [ ] Was there a goal in last 2-3 minutes? Check recent_events timestamp.\n    - [ ] If goal: Has price already moved in candlesticks? If not, predict absorption.\n    - [ ] If volatile: Is there a 10+ cent spike in last 3-5 rows? Consider mean reversion.\n    - [ ] What market am I forecasting (WIN vs DRAW)? Get direction right for goals.\n    - [ ] If predicting non-zero: Am I confident enough to overcome round-trip costs (2-3 cents)?\n    - [ ] If uncertain: Predict ZERO with 0.5c half-width.\n\n12. **Summary of strategy:**\n\n    **Default action: Predict delta_cents = 0.0, half_width_cents = 0.5**\n    \n    This is right for:\n    - Stable markets (6 of 8 examples)\n    - Extreme probabilities (< 0.10 or > 0.90)\n    - Tool failures (no candlesticks)\n    - Uncertain situations\n    \n    **Only predict non-zero when you have clear evidence:**\n    - Recent goal not yet absorbed (check timestamps and candlesticks)\n    - Sharp spike visible (10+ cents) with mean reversion expected\n    - Strong trend in last 3-5 candlesticks with continuation expected\n    \n    **And even then:**\n    - Verify direction carefully (WIN vs DRAW market, which team scored)\n    - Use wide half-width (1.5-2.0c) to account for uncertainty\n    - Accept that you might be wrong - don't over-predict movement\n\n**Core principle:** The market is right more often than you are. Stable candlesticks mean stable prices. Predict zero unless you have strong, recent evidence of movement already happening or about to happen. Getting direction wrong is worse than predicting zero. Most 5-minute windows don't move, and that's OK.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "previous_trades"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "ticker": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "ticker": "{{question}}",
+          "hours_back": 0.75,
+          "hourly": false
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "previous_trades",
+        "args": {
+          "ticker": "{{question}}",
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Contract: {{question}}\nBook now: {{quote}}\nGame: {{game}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many cents the contract's mid price moves over the next five minutes, from the book shown now. Positive is up. A quiet book at a settled score usually stays within half a cent.",
+            "criteria": [
+              "down 4 cents or more",
+              "down 2 to 3 cents",
+              "down about 1 cent",
+              "unchanged, within half a cent either way",
+              "up about 1 cent",
+              "up 2 to 3 cents",
+              "up 4 cents or more"
+            ],
+            "values": [
+              -5,
+              -2.5,
+              -1,
+              0,
+              1,
+              2.5,
+              5
+            ]
+          }
+        },
+        "answers": {
+          "delta_cents": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_cents": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 0.5
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
