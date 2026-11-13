@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen128",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no change, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **Core Pattern: Multi-Symbol Stories Are Market/Sector Commentary, Not Single-Stock Catalysts**\n\n### **The Systematic Error: Treating Multi-Symbol Stories as Single-Stock News**\n\n**Recent outcomes show the pattern:**\n\n1. **GOOG** \"Super Micro, Lumentum, CoreWeave Earnings Highlight AI Infrastructure Demand; CPI Data Shows Stagflation Risks Remain\" (70+ symbols): predicted +0.2 bps (2.0 width), actual +0.7 bps \u2014 miss 0.6 bps, skill +0.03, inside quote\n   - Correctly predicted near-zero, but this is a market/sector story naming GOOG in passing\n\n2. **AMZN** \"Google Says Look Forward To Collaborating With UK Financial Regulators Under The CTP Regime\" (7 symbols: AMZN, EWU, GOOG, GOOGL, MSFC, ORCL, VGK): predicted -1.6 bps (2.0 width), actual -12.4 bps \u2014 miss 10.8 bps, skill +0.13, **quote run through**\n   - This is a GOOG story naming AMZN as a peer/comparison. AMZN is not the subject.\n\n3. **XOM** \"Trump Says Iran Will Get Hit 'Very Hard' Tonight, But What Do Prediction Markets Say About The Ceasefire?\" (3 symbols: CVX, USO, XOM): predicted +2.0 bps (6.0 width), actual -5.0 bps \u2014 miss 7.0 bps, skill -0.40, **quote run through**\n   - This is a geopolitical/oil sector story. XOM drifted with energy sector.\n\n4. **QQQ** \"Samsung Profits Surge 1300%; 30-Year Bond Yield Highest Since 2007; Momo's Favorite Semi ETF Loses 70%\" (73+ symbols): predicted -1.3 bps (2.0 width), actual -1.6 bps \u2014 miss 0.4 bps, skill +0.25, inside quote\n   - Correctly predicted near-zero on market commentary naming QQQ in passing\n\n5. **NFLX** \"YouTube Is Battling Netflix Over Top Talent; Google-Owned Platform Rolling Out Better Tools For Digital Producers\" (3 symbols: GOOG, GOOGL, NFLX): predicted -2.2 bps (5.8 width), actual -16.0 bps \u2014 miss 13.8 bps, skill +0.14, **quote run through**\n   - This is a competitive story about GOOG/YouTube, naming NFLX as the competitor. Not single-stock NFLX news.\n\n6. **AVGO** \"8 Of 11 Sectors Fall In Thursday Trading As Leaders Split\" (96+ symbols): predicted -6.2 bps (2.0 width), actual +8.3 bps \u2014 miss 14.5 bps, skill -0.75, **quote run through, wrong direction**\n   - Sector commentary published during market moves. AVGO drifted with its sector.\n\n**The pattern: Multi-symbol stories (3+ symbols, or any story naming a stock as one of several examples) are market/sector commentary published DURING moves, not single-stock catalysts. Individual stocks continue drifting 5-20 bps with their sector over the next 5 minutes.**\n\n---\n\n## **Decision Framework: Symbol Count and Story Type**\n\n### **Step 1: Count symbols and classify the story**\n\n**A. 10+ symbols: Market-wide commentary**\n- Examples: \"Super Micro, Lumentum, CoreWeave Earnings Highlight AI Infrastructure Demand\" (70+ symbols), \"Samsung Profits Surge 1300%; 30-Year Bond Yield Highest Since 2007\" (73+ symbols), \"8 Of 11 Sectors Fall In Thursday Trading As Leaders Split\" (96+ symbols)\n- These are market/sector roundups published DURING broad market moves\n- The named stock is mentioned in passing, not the story's subject\n- **Predict 0-5 bps with 6-8 bps width unless the stock is clearly drifting with its sector**\n\n**B. 3-9 symbols: Sector/thematic story OR competitive story**\n- Examples: \n  - **Sector:** \"Trump Says Iran Will Get Hit 'Very Hard' Tonight\" (CVX, USO, XOM) \u2014 geopolitical/oil sector story\n  - **Competitive:** \"YouTube Is Battling Netflix Over Top Talent\" (GOOG, GOOGL, NFLX) \u2014 story about GOOG naming NFLX as competitor\n  - **Peer comparison:** \"Google Says Look Forward To Collaborating With UK Financial Regulators\" (7 symbols including AMZN, GOOG, ORCL) \u2014 GOOG story naming tech peers\n- **Check the headline and summary:**\n  - If headline is about one company (e.g., \"Google Says...\"), the other symbols are peers/context, not subjects\n  - If headline is thematic (e.g., \"Trump Says Iran...\", \"YouTube Is Battling Netflix\"), it's a sector/competitive story\n- **For sector stories:** Check tape over last 45 min. If |net move| > 20 bps, predict 8-15 bps continuation with 10-12 bps width\n- **For competitive stories (one company vs another):** If the named stock is the competitor (not the subject), predict 5-12 bps in the direction implied by the story, width 8-12 bps\n- **For peer comparison stories (e.g., \"Google Says...\" naming AMZN):** If named stock is not the subject, predict 0-5 bps with 6-8 bps width\n\n**C. 2 symbols: Check if single-stock or sector/competitive**\n- Examples from prior context:\n  - \"Bill Gates Wants to Hit the Brakes. Nvidia Is Financing AI's Next Sprint.\" (MSFT, NVDA) \u2014 sector/thematic story about AI infrastructure\n- **Check headline:**\n  - If headline is about one company's business (e.g., \"Tesla Expands Robotaxi Service\") \u2192 single-stock story\n  - If headline is thematic or comparative (e.g., \"Bill Gates vs Nvidia on AI\") \u2192 treat as sector story\n- **For sector/thematic 2-symbol stories:** Check tape over 45 min. If drifting >30 bps, predict 10-20 bps continuation with 10-12 bps width\n\n**D. 1 symbol: Single-stock story**\n- This is the only case where the story is clearly about the named stock\n- Apply single-stock catalyst logic (see below)\n\n---\n\n## **Step 2: For Multi-Symbol Stories, Identify if Named Stock is the Subject**\n\n**Key question: Is the headline about this stock, or is this stock mentioned as context/peer/competitor?**\n\n**Subject vs Context:**\n- **Subject:** \"Bank Of America Corp Credit Card Delinquency Rate Was 1.26% At July End\" (1 symbol: BAC) \u2014 headline is about BAC\n- **Context/Peer:** \"Google Says Look Forward To Collaborating With UK Financial Regulators\" (7 symbols including AMZN) \u2014 headline is about GOOG, AMZN is named as a peer\n- **Competitor:** \"YouTube Is Battling Netflix Over Top Talent\" (3 symbols: GOOG, GOOGL, NFLX) \u2014 headline is about GOOG/YouTube, NFLX is named as the competitor\n\n**If the named stock is NOT the subject:**\n- It's mentioned in passing or as sector context\n- The story did not cause the stock's move; broader sector forces did\n- **Predict 0-8 bps based on tape drift, width 6-10 bps**\n\n**If the named stock IS the subject (or one of two subjects in a competitive story):**\n- Apply single-stock catalyst logic\n- **Predict based on materiality and tape context**\n\n---\n\n## **Step 3: For Sector Stories (3+ symbols, or named stock not the subject), Check Tape Drift**\n\n**Process:**\n1. Pull candlesticks for last 45 minutes\n2. Measure net move from 45 min ago to now: (current close - close 45 min ago) / close 45 min ago * 10,000 bps\n3. **If |net move| > 30 bps:** Stock is drifting with its sector. Predict 8-15 bps continuation in the same direction, width 10-12 bps\n4. **If |net move| 15-30 bps:** Stock is drifting mildly. Predict 5-10 bps continuation, width 8-10 bps\n5. **If |net move| < 15 bps:** Stock is flat despite sector commentary. Predict 0-5 bps, width 6-8 bps\n\n**Examples:**\n- **AMZN** at 13:04 ET on \"Google Says...\" (7 symbols): Check tape from 12:20-13:03. \n  - At 12:20, close was ~246.41 (from candlesticks: 16:20 bar = 246.36)\n  - At 13:03, close was 245.74\n  - Net move: (245.74 - 246.41) / 246.41 * 10000 = -27.2 bps\n  - Stock drifting down ~30 bps over 45 min \u2192 predict -10 to -15 bps continuation, width 10-12 bps\n  - Actual: -12.4 bps, would have scored +0.85 skill with this forecast vs +0.13 actual\n\n- **NFLX** at 10:18 ET on \"YouTube Is Battling Netflix\" (3 symbols): Check tape from 9:34-10:17.\n  - At 9:34, close was ~71.895 (from candlesticks: 13:34 bar = 71.825)\n  - At 10:17, close was 71.845\n  - Net move: (71.845 - 71.895) / 71.895 * 10000 = -7.0 bps\n  - Stock drifting down mildly 7 bps over 45 min \u2192 predict -8 to -12 bps continuation (competitive story implies negative for NFLX), width 10-12 bps\n  - Actual: -16.0 bps, would have scored +0.75 skill with -10 bps / 10 bps width forecast vs +0.14 actual\n\n- **AVGO** at 14:04 ET on \"8 Of 11 Sectors Fall In Thursday Trading\" (96+ symbols): Check tape from 13:20-14:03.\n  - At 13:20, close was ~350.3 (from candlesticks: 17:20 bar = 350.31)\n  - At 14:03, close was 348.93\n  - Net move: (348.93 - 350.3) / 350.3 * 10000 = -39.1 bps\n  - Stock drifting down 40 bps over 45 min \u2192 predict -12 to -18 bps continuation, width 12-15 bps\n  - Actual: +8.3 bps (reversal). Stock exhausted downside, bounced. This is the risk of sector commentary: direction can reverse.\n  - **Key insight:** When |net move| > 40 bps, use wider width (12-15 bps) to account for reversal risk. Sector drift is not momentum; it's sector commentary during volatility.\n\n---\n\n## **Step 4: For Single-Stock Stories (1 symbol AND the headline is about that stock), Apply Catalyst Logic**\n\n**A. Descriptive headline: \"What's Going On?\", \"What's Happening?\", \"Soaring\", \"Trending\"**\n- These are retrospective. The move has happened. The story explains it.\n- Example: \"Why Is Palantir Technologies Stock Soaring Thursday?\" (1 symbol: PLTR)\n- **Process:**\n  1. Check candlesticks over last 45-60 min\n  2. Measure net move from 45-60 min ago to now\n  3. **If stock already moved >50 bps in headline direction:** Predict 5-10 bps continuation, width 8-10 bps (momentum may be exhausted)\n  4. **If stock moved 20-50 bps:** Predict 8-15 bps continuation, width 8-10 bps\n  5. **If stock flat (<20 bps):** Predict 5-10 bps in headline direction, width 8-10 bps (headline may refer to earlier move or pre-market)\n\n**Example:**\n- **PLTR** \"Why Is Palantir Technologies Stock Soaring Thursday?\" at 13:32 ET (242 min into session): \n  - Summary: \"Palantir (PLTR) surged 7.8% after expanding its enterprise AI partnership with PwC\"\n  - Check tape from 12:48-13:31 (45 min window):\n    - At 12:48, close was ~183.035 (from candlesticks: 16:48 bar = 183.14)\n    - At 13:31, close was 182.88\n    - Net move: (182.88 - 183.14) / 183.14 * 10000 = -14.2 bps\n  - Stock is DOWN 14 bps over last 45 min, but headline says \"soaring\" and summary says \"surged 7.8%\"\n  - **This means the 7.8% surge happened EARLIER in the session (likely at open or pre-market), not in the last 45 min**\n  - Stock has been drifting down since the surge \u2192 momentum exhausted\n  - Predict -5 to -10 bps continuation of drift, width 8-10 bps\n  - Actual: -7.1 bps, would have scored +0.90 skill with -8 bps / 8 bps width vs +0.09 actual with -0.7 bps / 7.3 bps width\n\n**B. Fresh single-stock catalyst: earnings, guidance, deals, analyst rating changes**\n- Example: \"Bank Of America Corp Credit Card Delinquency Rate Was 1.26% At July End\" (1 symbol: BAC)\n- This is a data release (monthly credit metrics), not a major catalyst\n- **Process:**\n  1. Check if this is material news (earnings, guidance, M&A, major analyst action) or minor update (monthly metrics, routine disclosure)\n  2. Check tape over last 45 min to see if already priced\n  3. **For material news:** Predict 15-40 bps based on materiality, width 12-18 bps\n  4. **For minor updates:** Predict 5-15 bps based on tape drift and news direction, width 8-12 bps\n\n**Example:**\n- **BAC** \"Credit Card Delinquency Rate Was 1.26% At July End\" at 10:05 ET (35 min into session):\n  - This is a monthly metric release, not a major catalyst\n  - Check tape from 9:30-10:04 (35 min window, stock opened at 9:30):\n    - At 9:30, close was ~64.39 (from candlesticks: 13:30 bar = 64.47)\n    - At 10:04, close was 65.09\n    - Net move: (65.09 - 64.47) / 64.47 * 10000 = +96.2 bps\n  - Stock up 96 bps over first 35 min of session (big opening move)\n  - Delinquency rate 1.26% is low (positive for credit quality), but stock already rallied hard\n  - Predict +5 to +10 bps continuation (some momentum left, but most priced), width 8-10 bps\n  - Actual: +6.1 bps, would have scored +0.90 skill with +8 bps / 8 bps width vs +0.10 actual with +0.6 bps / 2.0 bps width\n\n---\n\n## **Width Guidelines**\n\n### **2 bps width: ONLY for single-stock passing mentions when very confident the tape is flat**\nFrom examples: 2.0 bps width used on multi-symbol stories (GOOG 70+ symbols, AMZN 7 symbols, QQQ 73+ symbols) and sector stories (AVGO 96+ symbols). \n- AMZN: missed by 10.8 bps, quote run through\n- AVGO: missed by 14.5 bps, quote run through, wrong direction\n**Do not use 2 bps width on multi-symbol stories. Minimum width is 6-8 bps.**\n\n### **6-8 bps width: Multi-symbol stories (10+ symbols) when tape is flat, single-stock descriptive headlines after move is done**\nUse when you expect the stock to stay within a 12-16 bps band. Examples:\n- Market-wide commentary (10+ symbols) when tape shows no sector drift\n- Single-stock descriptive headline when stock already moved >50 bps and momentum is exhausted\n\n### **8-10 bps width: Sector stories (3-9 symbols), single-stock descriptive headlines, minor single-stock catalysts**\nStandard width for sector commentary and single-stock stories where direction is clear but magnitude uncertain. Examples:\n- 3-9 symbol sector/thematic stories when |tape drift| < 30 bps\n- Single-stock descriptive headlines when stock moved 20-50 bps (some continuation expected)\n- Minor single-stock catalysts (monthly metrics, routine disclosures)\n\n### **10-12 bps width: Sector stories (3-9 symbols) with strong tape drift, competitive stories**\nUse when sector drift is clear (|net move| > 30 bps over 45 min) but reversal risk exists. Examples:\n- Sector stories when stock drifted >30 bps over 45 min\n- Competitive stories (e.g., \"YouTube vs Netflix\") where the named stock is not the subject\n- 2-symbol thematic stories\n\n### **12-18 bps width: High volatility, material single-stock catalysts, sector stories with >50 bps drift**\nUse when:\n- Stock has moved >50 bps over 45 min (exhaustion or reversal risk)\n- Material single-stock news (earnings, guidance, M&A, major analyst action)\n- Sector story published during high volatility (|tape drift| > 50 bps)\n\n---\n\n## **Magnitude Calibration**\n\n### **Multi-symbol stories (3+ symbols): 0-15 bps based on tape drift, NOT fixed at 0-3 bps**\n\n**The error:** Predicting 0-3 bps on all multi-symbol stories regardless of tape context.\n\n**Correct approach:**\n1. **10+ symbols (market-wide commentary):** Predict 0-5 bps with 6-8 bps width unless tape shows clear sector drift\n2. **3-9 symbols (sector/thematic story):**\n   - |Tape drift| > 30 bps \u2192 predict 10-15 bps continuation, width 10-12 bps\n   - |Tape drift| 15-30 bps \u2192 predict 5-10 bps continuation, width 8-10 bps\n   - |Tape drift| < 15 bps \u2192 predict 0-5 bps, width 6-8 bps\n\n**Examples:**\n- **AMZN** \"Google Says...\" (7 symbols): tape drift -27 bps \u2192 predict -10 to -15 bps, width 10-12 bps (not -1.6 bps / 2.0 bps width)\n- **NFLX** \"YouTube Is Battling Netflix\" (3 symbols): tape drift -7 bps, competitive story implies negative for NFLX \u2192 predict -8 to -12 bps, width 10-12 bps (not -2.2 bps / 5.8 bps width)\n- **AVGO** \"8 Of 11 Sectors Fall\" (96+ symbols): tape drift -39 bps \u2192 predict -12 to -18 bps, width 12-15 bps (not -6.2 bps / 2.0 bps width, and be prepared for reversal)\n\n### **Single-stock descriptive headlines: 5-15 bps based on how much the stock has already moved**\n\n**The pattern:** Descriptive headlines (\"Soaring\", \"What's Happening?\") are published AFTER the stock has moved. Check tape over 45-60 min:\n- Stock moved >50 bps \u2192 predict 5-10 bps continuation, width 8-10 bps (momentum may be exhausted)\n- Stock moved 20-50 bps \u2192 predict 8-15 bps continuation, width 8-10 bps\n- Stock flat (<20 bps) \u2192 predict 5-10 bps in headline direction, width 8-10 bps (headline refers to earlier move)\n\n**Example:**\n- **PLTR** \"Why Is Palantir Technologies Stock Soaring Thursday?\": tape shows stock down -14 bps over last 45 min (surge happened earlier) \u2192 predict -5 to -10 bps drift, width 8-10 bps (not -0.7 bps / 7.3 bps width)\n\n### **Minor single-stock catalysts: 5-15 bps based on tape context and news direction**\n\n**Example:**\n- **BAC** \"Credit Card Delinquency Rate Was 1.26% At July End\": tape shows stock up 96 bps over first 35 min \u2192 predict +5 to +10 bps continuation, width 8-10 bps (not +0.6 bps / 2.0 bps width)\n\n---\n\n## **Key Insights**\n\n1. **Symbol count is the first filter.** 3+ symbols = sector/market commentary, NOT single-stock news. Even if the headline mentions the stock, it's mentioned as context.\n\n2. **For multi-symbol stories, check if the named stock is the subject.** If the headline is \"Google Says...\" and the story names AMZN as a peer, AMZN is not the subject. Predict 0-8 bps based on tape drift.\n\n3. **Tape drift over 45 minutes is the forecast for sector stories.** If the stock has drifted -30 bps over 45 min, predict -10 to -15 bps continuation. If flat, predict 0-5 bps.\n\n4. **Width must account for reversal risk on sector stories.** Sector drift is not momentum. When |tape drift| > 40 bps, use 12-15 bps width to account for exhaustion/reversal.\n\n5. **Descriptive single-stock headlines are retrospective.** \"Soaring\" means it already soared. Check tape: if the stock surged earlier and is now flat/drifting, predict small continuation (5-10 bps) or drift in the current direction, NOT the headline direction.\n\n6. **Never use 2 bps width on multi-symbol stories.** Minimum width is 6-8 bps. Multi-symbol stories generate 5-20 bps moves as stocks drift with their sectors.\n\n7. **Competitive stories (e.g., \"YouTube vs Netflix\") are sector stories.** If the named stock is the competitor (not the subject), treat as sector story. Check tape drift and predict 5-12 bps based on implied direction.\n\n8. **Magnitude and width are independent choices.** You can predict +10 bps with 12 bps width (uncertain about exact magnitude but confident direction is up). Do not conflate forecast precision with width choice.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
