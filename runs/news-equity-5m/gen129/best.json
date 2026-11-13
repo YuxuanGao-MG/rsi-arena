@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen129",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The systematic error is quoting too narrow on noise.**\n\nThe eight new examples confirm the pattern from context training:\n- NFLX: predicted \u00b14.9 bps, realized +13.6 bps (missed)\n- QQQ: predicted \u00b12.0 bps, realized +6.7 bps (missed)\n- AAPL: predicted \u00b12.0 bps, realized -19.4 bps (missed)\n- MSFT: predicted \u00b12.9 bps, realized -27.4 bps (missed)\n- TSLA: predicted \u00b12.0 bps, realized +19.4 bps (missed)\n- AMD: predicted \u00b12.9 bps, realized -17.4 bps (missed)\n- AMZN: predicted \u00b17.5 bps, realized -19.4 bps (missed, but closer)\n- CAT: predicted \u00b12.0 bps, realized +8.7 bps (missed)\n\nSeven of eight used 2.0-4.9 bps half-width. All eight missed. All eight were on noise stories. The realized outcomes ranged from +6.7 to -27.4 bps\u2014normal intraday drift for large caps.\n\n**All eight stories are noise:**\n\n1. **NFLX**: \"What's Going On With Netflix Stock Tuesday?\" - Post-mortem headline asking what happened. Story explains a move that already occurred (\"shares are trading higher Tuesday morning\"). This is commentary on completed price action.\n\n2. **QQQ**: \"47% Earnings Growth? Not Really; Bezos Sells Amazon Stock...\" - Names 66+ symbols. Market commentary roundup, not stock-specific news about QQQ.\n\n3. **AAPL**: \"10 Information Technology Stocks Whale Activity In Today's Session\" - Names 10 stocks. Daily options activity roundup, not company news.\n\n4. **MSFT**: \"Big Tech Hasn't Looked This Risky Relative To S&P 500 In 23 Years\" - Names 10 symbols (AAPL, AMZN, AVGO, GOOG, GOOGL, META, MSFT, NVDA, QQQ, SPY). Sector commentary about volatility spreads, not MSFT-specific news.\n\n5. **TSLA**: \"Houthi Victory Raises Risks; Hotter CPI Pushes Fed Rate-Hike Odds To 88%\" - Names 12 symbols. Macro market commentary about Fed policy, not TSLA news.\n\n6. **AMD**: \"What's Going On With Dell Technologies Stock Tuesday?\" - Headline is about DELL, not AMD. AMD appears in a 9-symbol list. Story is about Dell's AI strategy announcement.\n\n7. **AMZN**: \"California Governor Gavin Newsom Announces Collaboration With Anthropic...\" - Story is about Anthropic (an AI company backed by Google). AMZN appears in the symbol list but headline mentions Anthropic, not Amazon. Tangential at best.\n\n8. **CAT**: \"SpaceX Could Swing $204 Billion After Earnings\" - Names 9 symbols. Earnings preview roundup about multiple companies (Pfizer, Amgen, Gilead Sciences). CAT not mentioned in headline or summary.\n\n**None is fresh, material, stock-specific news about the named ticker.**\n\n**Baseline intraday drift for large-cap stocks:**\n\nNormal five-minute drift from order flow, microstructure, market moves, and HFT activity:\n- Typical conditions: 10-20 bps\n- Volatile market or existing trend: 20-30 bps\n- End-of-day or thin minutes: 25-40 bps\n\nThe MSFT example (-27.4 bps realized) occurred at 11:45 AM during a broader Big Tech selloff. The candlesticks show MSFT drifting from 372.1 to 371.69 over the prior 45 minutes\u2014the stock was already in a downtrend. The story (\"Big Tech Hasn't Looked This Risky\") is explaining an ongoing move, not causing a new one.\n\nThe AAPL example (-19.4 bps) occurred at 1:35 PM. The candlesticks show a strong uptrend from 274.3 to 277.78 over the prior hour, then a reversal. The \"whale activity\" story is coincidental noise; the stock was already volatile.\n\n**Mandatory width floors:**\n\nYour bands must absorb the baseline drift that occurs regardless of news.\n\n1. **Multi-stock lists or roundups (4+ symbols):** 12-15 bps minimum\n   - \"Top X Stocks,\" \"Whale Activity,\" sector commentary\n   - Examples: QQQ (66 symbols), AAPL (10 symbols), MSFT (10 symbols), TSLA (12 symbols), AMD (9 symbols), CAT (9 symbols)\n   - Predict 0 \u00b1 12-15 bps\n\n2. **Post-mortem \"What happened\" stories:** 12-15 bps minimum\n   - Headline asks \"What's going on\" or \"What happened\"\n   - Story explains price action that already occurred\n   - Examples: NFLX, AMD (headline about Dell, not AMD)\n   - Predict 0 \u00b1 12-15 bps\n\n3. **Unrelated news or wrong ticker tags:** 12-15 bps minimum\n   - Headline about company A, this ticker in symbol list\n   - Story does not mention this company's name\n   - Examples: AMD (Dell story), AMZN (Anthropic story), CAT (SpaceX story)\n   - Predict 0 \u00b1 12-15 bps\n\n4. **Existing drift or volatility visible in candlesticks:** 20-30 bps minimum\n   - Check last 30-60 minutes of price action\n   - If stock already trending or volatile (15+ bps moves between minutes), use wider bands\n   - Example: MSFT (already down 40+ bps before the story)\n   - Predict 0 \u00b1 20-30 bps if continuing trend, fade with same width if reversal expected\n\n5. **End-of-day (last 30 minutes) or open (first 15 minutes):** 15-25 bps minimum\n   - Volatility and drift higher near open/close\n   - CAT example was at 3:30 PM (30 minutes to close)\n   - Widen bands 50% vs. mid-session\n\n6. **Stock-specific material fresh news:** 15-25 bps base, add directional component\n   - Earnings, guidance, M&A, rating change (not just price target)\n   - Must be about THIS stock specifically and be NEW\n   - Check candlesticks: if no pre-move, make directional call\n   - If pre-move visible, assess if absorbed (fade) or continuing (follow)\n\n**Never use 2 bps width.** The absolute floor is 10 bps, but for noise stories the floor is 12-15 bps.\n\n**Decision tree:**\n\n1. **Check the headline: is this stock the primary subject?**\n   - If headline mentions a different company or is generic \u2192 noise\n   - If headline asks \"What's happening\" or \"What's going on\" \u2192 post-mortem, noise\n\n2. **Count symbols in the story.**\n   - 4+ symbols \u2192 roundup/list \u2192 predict 0 \u00b1 12-15 bps\n   - 1-3 symbols \u2192 continue checks\n\n3. **For 1-3 symbol stories: read headline and summary carefully.**\n   - Is this stock mentioned by name in headline or summary?\n   - If not mentioned by name \u2192 wrong tag \u2192 predict 0 \u00b1 12-15 bps\n   - If mentioned only in passing \u2192 tangential \u2192 predict 0 \u00b1 12-15 bps\n\n4. **Check for staleness or investor commentary:**\n   - References to past dates, \"following,\" \"after\"\n   - Fund manager announces trade, analyst TV appearance\n   - Predict 0 \u00b1 12-15 bps\n\n5. **If the story appears genuinely stock-specific and fresh:**\n   - Check candlesticks for pre-move in last 30-60 minutes\n   - Look for 15+ bps trend or unusual volatility\n   - If clear pre-move: decide if absorbed (fade) or continuing (follow), use 20-30 bps width\n   - If no pre-move: assess materiality (earnings/guidance = material; minor news = not material)\n   - Material + no pre-move: directional call with 15-25 bps width minimum\n   - Non-material: predict 0 \u00b1 12-15 bps\n\n6. **Check time of day:**\n   - First 15 minutes or last 30 minutes: add 50% to width\n   - Example: 12-15 bps base becomes 18-23 bps near open/close\n\n7. **Default assumption: noise.**\n   - If uncertain: predict 0 \u00b1 12-15 bps\n   - Better to capture drift than break bands on routine noise\n\n**What the candlesticks tell you:**\n\nBefore deciding, look at the last 30-60 minutes:\n- **Flat or rangebound** (3-5 bps per minute): normal microstructure \u2192 12-15 bps width\n- **Steady drift** (5-10 bps per minute): existing trend \u2192 20-25 bps width, consider if news will continue or reverse it\n- **Volatile** (10-20 bps swings between minutes): heightened activity \u2192 25-30 bps width\n- **Sharp move just before news** (20+ bps in one minute): likely already pricing the news \u2192 fade with 20-30 bps width\n\nIn the MSFT example, candlesticks showed 372.1 \u2192 371.69 over 45 minutes (steady 11 bps drift down). The story at 11:45 is about Big Tech volatility (not MSFT-specific), but the stock is already trending down. Right answer: 0 \u00b1 25 bps (absorb continuation of existing drift).\n\nIn the AMZN example, candlesticks showed a sharp rally from 238.17 to 244.56 over 45 minutes (265 bps!), with the news arriving near the top. The story (California + Anthropic) is tangentially related to AMZN at best. The rally looks like it's exhausting. Right answer: 0 \u00b1 20-25 bps (likely reversal from overextended move, but wide bands given the volatility).\n\n**What kills skill:**\n- Quoting 2-5 bps width on any forecast (breaks 80%+ of the time)\n- Treating multi-stock roundups as stock-specific news\n- Ignoring existing drift visible in candlesticks\n- Making directional bets on noise stories\n- Underestimating the 10-20 bps baseline drift\n\n**What earns skill:**\n- Capturing the realized price in your band (the *only* thing that matters)\n- Recognizing that 90%+ of Benzinga stories are noise\n- Using 12-15 bps width minimum on noise stories\n- Using 20-30 bps width when candlesticks show existing volatility or drift\n- Predicting zero correctly on non-news (most stories)\n- Reserving directional calls for genuinely fresh material stock-specific news\n\n**Width is not a penalty.** A 0 \u00b1 15 bps forecast that captures a 12 bps drift earns positive skill. A 0 \u00b1 2 bps forecast that misses a 12 bps drift loses skill. You are scored on whether the realized price lands in your band, not on how tight the band is.\n\n**The right answer on these eight examples:**\n\n- NFLX: 0 \u00b1 12-15 bps (post-mortem of completed move)\n- QQQ: 0 \u00b1 12-15 bps (66-symbol market commentary roundup)\n- AAPL: 0 \u00b1 20-25 bps (10-stock whale roundup + visible uptrend/reversal in candlesticks)\n- MSFT: 0 \u00b1 25 bps (10-stock sector commentary + existing 40 bps downtrend in candlesticks)\n- TSLA: 0 \u00b1 12-15 bps (12-stock macro commentary roundup)\n- AMD: 0 \u00b1 12-15 bps (9-stock list, headline about Dell not AMD)\n- AMZN: 0 \u00b1 20-25 bps (Anthropic story tangential to AMZN + 265 bps rally just completed, likely reversal)\n- CAT: 0 \u00b1 15-20 bps (9-stock earnings preview + 30 minutes to close = higher end-of-day drift)\n\nAll eight are noise. None warranted a directional bet. All needed 12-30 bps width depending on time of day and visible price action. The realized outcomes (ranging from +6.7 to -27.4 bps) are normal intraday drift and prove that 2-5 bps bands are systematically too tight.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
