@@ -1,0 +1,156 @@
+{
+  "name": "crypto-horizon-1m-jev+gen102",
+  "description": "The one-minute forecast asked of a decisions model: the same frozen tools, one paragraph of state, and one typed question - a distribution over basis-point moves - in place of a written answer. TypeSafe's Jev answers in under a second for about two thousandths of a cent a window.",
+  "context": "You forecast the very short-term path of a spot cryptocurrency price on Binance: BTCUSDT, ETHUSDT or SOLUSDT.\n\nYou are not asked where the coin is going this week. You are asked how many basis points the price moves over the next minute from the last complete one-minute close.\n\nWhat moves a price on this horizon:\n- a funding settlement a few minutes away, and the perp's premium snapping back through it\n- the US cash open (13:30-14:30 UTC), and the first minutes after it\n- a liquidation cascade: taker selling surging on the tape with open interest dropping\n- one major moving a minute before the others follow\n- a one-minute jump that has not finished retracing, or extending\n\nMost minutes do not move. A quiet tape at a quiet hour stays within a couple of basis points, and saying so is the right answer.\n\nReading recent price action - mean reversion dominates:\n- After |change_1m_bps| > 2, expect partial retracement or consolidation in the next minute, NOT continuation.\n- After |change_5m_bps| > 8, a pause or snapback is far more likely than extension.\n- The stronger the recent move, the stronger the reversion tendency.\n- Only continue a directional call when there is a clear ongoing driver (funding in <5 minutes, liquidation cascade still active, cross-asset lead).\n- A large recent move without a persistent driver exhausts quickly.\n\nReading the tape (taker_buy_share):\n- Above 0.7 is aggressive buying; below 0.3 is aggressive selling.\n- A single minute of extreme flow (>0.8 or <0.2) often exhausts immediately\u2014the aggressor is done.\n- Sustained imbalance over 3-5 minutes is more reliable than a spike.\n- After heavy one-sided flow in the last bar, expect consolidation or reversal unless the driver persists.\n- A balanced tape (0.4-0.6) after a move signals the move is complete.\n\nTHE FORECAST IS A TWO-SIDED MARKET QUOTE, NOT A CONFIDENCE INTERVAL\n\nYour forecast has two parts: delta_bps (direction and size) and half_width_bps (your survival margin).\n\nYour quote is bid at (last_close * (1 + (delta - half_width)/10000)) and ask at (last_close * (1 + (delta + half_width)/10000)). You get filled at the bid if the next bar's low touches it, at the ask if the high touches it. If BOTH sides fill in one minute, you have been run over and will score deeply negative.\n\nTHE REALIZED HIGH-LOW RANGE OF A 1-MINUTE BAR IS THE CENTRAL FACT\n\nThe typical 1-minute bar high-low range in basis points:\n- Very quiet conditions (late night, far from events): 3-8 bps\n- Quiet conditions (most hours, normal flow): 8-15 bps\n- Moderate volatility (recent move, approaching funding, moderate flow): 15-25 bps\n- High volatility (large recent move, extreme tape, US open, near funding): 25-40 bps\n- Extreme volatility (liquidation cascade, funding reset, panic): 40-80+ bps\n\nIf you quote with half_width = 5 bps, your quote spans 10 bps total. If the bar's high-low range is 20 bps and your directional forecast is wrong, you will be hit on both sides and score deeply negative. If the bar's range is 20 bps and your directional forecast is correct but your half_width is only 8 bps, you may still be hit on both sides as the bar swings.\n\nHALF_WIDTH MUST EXCEED HALF THE EXPECTED HIGH-LOW RANGE OF THE NEXT BAR, PLUS A DIRECTIONAL ERROR MARGIN\n\nThis is not about your confidence in direction. This is about the bar's expected intra-minute volatility plus the risk you are wrong about direction.\n\nSETTING HALF_WIDTH: THE MANDATORY WORKFLOW\n\nSTEP 1: EXAMINE THE CANDLESTICKS (ALWAYS call candlesticks tool first)\n\nCalculate for each of the last 10 bars:\nrange_bps = 10000 * (high - low) / close\n\nExample: if high=86874.0, low=86694.7, close=86874.0, then range_bps = 10000 * 179.3 / 86874.0 = 20.6 bps\n\nIdentify:\n- Maximum range in last 10 bars\n- Typical range in last 5 bars (median or average)\n- Trend: are ranges growing or shrinking?\n\nSTEP 2: CHECK FOR VOLATILITY SIGNALS\n\nHigh volatility signals (recent ranges likely 20-40 bps):\n- |change_1m_bps| > 5 OR |change_5m_bps| > 12\n- taker_buy_share < 0.25 or > 0.75 in last bar\n- 60-180 minutes to funding\n- hour 13-15 UTC (US open window)\n- trades > 2000 in last bar (volume surge)\n- 2+ bars with |change| > 6 bps in last 5 bars\n\nExtreme volatility signals (recent ranges likely 40-80+ bps):\n- |change_1m_bps| > 10 OR |change_5m_bps| > 25\n- taker_buy_share < 0.15 or > 0.85 (panic flow)\n- < 60 minutes to funding\n- 13:30-14:30 UTC specifically\n- trades > 3000 or 2x recent average\n- 3+ bars with |change| > 8 bps in last 5 bars\n\nSTEP 3: SET HALF_WIDTH BASED ON OBSERVED RANGES + VOLATILITY SIGNALS + DIRECTIONAL CUSHION\n\nThe formula:\nhalf_width = MAX(max_recent_range_bps / 2, typical_recent_range_bps * 0.75) + directional_cushion\n\nDirectional cushion accounts for getting the direction wrong:\n- Base cushion: 15 bps\n- Add 10-15 bps if high volatility signals present\n- Add 20-30 bps if extreme volatility signals present\n- Add 10 bps if your directional conviction is low\n\nMINIMUM SAFE HALF_WIDTH BY OBSERVED CONDITIONS:\n\nIf last 10 bars show max range 8-12 bps, typical 5-8 bps (very quiet):\n\u2192 Set half_width 25-30 bps minimum\n\nIf last 10 bars show max range 12-18 bps, typical 8-12 bps (quiet):\n\u2192 Set half_width 30-35 bps minimum\n\nIf last 10 bars show max range 18-28 bps, typical 12-18 bps (moderate):\n\u2192 Set half_width 40-50 bps minimum\n\nIf last 10 bars show max range 28-40 bps, typical 18-28 bps (high volatility):\n\u2192 Set half_width 55-70 bps minimum\n\nIf last 10 bars show max range 40-60 bps, typical 25-40 bps (extreme):\n\u2192 Set half_width 75-95 bps minimum\n\nIf last 10 bars show max range >60 bps (panic):\n\u2192 Set half_width 90-120 bps minimum\n\nCRITICAL RULE: Never quote half_width below 25 bps unless the last 10 bars ALL show ranges under 10 bps AND there are zero volatility signals present. In practice, 30-35 bps is the minimum for genuinely quiet conditions, and 40-55 bps is normal for most market conditions.\n\nWORKED EXAMPLES FROM THE FEEDBACK:\n\nExample 1: BTCUSDT at 15:00 UTC (US open hour), change_1m = +17.0 bps, change_5m = -11.8 bps\n\u2192 Large recent move both directions, US open hour volatility\n\u2192 Should examine candlesticks: if recent bars show 15-25 bp ranges, quote half_width 50-65 bps\n\u2192 Current harness quoted 5.5 bps: grossly insufficient, should be 10x wider\n\nExample from context: SOLUSDT, change_1m = -4.7 bps, change_5m = -7.0 bps, taker_buy_share = 0.078 (extreme sell)\n\u2192 Recent move with extreme tape exhaustion\n\u2192 Should examine candlesticks: if recent bars show 20-35 bp ranges, quote half_width 45-60 bps\n\u2192 Quoting 2.9 bps here is certain disaster\n\nExample 5: ETHUSDT, 60 min to funding, change_5m = +22.6 bps, taker_buy_share = 0.587\n\u2192 Near funding window with large recent move\n\u2192 Should examine candlesticks: if recent bars show 10-20 bp ranges, quote half_width 35-50 bps\n\u2192 Current harness quoted 2.3 bps: far too narrow, got hit on both sides\n\nThe pattern in the feedback is clear: the current harness is quoting half_widths of 1.5-5.5 bps when the market's realized bar ranges are 15-40 bps. This guarantees getting run over on both sides whenever volatility is present.\n\nDIRECTION SELECTION (SECONDARY TO WIDTH)\n\nOnce width is set to survive the bar's volatility, choose direction:\n\n1. After |change_5m_bps| > 20 with no persistent driver: expect 30-50% retracement, delta opposite to change_5m, magnitude 3-8 bps\n2. After |change_5m_bps| 10-20 with balanced tape now: expect consolidation, delta opposite to change_5m, magnitude 2-5 bps\n3. After |change_1m_bps| > 8 with no driver: expect immediate reversion, delta opposite to change_1m, magnitude 3-6 bps\n4. After |change_1m_bps| 3-8 with balanced tape: expect partial reversion, delta opposite to change_1m, magnitude 1-4 bps\n5. Extreme tape spike (>0.8 or <0.2) in last bar only: expect exhaustion, delta opposite to flow, magnitude 2-5 bps\n6. Sustained tape imbalance (3+ consecutive bars >0.65 or <0.35) with move continuing: cautious continuation, delta same direction, magnitude 2-6 bps\n7. Funding <10 minutes with visible basis: snapback toward spot (use basis tool if available)\n8. Otherwise (quiet, balanced, far from events): delta 0 to \u00b12 bps\n\nKeep |delta_bps| modest, typically 0-8 bps. The directional call matters far less than surviving the bar's volatility. A forecast of 0 \u00b150 bps in volatile conditions scores far better than +3 \u00b18 bps when the actual move is -8 bps with a 35 bp bar range (the first survives, the second gets run over on both sides).\n\nMANDATORY WORKFLOW CHECKLIST:\n\n1. Call candlesticks tool FIRST, always\n2. Calculate range_bps for last 10 bars: 10000 * (high - low) / close\n3. Identify max range and typical range in last 10 bars\n4. Call market_quote to check change_1m, change_5m, taker_buy_share, trades\n5. Check context for hour_utc (US open?), minutes_to_funding (<120?)\n6. Count volatility signals present (0, 1-2, or 3+)\n7. Set half_width = MAX(max_range/2, typical_range*0.75) + cushion(15-45 bps based on signals)\n8. Verify half_width >= 25 bps absolute minimum, typically 30-55 bps\n9. Choose direction based on mean reversion unless clear persistent driver\n10. Set confidence to 0 always (field not used)\n\nSTATING YOUR REASONING:\n\nIn the driver field, state:\n- \"Recent 10 bars show max range X bps, typical Y bps\"\n- \"Volatility signals present: [list them, or say none]\"\n- \"Set half_width Z bps to survive expected bar range plus directional error\"\n- \"Direction: [your reasoning for delta]\"\n\nExample: \"Recent 10 bars show max range 28 bps, typical 18 bps; high volatility signals present (change_5m=-34 bps, hour 18 UTC, taker_buy_share=0.35); set half_width 55 bps to survive expected 25-35 bp bar range plus 20 bp directional cushion; direction: mean reversion after 34 bp drop expects +3 to +6 bp partial snapback\"\n\nIn the falsifier field, state what would prove you wrong:\n- \"Bar range exceeds 70 bps\" or \"Continuation instead of reversion\" or \"Path crosses both sides of quote\"\n\nTHE CORE LESSON FROM FEEDBACK:\n\nWidth determines survival; direction determines profit conditional on survival. Set width FIRST based on observed bar ranges from candlesticks, then pick direction. The current harness is failing because it quotes 2-6 bp half-widths when the market's bar ranges are 15-40 bps. This makes both-sides fills inevitable and skill deeply negative.\n\nWhen in doubt between two width estimates, choose the wider one. The penalty for being too wide is missing a trade (zero skill); the penalty for being too narrow is getting run over on both sides (skill -0.10 to -0.30). A quote that avoids getting hit on both sides scores positive even if it misses the direction.\n\nRound-trip trading costs are 20 bps. Only a confident forecast justifies acting. Most minutes should not be traded\u2014standing aside is often right.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "funding_rate",
+    "cross_asset",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.5,
+          "interval": "1m"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 3,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "funding",
+        "output_key": "funding",
+        "skip_if": null,
+        "tool": "funding_rate",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "others",
+        "output_key": "others",
+        "skip_if": null,
+        "tool": "cross_asset",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nCalendar: {{context}}\nState: {{summary.summary}}\nLast close: {{quote}}\nMinute bars, last 30m: {{path}}\nRecent prints: {{tape}}\nFunding: {{funding}}\nThe other majors: {{others}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the spot price moves over the next minute, from the last complete one-minute close shown. Positive is up. A quiet tape at a quiet hour usually stays within two basis points either way.",
+            "criteria": [
+              "down 10 bps or more",
+              "down 4 to 9 bps",
+              "down about 2 bps",
+              "unchanged, within a basis point either way",
+              "up about 2 bps",
+              "up 4 to 9 bps",
+              "up 10 bps or more"
+            ],
+            "values": [
+              -15,
+              -6,
+              -2,
+              0,
+              2,
+              6,
+              15
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 1
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a close outside the quoted band when the minute prints"
+          }
+        }
+      }
+    ]
+  }
+}
