@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen130",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## Core Decision Framework\n\n### Step 1: Is the story ABOUT this symbol?\n\nRead the headline and summary. Ask: \"Is this symbol the grammatical subject or direct object of the headline's main claim?\"\n\n**The story IS about the symbol when:**\n- The symbol is the subject: \"Microsoft Investors Brace for AI Reality Check\" (MSFT)\n- The symbol is the direct object: \"KeyBanc Is Bullish on Amazon's AI Infrastructure\" (AMZN)\n- The headline makes a specific claim about the symbol's business, valuation, or outlook\n- 1-2 symbols total and the headline clearly focuses on this one\n\n**The story IS NOT about the symbol when:**\n- The symbol appears in a list: \"Tesla, Palantir Fall as CPI Sends September Fed Hike Odds to 33%\" mentions [CRM, CRWV, MSFT, NBIS, NOW, PLTR, SMCI, TSLA, WDAY] - this is market-wide macro news\n- Multi-symbol market story: \"Nasdaq 100 Enters Correction\" with 50+ symbols - not about any one name\n- The symbol is mentioned only as a peer or comparison\n- The headline describes macro action: \"The Warsh Rate-Hike Trade Just Collapsed\" mentions [DIA, IWM, QQQ, SPY, TLT] - about Fed policy, not the symbols\n\n**Recent pattern from feedback:** Even when a story mentions 4-9 symbols including yours, if the headline is about macro factors (CPI, Fed hikes, rate policy, market-wide selloff), it's noise for individual names. The fact that PLTR appears in \"Tesla, Palantir Fall as CPI...\" doesn't make it ABOUT PLTR - it's about CPI.\n\n### Step 2: Route based on whether story is about this symbol\n\n**If the story is NOT about your symbol (failed Step 1):**\n\nThis is the vast majority of Benzinga stories.\n\nDefault prediction: **0 to \u00b12 bps**\n\nWidth: **4 to 6 bps minimum** (the recent feedback shows 2 bp width fails repeatedly)\n\nConfidence: **0.75 to 0.92** \n\n**Width guidelines for noise:**\n- 5+ symbols, macro theme (Fed, CPI, tariffs): width = 5-8 bps\n- Symbol mentioned in passing, no price action described: width = 4-5 bps\n- Headline contains \"crash\", \"rout\", \"whipsaw\", \"surge\", \"fall\", \"selloff\": width = 6-10 bps even when predicting zero\n- ETFs (SPY, QQQ, IWM, TLT, sector ETFs): add 2-3 bps to width vs individual stocks\n- Large caps during open: minimum width 4 bps\n- Can only use 3 bp width if: symbol barely mentioned, headline is pure filler, predicting exactly zero, recent 15-min range <15 bps, confidence >0.90\n\n**Never use 2 bp width.** The feedback shows 2 bp width failed in 6 of 8 examples. The realized price escaped the quote every time. Width is your protection against being run over.\n\nSkip to Step 5 (check tape for adjustments).\n\n**If the story IS about your symbol:**\n\nProceed to Step 3 to assess catalyst type.\n\n### Step 3: Assess catalyst type (for stories ABOUT the symbol)\n\n**Pure journalism about existing price action:**\n- Headline says \"X fell/rose\" and describes a move that already happened\n- Example: \"Tesla, Palantir Fall as CPI...\" when PLTR has already fallen 20-40 bps\n- This is NOT a catalyst - it's journalism about an existing move\n- Check candlesticks for the prior 45 minutes: if the move already happened, predict small continuation (2-5 bps in same direction) or mean reversion (0-3 bps back)\n- Width: 5-8 bps (momentum could continue or reverse)\n- Confidence: 0.65-0.75\n\n**Soft news about the company:**\n- \"Watching X; Hearing Investor Business Daily SwingTrader Buys Stock\" - this is weak signal\n- Newsletter/service buys, vague positive/negative commentary\n- Predict: \u00b12 to \u00b15 bps\n- Width: 5-8 bps\n- Confidence: 0.70-0.80\n\n**Institutional commentary and positioning:**\n- \"Peter Thiel: Palantir Sales to US Corporations Accelerated 'Tremendously'\" - founder/executive commentary\n- \"BofA's $520 Million OpenAI Loan Signals Wall Street's Race For AI IPOs\" when forecasting BAC\n- These are business news but indirect: the story is about BAC lending to OpenAI, not about BAC's own earnings\n- Predict: \u00b13 to \u00b18 bps\n- Width: 5-10 bps (market reaction uncertain)\n- Confidence: 0.70-0.80\n\n**Analyst ratings (the most common real catalyst in Benzinga):**\n- Analyst upgrade/downgrade with price target: predict \u00b110 to \u00b120 bps, width 10-15 bps\n- Bank maintains rating but issues bullish/bearish note: predict \u00b15 to \u00b110 bps, width 6-10 bps\n- Named institutional investor or expert opinion: predict \u00b18 to \u00b112 bps, width 8-12 bps\n- Confidence: 0.65-0.75\n\n**Company-specific business news:**\n- Earnings beat/miss: predict \u00b115 to \u00b130 bps, width 15-20 bps\n- Product launch, strategic initiative: predict +8 to +15 bps, width 8-12 bps\n- Partnership or deal announcement: predict +5 to +10 bps, width 6-10 bps\n- Guidance change: predict \u00b115 to \u00b125 bps, width 12-18 bps\n- Regulatory or legal news: predict \u00b110 to \u00b120 bps, width 10-15 bps\n- Confidence: 0.70-0.85\n\n### Step 4: Check the tape for prior moves\n\nPull candlesticks for the last 45-60 minutes. Calculate the range from 45 minutes ago to now.\n\n**If the symbol has already moved >25 bps (large cap) or >50 bps (smaller name) in the direction the headline suggests:**\n- The story may be journalism about that move, not a new catalyst\n- If headline says \"X falls\" and X has already fallen 30+ bps in prior hour: predict small continuation (2-5 bps same direction) or mean reversion (0-3 bps), NOT a large fresh move\n- Scale down any directional prediction by 50-80%\n- Width: 6-10 bps (momentum could continue or reverse)\n\n**If the symbol has been flat or moving opposite to what the headline suggests:**\n- The headline may be stale, or the market may disagree\n- Reduce prediction magnitude by 30-50%\n- Consider wider width (add 2-3 bps) to account for uncertainty\n\n**If the tape shows high recent volatility (15-min range >25 bps for large cap, >60 bps for smaller name):**\n- Add 3-5 bps to width\n- The symbol is in play; moves may be larger and more erratic\n\n**Key insight from Example 8 (PLTR):** \"Watching Palantir Technologies; Hearing Investor Business Daily SwingTrader Buys Stock\" at 09:36:49. Look at the open: PLTR opened at 173.69 at 13:30:00, spiked to 175.375 (+97 bps) in the first minute, then crashed to 173.65 by 13:35:00. The story dropped 1.8 minutes after open. This is almost certainly journalism about the opening spike, NOT a new catalyst. PLTR continued falling to 173.40 (-14 bps over 5 min). Predicting -1.2 bps was directionally correct but far too small; should have predicted -8 to -12 bps (momentum continuation after spike) with 8-10 bp width.\n\n### Step 5: Set width\n\n**The feedback reveals systematic under-width. Here is the corrected approach:**\n\nFor stories NOT about the symbol (noise):\n- Baseline: width = 5-6 bps for any ETF or large cap during open hours\n- Add 2 bps if headline describes price action (\"fall\", \"surge\", \"whipsaw\")\n- Add 2 bps if 10+ symbols (market-wide theme)\n- Reduce to 4 bps ONLY if: symbol barely mentioned, pure filler content, predicting exactly zero, recent 15-min range <15 bps, confidence >0.90\n- Never use 3 bps or less for ETFs\n\nFor stories ABOUT the symbol:\n- |delta| < 5 bps: width = 5-8 bps (minimum 5 bps even for small predictions)\n- |delta| 5-10 bps: width = 0.8 \u00d7 |delta| but minimum 6 bps\n- |delta| 10-20 bps: width = 0.7 \u00d7 |delta|\n- |delta| > 20 bps: width = 0.65 \u00d7 |delta|\n\n**Additional width adjustments:**\n- ETFs always get +2 bps vs stocks (they have different volatility patterns)\n- Recent 15-min range >25 bps: width = max(base width, 0.20 \u00d7 15-min range)\n- Journalism about existing move: width = 7-10 bps (uncertain if momentum continues)\n- Opening minutes (first 10 minutes of session): add 2-3 bps (high volatility)\n- Late session (last 30 minutes): can reduce by 1 bp if volume is thin\n\n**The core lesson from feedback:** Being run over (realized price outside quote) destroys both skill and P&L. Six of eight examples had this problem, all with width \u22642.4 bps. Width is not a precision estimate - it's insurance against uncertainty. When uncertain, go wider.\n\n### Step 6: Set confidence\n\nConfidence measures \"how certain am I the realized price will be within my quoted band?\"\n\n**0.88-0.95:** Pure noise (5+ symbols, macro theme), symbol not the story subject, predicting near-zero, width \u22655 bps proportional to recent volatility\n\n**0.75-0.87:** Story not about this symbol, 3-9 symbols, predicting near-zero or very small move, width adequate for recent volatility\n\n**0.70-0.80:** Story IS about this symbol but soft catalyst (newsletter mention, founder comment on separate topic, journalism about existing move), width proportional to |delta|\n\n**0.65-0.75:** Story about symbol with clear catalyst (analyst call, business news), tape shows no confounding prior move, width adequate\n\n**0.50-0.64:** High uncertainty - conflicting signals, ambiguous headline, tape shows partial prior move, or first 10 minutes of session (high noise)\n\n**Do not report confidence above 0.95.** The feedback shows that even \"pure noise\" stories can produce 3-5 bp moves. Overconfidence with tight width is the failure mode.\n\n**Do not report confidence below 0.50.** If uncertainty is that high, default to near-zero prediction with wide width (8-12 bps).\n\n---\n\n## Key Patterns from Recent Feedback\n\n### Pattern 1: Market-wide stories are noise even when they mention the symbol\n\n**Example 4 (PLTR):** \"Tesla, Palantir Fall as CPI Sends September Fed Hike Odds to 33%\" with 9 symbols. The headline is about CPI and Fed policy, not about PLTR specifically. Even though PLTR is named in the headline, this is market-wide macro news.\n\nHarness predicted: -2.4 bps, width 2.4 bps, confidence 0.83\nActual: -11.1 bps\n\n**Error:** Recognized the story was bearish for PLTR but used 2.4 bp width when a macro story with 9 symbols needs 6-8 bp width minimum. The direction was correct but magnitude too small and width far too tight.\n\n**Correct approach:** CPI/Fed story with 9 symbols = market-wide noise. Could predict -3 to -5 bps (slight bearish) or 0-2 bps (neutral), but MUST use 6-8 bp width for macro volatility. Confidence 0.75-0.82. The wider width would have kept realized price inside the quote.\n\n### Pattern 2: \"X falls\" headlines are journalism, not catalysts\n\n**Example 8 (PLTR):** \"Watching Palantir Technologies; Hearing Investor Business Daily SwingTrader Buys Stock\" at 09:36:49 (1.8 minutes after open). Candlesticks show PLTR opened at 173.69, spiked to 175.375 in first minute (+97 bps), then fell to 173.65 by the time story dropped.\n\nHarness predicted: -1.2 bps, width 2.0 bps, confidence 0.78\nActual: -14.4 bps (continued falling)\n\n**Error:** This headline is incredibly weak (\"watching\", \"hearing\"), published right after a 100 bp opening spike and immediate reversal. The story is almost certainly about that spike, not a new catalyst. Momentum after spike reversal typically continues 8-15 bps. Predicted -1.2 bps was directionally right but 10x too small, and 2 bp width is absurd for a stock that just moved 100 bps.\n\n**Correct approach:** Check time of day (first 2 minutes of open) and recent volatility (97 bp spike then -32 bp fall in 5 minutes). This is momentum continuation after opening spike reversal. Predict -8 to -12 bps with 8-10 bp width. Confidence 0.65-0.72 (opening volatility is noisy). Would have captured the -14.4 bp move.\n\n### Pattern 3: Stories about Company A's actions are weak for Company B\n\n**Example 7 (BAC):** \"BofA's $520 Million OpenAI Loan Signals Wall Street's Race For AI IPOs\" - this is about BAC lending to OpenAI, not about BAC's own fundamentals.\n\nHarness predicted: +1.2 bps, width 2.0 bps, confidence 0.82\nActual: -3.4 bps\n\n**Error:** The story is factually about BAC, but it's about BAC's lending activity (providing credit to OpenAI), not about BAC's earnings or stock-specific catalyst. This is tangential business news. Wrong direction and far too tight width.\n\n**Correct approach:** BAC lending to OpenAI is mildly positive business news but not a stock catalyst. Market may not care about a $520M loan for a $3.6T market cap bank. Predict 0 to +3 bps with 5-7 bp width. Confidence 0.72-0.78. The actual -3.4 bp move suggests market didn't care or there was unrelated flow.\n\n### Pattern 4: Founder/executive commentary is soft news\n\n**Example 6 (PLTR):** \"Peter Thiel: Palantir Sales to US Corporations Accelerated 'Tremendously' As Europe Falls Behind in AI\" - Peter Thiel is PLTR co-founder, this is bullish commentary.\n\nHarness predicted: +2.3 bps, width 2.3 bps, confidence 0.76\nActual: -5.0 bps\n\n**Error:** Thiel commentary is mildly bullish but not a hard catalyst (no earnings, no deal, no analyst upgrade). Wrong direction entirely. Width too tight for uncertain soft news.\n\n**Correct approach:** Founder saying positive things is soft news, not a trading catalyst. The market may have already priced in PLTR's AI narrative. Check tape: was PLTR already up on the day? If so, this is confirmation bias journalism. Predict 0 to +4 bps with 6-8 bp width (uncertain if market cares). Confidence 0.68-0.75. The wider width and lower confidence reflect genuine uncertainty about market reaction to soft news.\n\n### Pattern 5: Macro stories about ETFs need wide width\n\n**Example 5 (TLT):** \"The Warsh Rate-Hike Trade Just Collapsed: What It Means for Markets\" with 5 symbols [DIA, IWM, QQQ, SPY, TLT]. This is about Fed policy, not about TLT specifically.\n\nHarness predicted: -0.3 bps, width 2.0 bps, confidence 0.97\nActual: +3.6 bps\n\n**Error:** Correct to predict near-zero (macro story, 5 symbols), but 2.0 bp width for an ETF during a story about Fed policy collapse is far too tight. TLT is a bond ETF - it's volatile on rate news. Confidence 0.97 is overconfident.\n\n**Correct approach:** Fed policy story with 5 symbols = market-wide noise. TLT is a bond ETF, so it's more sensitive to rate news than equity ETFs but this is still generic. Predict 0 to \u00b12 bps with 5-7 bp width (ETFs need wider width, rate story adds volatility). Confidence 0.82-0.88.\n\n### Pattern 6: Multi-symbol index stories are always noise but signal volatility\n\n**Example 1 (SPY):** \"Samsung Selloff Sends Warning To US Investors; Amazon Enters AI Debt Binge\" with 16 symbols. SPY is mentioned as the index, not as the subject.\n\nHarness predicted: -0.3 bps, width 2.0 bps, confidence 0.98\nActual: +1.6 bps\n\n**Error:** Correct to predict near-zero, but 2.0 bp width for SPY during a story with \"Selloff\" in headline and 16 symbols is too tight. SPY is an ETF tracking the S&P 500.\n\n**Correct approach:** 16 symbols, \"Selloff\" in headline, SPY as tracking index = pure noise but volatility signal. Predict 0 to -1 bps with 5-6 bp width (SPY is ETF, add width for described volatility). Confidence 0.88-0.92.\n\n### Pattern 7: \"X and Y Fall\" headlines with macro catalyst\n\n**Example 3 (IWM):** \"Nasdaq 100 Enters Correction, SanDisk Sinks Over 50% From Peak: Stock Market Today\" with 50+ symbols. IWM is Russell 2000 ETF, mentioned as part of broad market story.\n\nHarness predicted: -1.3 bps, width 2.0 bps, confidence 0.87\nActual: -14.0 bps\n\n**Error:** Direction correct (predicted down), but magnitude far too small (-1.3 vs -14.0) and width absurdly tight (2.0 bps) for a correction story with 50+ symbols. IWM is an ETF.\n\n**Correct approach:** \"Nasdaq 100 Enters Correction\" with 50+ symbols = market-wide selloff. IWM is small-cap ETF, may correlate with broad market move. Check tape: was IWM already falling? If so, predict continuation -5 to -10 bps with 8-12 bp width (correction = high volatility). Confidence 0.72-0.80. The wider width would have captured the -14 bp move.\n\n### Pattern 8: OpenAI/AI policy stories for cloud stocks\n\n**Example 2 (MSFT):** \"'White House Asks OpenAI And Anthropic To Hold New Models From UK Testers...\" with 4 symbols [AMZN, GOOG, GOOGL, MSFT]. Story is about White House AI policy, not about MSFT specifically.\n\nHarness predicted: -0.3 bps, width 2.0 bps, confidence 0.82\nActual: +16.7 bps\n\n**Error:** Wrong direction and magnitude, width far too tight. Story is AI policy/geopolitics with 4 cloud stocks mentioned. This is sector theme, not MSFT-specific.\n\n**Correct approach:** White House AI policy with 4 symbols = sector theme, not MSFT catalyst. Hard to predict direction (is policy good or bad for MSFT?). Predict 0 to \u00b13 bps with 6-8 bp width (sector theme, AI volatility). Confidence 0.75-0.82. The wide width reflects genuine uncertainty about policy impact.\n\n---\n\n## Critical Width Rules (Based on Feedback)\n\n1. **Never use 2 bp width.** It failed in 6 of 8 examples. Minimum width is 4 bps for stocks, 5 bps for ETFs.\n\n2. **ETFs always get +2 bps width** vs stocks. They have different volatility patterns. SPY, QQQ, IWM, TLT all need 5+ bp minimum width.\n\n3. **Opening minutes (first 10 min) need +2-3 bps width.** Volatility is highest at open. Example 8 was 1.8 minutes after open - should have used 8-10 bp width.\n\n4. **Macro stories (Fed, CPI, tariffs) with 5+ symbols need 6-10 bp width** even when predicting zero. Examples 1, 4, 5 all failed this.\n\n5. **Any headline with \"fall\", \"crash\", \"surge\", \"whipsaw\", \"selloff\", \"correction\" needs +2-3 bps width** regardless of symbol count. Examples 1, 3 both had volatility words.\n\n6. **When predicting near-zero on noise, width should be 5-8 bps** to avoid being run over. Examples 1, 2, 4, 5, 7 all predicted near-zero with 2 bp width and got run over.\n\n7. **Soft news about the symbol (founder commentary, newsletter buys) needs 6-8 bp width** because market reaction is uncertain. Examples 6, 7, 8 all had uncertain catalysts.\n\n8. **After-spike momentum needs 8-12 bp width** because continuation size is uncertain. Example 8 was post-spike momentum.\n\n---\n\n## Confidence Calibration (Based on Feedback)\n\nThe feedback shows confidence was too high in most examples:\n\n- Example 1 (SPY): confidence 0.98 with 2 bp width \u2192 realized price +1.6 bps (outside quote)\n- Example 5 (TLT): confidence 0.97 with 2 bp width \u2192 realized price +3.6 bps (outside quote)\n- Example 3 (IWM): confidence 0.87 with 2 bp width \u2192 realized price -14.0 bps (way outside)\n\n**Revised confidence scale:**\n\n- **0.88-0.92:** Pure noise (10+ symbols, macro theme), predicting near-zero, width \u22656 bps\n- **0.80-0.87:** Noise (5-9 symbols), predicting near-zero, width \u22655 bps\n- **0.72-0.80:** Story about symbol with soft catalyst, OR noise with wide width for volatility\n- **0.65-0.75:** Story about symbol with clear catalyst, adequate width\n- **0.50-0.64:** High uncertainty, first minutes of open, conflicting signals\n\nLower confidence than before because the feedback shows even \"certain\" noise can produce 5-15 bp moves.\n\n---\n\n## Summary: What Changed\n\n1. **Minimum width raised from 2 bps to 4-5 bps** across all scenarios\n2. **ETF width penalty increased from +1 bp to +2 bps**\n3. **Opening minutes identified as requiring +2-3 bp width**\n4. **Journalism vs catalyst distinction** made explicit: \"X falls\" after X already fell is journalism, not a catalyst\n5. **Macro stories even with symbol in headline are noise** - Examples 2, 4, 5 all failed this\n6. **Soft news (founder comments, newsletter buys) distinguished from hard catalysts** - needs wider width\n7. **Confidence scale lowered by 5-10 points** across all categories\n8. **Never use 2 bp width rule** made absolute\n9. **Post-spike momentum** identified as needing 8-12 bp width\n10. **Width proportional to recent volatility** made more aggressive (0.20x 15-min range minimum)\n\nThe core lesson: **width is insurance, not precision**. Better to quote wide and miss a fill than quote tight and get run over.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
