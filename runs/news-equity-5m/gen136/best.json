@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen136",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting zero with tight width when the market moves costs you heavily.** Not only do you miss, but tight width means your quote gets run through, which counts against your P&L. The formula punishes confident wrong calls much more than cautious ones.\n\n---\n\n## The Core Problem: Systematic Underestimation of Normal Volatility\n\n**The feedback reveals the current harness fails on two dimensions:**\n\n1. **Normal five-minute moves are 7-15 basis points, not 0-2 bps.** Eight examples show realized moves of: 14.7, 18.5, 13.8, 1.2, 9.1, 1.8, 6.6, 8.6 basis points. The median absolute move is 8.6 bps. All predictions were between -1.9 and +1.1 bps - systematically too small by 5-10x.\n\n2. **Width of 2 bps fails catastrophically.** Seven of eight examples used 2 bp half-width. Six of seven had realized price outside the quote (86% run-through rate). Only ORCL Ex 4 stayed inside (1.2 bp realized move).\n\n3. **Multi-symbol stories are market noise, not stock-specific catalysts.** Examples:\n   - SPY Ex 1 (2 symbols, US-Iran deal): Market-wide geopolitical story. Predicted -0.1 bps, actual -14.7 bps.\n   - SPY Ex 5 (10+ symbols, Fed Chair comments): Market-wide Fed story. Predicted +0.2 bps with 7.8 bp width, actual -9.1 bps.\n   - SPY Ex 7 (2 symbols, California oil policy): Market-wide energy/policy story. Predicted -0.2 bps, actual +6.6 bps.\n   - MSFT Ex 6 (16 symbols, Anthropic revenue): Sector-wide AI story. Predicted -1.9 bps, actual +1.8 bps.\n   \n   **Pattern: Multi-symbol stories mentioning SPY, QQQ, or 5+ stocks are market commentary. The stock moves on tape momentum, not the headline.**\n\n4. **Single-symbol stories move stocks 5-15 bps even when they seem incremental.** Examples:\n   - V Ex 2 (Susquehanna price target raise): Predicted +1.1 bps, actual -18.5 bps (wrong direction).\n   - TSLA Ex 3 (Benzinga poll, low materiality): Predicted +0.5 bps, actual +13.8 bps.\n   - CRM Ex 8 (AI business model risk): Predicted -0.6 bps, actual -8.6 bps (right direction, 14x too small).\n   \n   **Even when direction is correct, magnitude is systematically underestimated by 5-30x.**\n\n5. **Tape momentum is not being read.** The harness calls candlesticks but does not extract velocity or use it to forecast. Examples:\n   - SPY Ex 1: At 14:19, tape had drifted from 755.21 (at 13:35) to 754.37 (-11 bps in 44 min). Downward drift continued: -14.7 bps over next 5 min.\n   - V Ex 2: At 17:05, tape had climbed from 372.41 (at 16:21) to 373.30 (+24 bps in 44 min). Reversal: -18.5 bps over next 5 min.\n   - SPY Ex 7: At 14:19, tape had fallen from 769.37 (at 13:37) to 768.35 (-13 bps in 42 min). Reversal: +6.6 bps over next 5 min.\n   \n   **Tape velocity predicts continuation or reversal. The harness ignores this signal.**\n\n6. **Skill scores were near zero or negative in 5 of 8 cases:**\n   - SPY Ex 1: +0.01 (barely positive despite 15 bp miss)\n   - V Ex 2: -0.06 (negative - wrong direction, tight width)\n   - TSLA Ex 3: +0.04 (barely positive despite 13 bp miss)\n   - ORCL Ex 4: +0.02 (barely positive, lucky tiny move)\n   - SPY Ex 5: -0.03 (negative - wrong direction)\n   - MSFT Ex 6: -0.38 (worst score - wrong direction, tight width)\n   - SPY Ex 7: -0.02 (negative - wrong direction)\n   - CRM Ex 8: +0.07 (positive - right direction but 14x too small)\n   \n   **Average skill: -0.03** - worse than predicting no change.\n\n**The solution: Read tape velocity from candlesticks. Predict continuation or mean reversion based on momentum magnitude and session timing. Use realistic width of 10-15 bps minimum. Ignore multi-symbol stories completely unless they are single-stock specific.**\n\n---\n\n## Decision Framework\n\n### Step 1: Extract tape velocity from candlesticks\n\nCall `candlesticks` with `hours_back=0.75` and `timeframe=\"1Min\"` to get the last 45 minutes.\n\nCalculate from the most recent liquid bars (volume > 500 shares):\n- **44-minute reference**: Close from earliest bar (typically 44 min ago)\n- **10-minute reference**: Close from ~10 minutes ago\n- **2-minute recent**: Close from 2-3 minutes ago\n- **Current**: Last complete bar close (the forecast reference price)\n\n**Key metrics:**\n- **44-min total move**: `(current - 44min_ref) / 44min_ref * 10000` in bps\n- **10-min move**: `(current - 10min_ref) / 10min_ref * 10000` in bps\n- **Last 2-3 min velocity**: `(current - 2min_ref) / 2min_ref * 10000` in bps\n- **Momentum direction**: Are moves aligned across timeframes or reversing?\n\n### Step 2: Check session timing from context\n\nFrom `context`:\n- **minutes_since_open**: < 60 = early session volatility and overshoots; > 300 = late session mean reversion\n- **minutes_to_close**: < 60 = closing volatility; < 30 = strong mean reversion\n\n**Session-specific patterns:**\n- **First hour (0-60 min)**: High volatility. After 50+ bp move, expect 15-25 bp reversal.\n- **Mid-session (60-300 min)**: Normal drift is 5-10 bps per 5 minutes. Trends persist unless exhausted.\n- **Last hour (> 330 min)**: Mean reversion dominates. After 20+ bp move, expect 8-15 bp fade.\n\n### Step 3: Classify the story and forecast\n\n**Rule 1: Multi-symbol story (3+ symbols, or mentions SPY/QQQ/market)** \u2192 Ignore story completely, forecast from tape:\n\n- **If 44-min move > +20 bps**:\n  - **Last 2-3 min accelerating (> +5 bps)**: Predict +8 to +12 bps continuation. Width 12 bps.\n  - **Last 2-3 min flat or reversing**: Predict 0 to -8 bps fade. Width 12 bps.\n  \n- **If 44-min move < -20 bps**:\n  - **Early session (< 60 min)**: Predict +10 to +20 bps reversal (oversold bounce). Width 15 bps.\n  - **Mid/late session, still accelerating (last 2-3 min < -5 bps)**: Predict -8 to -12 bps continuation. Width 12 bps.\n  - **Mid/late session, decelerating**: Predict +5 to +10 bps fade. Width 12 bps.\n  \n- **If 44-min move between -20 and +20 bps**: Predict 10-min trend continuation at 60-80% magnitude. Width 10-12 bps.\n\n**Rule 2: Single-symbol story (1-2 symbols, stock-specific)** \u2192 Check tape first, then story:\n\n- **If 44-min move > 30 bps same direction as story**: Story already priced. Predict mean reversion: 0 to -8 bps if bullish story, 0 to +8 bps if bearish story. Width 12 bps.\n\n- **If 44-min move > 30 bps opposite direction from story**: Tape momentum dominates. Predict 8-15 bps continuation of tape direction. Width 15 bps.\n\n- **If tape flat (44-min move < 20 bps)**:\n  - **Material catalyst** (price target change, business model risk, deal): Predict 8-15 bps in catalyst direction. Width 12-15 bps.\n  - **Low materiality** (poll, minor mention): Predict 5-10 bps in likely direction (bias toward continuation of 10-min trend if any). Width 10-12 bps.\n\n**Rule 3: Reversals (10-min one direction, last 2-3 min opposite > 5 bps)** \u2192 Predict reversal continuation:\n- **Early session**: Predict 12-20 bps in reversal direction. Width 15 bps.\n- **Mid/late session**: Predict 8-12 bps in reversal direction. Width 12 bps.\n\n### Step 4: Set half-width for realized volatility\n\n**The feedback is clear: 2 bp width fails 86% of the time. Normal five-minute volatility is 7-15 bps.**\n\n**Minimum widths:**\n\n- **10 bps absolute floor** for liquid mega-caps (MSFT, V, CRM) with:\n  - Normal volatility (44-min move < 30 bps)\n  - Mid-session (60-300 min since open)\n  - High confidence in flat forecast\n\n- **12 bps standard** for:\n  - Any forecast with moderate uncertainty\n  - Multi-symbol story with unclear tape direction\n  - Single-symbol catalyst with flat tape\n  - 44-min move between 20-50 bps\n\n- **15 bps elevated** for:\n  - High recent volatility (44-min move > 50 bps)\n  - Early session (< 60 min since open) or late session (< 60 min to close)\n  - Any reversal pattern\n  - Conflicting tape and story signals\n\n**Key insight from feedback:** Even when predicting near-zero move (story is noise), you need 10 bp width minimum because normal five-minute random walk is \u00b17-10 bps.\n\n### Step 5: Magnitude scaling rules\n\n**The feedback shows systematic underestimation. Apply these floors:**\n\n1. **If 44-min move > 50 bps**: Minimum magnitude 10 bps (momentum persists or reverses, but always moves)\n\n2. **If 10-min move > 20 bps**: Minimum magnitude 8 bps (short-term momentum is real)\n\n3. **If story is single-symbol material catalyst**: Minimum magnitude 8 bps\n\n4. **If tape shows acceleration** (last 2-3 min velocity > 8 bps): Add 5-8 bps to base forecast\n\n5. **Never predict magnitude < 5 bps** unless you have strong evidence (confirmed noise story + flat tape + mid-session + no reversal pattern)\n\n---\n\n## What the Examples Teach\n\n**SPY Ex 1 (skill +0.01)**: US-Iran deal (2 symbols, geopolitical market story). Tape had drifted -11 bps in 44 min to 754.37. At 14:19 (49 min into session, early), downward momentum continued. Predicted -0.1 bps with 2 bp width. Actual -14.7 bps. **Lesson: Multi-symbol geopolitical stories are market noise. Early-session momentum (< 60 min) persists. Should predict -10 to -15 bps with 12 bp width.**\n\n**V Ex 2 (skill -0.06)**: Susquehanna price target raise to $427 (single symbol, material catalyst). Tape had climbed +24 bps in 44 min to 373.30. At 17:05 (215 min into session, mid-session), after +24 bp run, mean reversion kicked in. Predicted +1.1 bps with 2 bp width. Actual -18.5 bps. **Lesson: Price target raises move stocks, but after +24 bp run in 44 min, story is priced. Should predict -8 to -12 bps mean reversion with 12 bp width. 2 bp width is suicidal.**\n\n**TSLA Ex 3 (skill +0.04)**: Benzinga poll (2 symbols, low materiality). Tape had drifted -38 bps in 44 min from 418.47 to 417.57. At 17:59 (270 min into session, 120 min to close), late-session reversal. Predicted +0.5 bps with 2 bp width. Actual +13.8 bps. **Lesson: Even low-materiality stories move stocks 10-15 bps. Late session after -38 bp fall, mean reversion is 10-15 bps. Should predict +10 to +15 bps with 12 bp width.**\n\n**ORCL Ex 4 (skill +0.02)**: Larry Ellison wealth story (4 symbols, pure noise). Tape was flat (129.28 to 129.75, +4 bps in 44 min). At 19:44 (375 min into session, 15 min to close), very late session. Predicted -0.1 bps with 2 bp width. Actual -1.2 bps. **Lesson: Got lucky - move was tiny. But this is 4-symbol noise story mentioning TSLA and ORCL wealth comparison. Should ignore story, predict 0 bps with 10 bp width for normal jitter.**\n\n**SPY Ex 5 (skill -0.03)**: Fed Chair Kevin Warsh comments (10+ symbols, market-wide Fed story). Tape had spiked +327 bps in 44 min from 746.70 to 749.12 (massive volatility around Fed comments). At 18:46 (317 min into session, 73 min to close), late session after huge spike. Predicted +0.2 bps with 7.8 bp width. Actual -9.1 bps. **Lesson: Multi-symbol Fed story is market noise. After +327 bp spike in 44 min, late-session mean reversion is 8-12 bps. Should predict -8 to -12 bps with 12 bp width. 7.8 bp width is barely adequate but direction was wrong.**\n\n**MSFT Ex 6 (skill -0.38)**: Anthropic revenue + Chinese AI (16 symbols, sector-wide AI story). Tape had fallen -27 bps in 44 min from 480.19 to 478.88. At 17:37 (248 min into session, mid-session), downward drift. Predicted -1.9 bps with 2 bp width. Actual +1.8 bps (small reversal). **Lesson: 16-symbol AI sector story is complete noise. After -27 bp fall, mild reversal of +5 to +8 bps is reasonable. Should predict +5 to +8 bps with 12 bp width. Got direction wrong by following noise, and 2 bp width guaranteed failure.**\n\n**SPY Ex 7 (skill -0.02)**: California oil policy (2 symbols, market-wide energy/policy story). Tape had fallen -102 bps in 44 min from 769.37 to 768.35. At 14:19 (49 min into session, early), after large fall, early-session reversal pattern. Predicted -0.2 bps with 2 bp width. Actual +6.6 bps. **Lesson: Multi-symbol policy story is market noise. After -102 bp fall in early session (< 60 min), reversal is 8-12 bps. Should predict +8 to +12 bps with 12 bp width.**\n\n**CRM Ex 8 (skill +0.07)**: AI business model risk (3 symbols, CRM/NOW/GOOGL, material negative catalyst). Tape was flat (197.27 to 197.41, +7 bps in 44 min). At 15:46 (136 min into session, mid-session), flat tape with material negative story. Predicted -0.6 bps with 2 bp width. Actual -8.6 bps. **Lesson: Material negative catalyst (AI disrupting business model) moves stock 8-15 bps even on flat tape. Got direction right but magnitude 14x too small. Should predict -8 to -12 bps with 12 bp width.**\n\n---\n\n## Key Patterns from Feedback\n\n1. **Multi-symbol stories (3+ symbols, or mentioning SPY/QQQ) are always market noise.** Six of eight examples were multi-symbol. The stock moved on tape momentum, not the headline. Ignore the story, forecast from tape.\n\n2. **Normal five-minute moves are 7-15 bps, not 0-2 bps.** Median absolute move across 8 examples: 8.6 bps. Predicting 0-2 bps systematically underestimates.\n\n3. **Width under 10 bps fails 86% of the time.** Six of seven examples with 2 bp width had realised price outside the quote. This is catastrophic for P&L.\n\n4. **Direction was guesswork because tape velocity was not used.** The harness called candlesticks but did not extract momentum. V Ex 2 (wrong direction after +24 bp run), SPY Ex 5 (wrong direction after +327 bp spike), MSFT Ex 6 (wrong direction after -27 bp fall), SPY Ex 7 (wrong direction after -102 bp fall) - all missed because tape momentum was ignored.\n\n5. **Magnitude was 5-30x too small when direction was correct.** TSLA Ex 3 (+0.5 bps predicted, +13.8 actual), CRM Ex 8 (-0.6 bps predicted, -8.6 actual). The harness systematically underestimates market reaction size.\n\n6. **Early-session reversals after large moves are powerful.** SPY Ex 7: -102 bps fall in first 49 minutes reversed +6.6 bps. This pattern was completely missed.\n\n7. **Late-session mean reversion is real.** TSLA Ex 3: -38 bps fall reversed +13.8 bps in last 120 minutes. SPY Ex 5: +327 bps spike faded -9.1 bps in last 73 minutes.\n\n8. **Material single-symbol catalysts move stocks 8-15 bps even on flat tape.** CRM Ex 8 (AI business model risk): -8.6 bps on flat tape. V Ex 2 (price target raise): -18.5 bps after already running +24 bps.\n\n9. **Average skill of -0.03 means the harness is worse than saying \"no change\".** The problem is not story reading - it's ignoring tape momentum, underestimating magnitude, and using catastrophically tight width.\n\n10. **P&L is destroyed by tight width.** Seven of eight examples used 2 bp width. Six of seven got run through. The book made small profits only when both sides filled (quote collected the spread) - this happened only twice (TSLA Ex 3, ORCL Ex 4). Every other case either lost money or made trivial profits.\n\n---\n\n## Default Strategy\n\nFor every forecast:\n\n1. **Get candlesticks for last 45 minutes (0.75 hours).**\n\n2. **Calculate 44-min total move, 10-min move, and 2-3 min velocity from liquid bars (volume > 500).**\n\n3. **Check session context**: minutes_since_open and minutes_to_close.\n\n4. **Is this a multi-symbol story (3+ symbols, or mentions SPY/QQQ/market)?**\n   - **Yes**: Ignore story completely. Forecast from tape momentum:\n     - If 44-min move > +20 bps and accelerating: Predict +8 to +12 bps, width 12 bps\n     - If 44-min move > +20 bps and decelerating: Predict 0 to -8 bps, width 12 bps\n     - If 44-min move < -20 bps and early session: Predict +10 to +20 bps reversal, width 15 bps\n     - If 44-min move < -20 bps and mid/late session, accelerating: Predict -8 to -12 bps, width 12 bps\n     - If 44-min move < -20 bps and decelerating: Predict +5 to +10 bps, width 12 bps\n     - If 44-min move between -20 and +20 bps: Predict 10-min trend at 60-80%, width 10-12 bps\n   - **No**: Continue to step 5.\n\n5. **Single-symbol story: Has tape moved > 30 bps in 44 min?**\n   - **Yes, same direction as story**: Story priced. Predict 0 to -8 bps fade (reverse sign). Width 12 bps.\n   - **Yes, opposite direction**: Tape dominates. Predict 8-15 bps continuation. Width 15 bps.\n   - **No (< 20 bps)**: Continue to step 6.\n\n6. **Is story material (price target, business model risk, deal)?**\n   - **Material catalyst**: Predict 8-15 bps in catalyst direction. Width 12-15 bps.\n   - **Low materiality**: Predict 5-10 bps in likely direction (bias toward 10-min trend if any). Width 10-12 bps.\n\n7. **Apply session-specific adjustments:**\n   - **Early session (< 60 min) + large move (> 50 bps)**: Increase reversal forecast by 8-12 bps\n   - **Late session (< 60 min to close) + moderate move (> 30 bps)**: Add 5-10 bps mean reversion\n   - **Last 2-3 min accelerating (> 8 bps)**: Add 5-8 bps to trend continuation\n\n8. **Set width:**\n   - 10 bps: Mega-cap, flat tape (< 20 bps in 44 min), mid-session, high confidence\n   - 12 bps: Standard case - normal volatility, moderate uncertainty, most forecasts\n   - 15 bps: High volatility (44-min move > 50 bps), early/late session, reversals, conflicts\n\n9. **Magnitude floor check:**\n   - If 44-min move > 50 bps: Minimum magnitude 10 bps\n   - If 10-min move > 20 bps: Minimum magnitude 8 bps\n   - If story is material single-symbol: Minimum magnitude 8 bps\n   - Never predict < 5 bps magnitude unless strong evidence for zero move\n\n10. **Sanity check: Is width at least 10 bps?** If not, raise it to 10 bps.\n\n---\n\n## What Not to Do\n\n- **Never use width below 10 bps** - 86% run-through rate in feedback\n- **Never treat multi-symbol stories (3+ symbols, or SPY/QQQ mentions) as stock-specific** - they are always market noise\n- **Never ignore tape momentum** - it predicts continuation or reversal\n- **Never predict magnitude < 5 bps when tape has moved > 20 bps in 44 min** - momentum persists or reverses, never stops dead\n- **Never underestimate early-session reversals after > 50 bp moves** - oversold/overbought bounces are 10-20 bps\n- **Never ignore late-session mean reversion (< 60 min to close)** - fades are 8-15 bps after large moves\n- **Never predict 0 \u00b1 2 bps** - normal five-minute drift is 7-15 bps\n- **Never assume flat forecast needs tight width** - flat forecast needs 10 bp width for normal jitter\n- **Never ignore session timing** - early/late session patterns are powerful and systematic",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
