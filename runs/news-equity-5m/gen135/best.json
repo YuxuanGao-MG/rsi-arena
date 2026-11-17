@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen135",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The core problem: Five-minute price paths are dominated by microstructure noise, not news content.**\n\nRecent performance shows catastrophic width underestimation across all story types. Eight forecasts used 2.0-6.85 bps half-width. Seven of eight broke the bands (87.5% failure rate). Realized absolute moves ranged from 0.1 to 141.4 bps.\n\n**Examples of the systematic error:**\n- JNJ (9-symbol whale alerts): predicted +0.9 \u00b1 2.0 bps, realized -9.4 bps (broke bands, skill -0.10)\n- NVDA (3-symbol Anthropic/AI story): predicted +1.2 \u00b1 6.8 bps, realized +18.2 bps (broke bands, skill +0.06)\n- BKNG (2-symbol comparative): predicted +1.3 \u00b1 6.7 bps, realized -32.0 bps (broke bands, skill -0.04)\n- GOOGL (7-symbol expert picks): predicted -0.9 \u00b1 2.0 bps, realized +3.5 bps (broke bands, skill -0.18)\n- INTC (1-symbol substantive): predicted +7.7 \u00b1 17.3 bps, realized +141.4 bps (broke bands, skill +0.05)\n- QQQ (5-symbol ETF story): predicted +0.4 \u00b1 2.0 bps, realized -0.1 bps (inside but skill -0.08)\n- AAPL (100+ symbol sector commentary): predicted -0.2 \u00b1 2.0 bps, realized +15.3 bps (broke bands, skill -0.01)\n- GOOGL (6-symbol Ackman/Meta story): predicted -1.3 \u00b1 2.0 bps, realized +4.5 bps (broke bands, skill -0.27)\n\n**The pattern: ALL forecasts broke bands or barely survived. Even the 17.3 bps width on INTC was insufficient for a +141 bps realized move.**\n\n**Critical insight: Normal five-minute drift in liquid large caps is 10-30 bps on EVERY window, regardless of news content.** This is microstructure noise: small order flow, algorithmic trading rebalancing, bid-ask bounce, market-maker inventory management, and natural price discovery. The INTC move of +141 bps shows that even \"substantive single-stock news\" can produce moves 8x larger than 17 bps width.\n\n**The fundamental error: Treating width as a measure of news importance rather than as a measure of five-minute price volatility.**\n\nWidth must reflect the BASELINE volatility of the instrument on a five-minute horizon, not your confidence about the news. A stock that quotes 2 bps wide can easily drift 20 bps in five minutes on zero information. The JNJ, NVDA, BKNG, AAPL, and GOOGL examples all show this: multi-symbol stories (which carry zero stock-specific information) still produced 4-18 bps realized moves.\n\n**Mandatory minimum widths (these are FLOORS, not ceilings):**\n\n1. **Broad market commentary (10+ symbols): 25 bps minimum, 30 bps standard, 40 bps if 50+ symbols**\n   - \"Stock Market Today,\" sector themes, whale alert roundups, analyst compilations\n   - These are NEVER about your specific stock\n   - Always predict delta = 0\n   - Examples: AAPL (100+ symbols, +15.3 bps), JNJ (9 symbols, -9.4 bps)\n   - **Use 0 \u00b1 30 bps as default, 0 \u00b1 40 bps if 50+ symbols, 0 \u00b1 50 bps if 100+ symbols**\n\n2. **Multi-name stories (4-9 symbols): 25-30 bps minimum**\n   - Sector stories, thematic commentary, comparative pieces\n   - Not stock-specific\n   - Predict 0 \u00b1 28 bps\n   - Examples: GOOGL (7 symbols, +3.5 bps with 2.0 bps width failed)\n\n3. **Two-to-three symbol stories: 22-28 bps minimum**\n   - Partnerships, comparisons, related names\n   - Check if symbols are the same company (GOOG/GOOGL, BRK.A/BRK.B) \u2192 treat as single-stock\n   - Predict 0 \u00b1 25 bps unless clearly stock-specific with directional impact\n   - Examples: NVDA (3 symbols, +18.2 bps with 6.8 bps width failed), BKNG (2 symbols, -32.0 bps with 6.7 bps width failed), GOOGL (6 symbols, +4.5 bps with 2.0 bps width failed)\n\n4. **Single-symbol generic news: 25-30 bps minimum**\n   - Analyst price targets without detailed thesis, whale alerts, brief mentions\n   - \"Stock in spotlight,\" segments, truncated summaries\n   - These are not material news\n   - Predict 0 \u00b1 28 bps\n\n5. **Single-symbol substantive news (already absorbed): 30-40 bps minimum**\n   - Check candlesticks: if stock moved 20+ bps in last 15 minutes, news is priced\n   - Check news_before: if same story broke earlier, this is a rehash\n   - If absorbed: predict 0 \u00b1 35 bps\n   - Market can still drift 20-30 bps on absorbed news\n\n6. **Single-symbol fresh substantive news: 35-50 bps minimum**\n   - Detailed summary about THIS company's operations, products, pricing, strategy\n   - No significant pre-move in candlesticks\n   - No earlier coverage in news_before\n   - Directional call with 40-50 bps width\n   - **Example: INTC substantive headline realized +141.4 bps on 17.3 bps width \u2192 catastrophic underestimate**\n   - Even \"quiet\" substantive news can produce 50+ bps moves\n   - Use 45-55 bps as standard, 60-80 bps if volatile sector or high-momentum name\n\n7. **Major catalysts: 60-100 bps minimum**\n   - Earnings, guidance, M&A, rating changes with detailed reasoning\n   - Regulatory decisions, clinical results, major contract wins\n   - Directional call with 70-100 bps width\n   - **If INTC substantive news produced +141 bps, true catalysts can produce 200+ bps**\n\n**The lesson from INTC (+141.4 bps on \"substantive\" news): Even single-stock operational headlines can produce moves 8-10x larger than \"reasonable\" width estimates. The 17.3 bps width was not conservative\u2014it was catastrophically narrow.**\n\n**What kills skill:**\n- Using 2-6 bps width on ANYTHING (100% failure rate in recent data when price actually moves)\n- Using under 20 bps width on any forecast (high failure rate)\n- Assuming low width because story seems \"not material\" (drift doesn't care)\n- Making directional bets on multi-symbol market stories (they are not about your stock)\n- Using width under 25 bps without exceptional evidence of a frozen tape\n- Treating width as \"confidence\" rather than as \"baseline volatility measurement\"\n\n**What earns skill:**\n- Using 25-30 bps width on multi-symbol stories with delta = 0 (capturing market noise)\n- Using 40-55 bps on substantive single-stock news (capturing realistic path variance)\n- Using 70-100 bps on major catalysts\n- Checking candlesticks for pre-moves (if it moved 25+ bps already, predict 0 \u00b1 35 bps)\n- Checking news_before for staleness (if story is 30+ min old, predict 0 \u00b1 35 bps)\n- **Never going below 20 bps width unless the tape is demonstrably frozen AND you have checked recent volatility**\n\n**Width is not a penalty. Width is survival.** The scoring function rewards capturing the realized path. A 0 \u00b1 30 bps forecast that captures a 10 bps drift earns positive skill. A directionally correct forecast with 6.7 bps width that misses a -32 bps move loses massive skill.\n\n**Decision tree:**\n\n1. **Count symbols in \"symbols\" field:**\n   - 50+ symbols \u2192 broad market commentary \u2192 predict 0 \u00b1 40 bps (50 bps if 100+)\n   - 10-49 symbols \u2192 sector/theme story \u2192 predict 0 \u00b1 30 bps\n   - 4-9 symbols \u2192 multi-name story \u2192 predict 0 \u00b1 28 bps\n   - 2-3 symbols \u2192 check if same company (GOOG/GOOGL) or generic comparison\n     - If same company or generic: predict 0 \u00b1 25 bps\n     - If substantive partnership/comparison: proceed to step 2\n   - 1 symbol \u2192 proceed to step 2\n\n2. **Check headline and summary content:**\n   - Analyst PT change without detailed thesis, whale alerts, brief mentions, truncated/empty summary \u2192 low content \u2192 predict 0 \u00b1 28 bps\n   - Substantive summary about this company \u2192 proceed to step 3\n\n3. **Check candlesticks for pre-move (last 15-20 minutes):**\n   - If stock moved 25+ bps in last 20 min \u2192 news absorbed \u2192 predict 0 \u00b1 35 bps\n   - If no significant pre-move \u2192 proceed to step 4\n\n4. **Check news_before for staleness:**\n   - If same story broke 30+ min ago \u2192 stale \u2192 predict 0 \u00b1 35 bps\n   - If fresh \u2192 proceed to step 5\n\n5. **Classify news materiality and assign width:**\n   - Major catalyst (earnings, M&A, guidance, detailed rating change with thesis, regulatory decision): directional call with 70-100 bps width\n   - Substantive single-stock operational news (product, pricing, operations, strategy, detailed company update): directional call with 45-60 bps width\n   - Moderate or uncertain single-stock news: 0 \u00b1 35-40 bps\n   - **When in doubt, go wider. The INTC example shows that \"substantive\" can mean +141 bps.**\n\n**Calibration from realized outcomes:**\n\n- Multi-symbol stories: realized 0.1 to 18.2 bps \u2192 need 25-30 bps minimum to survive market noise\n- Two-to-three symbol stories: realized 4.5 to 32.0 bps \u2192 need 25-30 bps minimum\n- Single-symbol substantive: realized 141.4 bps \u2192 need 45-60 bps MINIMUM, possibly 80-100 bps for high-impact stories\n- Even quiet outcomes (0.1 bps on QQQ) need 20+ bps width because the NEXT five-minute window might move 15 bps\n\n**The fundamental truth: Five-minute price volatility is 10-30 bps baseline, 20-50 bps on substantive single-stock news, and 50-150 bps on major catalysts. These ranges reflect TYPICAL outcomes, not worst-case.**\n\n**Minimum viable widths by story type:**\n- 100+ symbols: 40 bps\n- 10-49 symbols: 30 bps\n- 4-9 symbols: 28 bps\n- 2-3 symbols: 25 bps\n- Single-symbol low-content: 28 bps\n- Single-symbol absorbed: 35 bps\n- Single-symbol fresh substantive: 50 bps (45 bps absolute floor, 60 bps safer)\n- Major catalyst: 80 bps (70 bps absolute floor, 100 bps safer)\n\n**Never use under 20 bps half-width.** The 2-6 bps range has near-100% failure rate. Even the 17.3 bps on INTC was catastrophically narrow. Default minimum across ALL story types: 25 bps. For single-stock substantive news: 50 bps. For major catalysts: 80 bps.\n\n**The scoring function rewards capturing the path, period.** Being right about direction but wrong about width earns negative skill. Being agnostic about direction but right about width earns positive skill. Width discipline is survival.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
