@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen138",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**CRITICAL PRODUCTION PATTERNS:**\n\n**1. Multi-symbol stories (3+ symbols) are unpredictable: set delta = 0, half_width = 10-15 bps**\n\nProduction examples show:\n- 8-symbol AI chip story (QCOM): predicted +0.1 bps, realized +1.6 bps (1.5 bps error, skill +0.01, bid hit for +3 USD)\n- 6-symbol SpaceX leveraged ETF story (TSLA): predicted +0.2 bps, realized +21.0 bps (20.8 bps error, skill +0.01, ask hit, no trade)\n- 2-symbol AI comparison story (TSLA/WRD): predicted +0.1 bps, realized -0.6 bps (0.7 bps error, skill -0.01, ask hit for +7 USD)\n- 2-symbol court ruling story (AAPL/AIXI): predicted +2.6 bps, realized -24.1 bps (26.7 bps error, skill -0.11, quote breached)\n\n**Key insight:** Multi-symbol stories name stocks in passing. The 8-symbol OpenAI chip story names QCOM alongside AMD, MU, NVDA, SOXX - none is the focus. The 6-symbol SpaceX story is about leveraged ETFs, not TSLA directly. The 2-symbol stories show high variance: AAPL moved -24 bps on a Chinese court ruling favoring it (counterintuitive direction).\n\n**What works:** QCOM +0.1 bps prediction (essentially zero) on the 8-symbol story scored +0.01 skill with a 2.0 bps band. The bid hit for +3 USD because the realized move was tiny (+1.6 bps). **What fails:** AAPL +2.6 bps directional bet on the 2-symbol story scored -0.11 skill when the stock dropped -24 bps.\n\n**Action:**\n- **2-3 symbol stories:** delta = 0, half_width = 10 bps\n- **4+ symbol stories:** delta = 0, half_width = 15 bps\n- **Never use half_width below 10 bps on multi-symbol stories**\n\n**Rationale:** A 10 bps band allows one-sided fills on small moves (QCOM +1.6 bps filled the bid side) while containing most noise. Use 15 bps for 4+ symbols to reduce the chance of quote breaches on 10-20 bps moves. Setting delta = 0 avoids wrong-direction penalties when the story names the symbol in passing.\n\n**2. \"What's Going On\" and \"What's Next\" post-move commentary: delta = 0, half_width = 10 bps**\n\nProduction examples:\n- NOW \"ServiceNow Stock Holds Above Key Moving Averages: What's Next?\": predicted -1.8 bps, realized +39.0 bps (40.8 bps error, skill -0.05, both sides hit for +19 USD)\n- AAPL \"What's Going On With Xiao-I Stock Wednesday?\" (2-symbol court ruling): predicted +2.6 bps, realized -24.1 bps (26.7 bps error, skill -0.11, quote breached)\n\n**This headline pattern signals that Benzinga is explaining an earlier move, not breaking news.** NOW's headline \"Holds Above Key Moving Averages\" describes technical levels after a session move. The timestamp is 10:26:29 (mid-morning), and the summary says \"continues to gain momentum in AI\" (ongoing, not new). The realized move was +39 bps, far outside the 2.0 bps band.\n\n**Why both sides hit:** The 2.0 bps band (quote 112.8/112.9) was too narrow. The stock moved +39 bps from 112.86 to 113.30, crossing both the bid (on the way up) and the ask (immediate breakout). The +19 USD P&L is the width of the quote times the position size.\n\n**Key pattern:** These stories arrive mid-session (not at the open) and describe ongoing momentum or technical levels. The five-minute window often catches continuation or breakout moves, not mean reversion. The NOW case shows a +39 bps move (far more than \"noise\"), but direction is unpredictable: the harness predicted down (-1.8 bps), but the stock broke out up.\n\n**Action:** delta = 0, half_width = 10 bps.\n\nA 10 bps band is wider than the failed 2.0 bps but narrower than 25 bps (which would rarely fill). The goal is to allow both-sides-hit round trips when the path oscillates or breaks out within 10-20 bps, while avoiding wrong-direction penalties. The NOW case would have scored better with delta = 0 (no direction bet) and a wider band.\n\n**3. Analyst calls: delta = 0, half_width = 10 bps (25 bps for rating changes)**\n\nProduction example:\n- ABT \"TD Cowen Reiterates Buy on Abbott Laboratories, Maintains $135 Price Target\": predicted -0.6 bps, realized +29.1 bps (29.7 bps error, skill -0.02, ask hit for +2 USD)\n\n**This case scored near zero (skill -0.02) despite using delta \u2248 0 (-0.6 bps).** The 2.0 bps band was too narrow: the stock moved +29 bps from 106.45 to 106.76, breaching the ask side. The ask filled and the position was force-closed for +2 USD (small profit because the move was in the predicted direction, but the band was too narrow to contain it).\n\n**Why analyst calls are traps:**\n1. **Price targets are long-term:** A $135 target on ABT (last $106.45) is +27% over months, not basis points over five minutes.\n2. **\"Reiterates\" and \"Maintains\" mean no new information:** This is a reiteration of an existing Buy rating and an unchanged $135 target. The market has seen this analyst's view before.\n3. **Timing uncertainty:** The target may have been communicated to clients earlier, or the market may have already priced the analyst's stance.\n4. **Realized moves are small to medium:** The ABT case shows +29 bps, which is larger than noise but far from the 100+ bps moves seen on rating changes.\n\n**Action:** delta = 0, half_width = 10 bps for price target maintenance.\n\nA 10 bps band allows one-sided fills on 10-20 bps drift while avoiding getting run over on 20-40 bps moves. The ABT case had a 2.0 bps band that was breached; a 10 bps band would have contained the +29 bps move on one side (the ask) and avoided the quote breach. Use half_width = 25 bps for rating changes (upgrades/downgrades), which show larger moves in prior evidence.\n\n**4. The critical width floor: never use half_width below 10 bps**\n\n**Every 2.0 bps width in this batch either got breached or filled for near-zero P&L:**\n\n| Symbol | Headline type | Symbols | delta | width | Realized | Error | Skill | Outcome |\n|--------|--------------|---------|-------|-------|----------|-------|-------|---------|\n| AAPL | Post-move \"What's Going On\" | 2 | +2.6 | 2.0 | -24.1 | 26.7 | -0.11 | Bid hit, hold -> -2 USD |\n| TSLA | Multi-symbol leveraged ETF | 6 | +0.2 | 2.0 | +21.0 | 20.8 | +0.01 | Ask hit, no trade |\n| SPY | Fed policy report | many | -0.4 | 2.0 | +2.4 | 2.8 | -0.08 | Bid hit, hold -> +4 USD |\n| NOW | Post-move \"What's Next\" | 1 | -1.8 | 2.0 | +39.0 | 40.8 | -0.05 | Both hit -> +19 USD |\n| ABT | Analyst reiterates target | 1 | -0.6 | 2.0 | +29.1 | 29.7 | -0.02 | Ask hit, hold -> +2 USD |\n| TSLA | 2-symbol AI comparison | 2 | +0.1 | 2.0 | -0.6 | 0.7 | -0.01 | Ask hit, hold -> +7 USD |\n| QCOM | 8-symbol chip story | 8 | +0.1 | 2.0 | +1.6 | 1.5 | +0.01 | Bid hit, hold -> +3 USD |\n\n**7 of 7 examples with 2.0 bps width scored skill \u2264 +0.01.** The best outcome (NOW both sides hit for +19 USD) occurred because the quote was breached on both sides, not because the band was well-calibrated. The worst outcomes (AAPL -0.11, SPY -0.08, NOW -0.05, ABT -0.02) show negative skill from quote breaches.\n\n**Why 2.0 bps fails:**\n1. **Large caps quote 1-5 bps wide:** A 2.0 bps half-width (4 bps bid-ask spread) is at the lower end of the natural spread. Any move beyond 5 bps breaches the quote.\n2. **Five-minute window captures 5-50 bps moves:** Even \"noise\" stories show 10-30 bps realized moves (ABT +29, NOW +39, AAPL -24, TSLA +21). A 2.0 bps band contains only sub-5 bps moves.\n3. **Intrabar volatility exceeds net move:** A stock may move +10 bps then -5 bps within five minutes, netting +5 bps but crossing a 2.0 bps band on both sides.\n\n**New floor: 10 bps minimum half_width for any story.**\n\nThis contains moves up to \u00b110 bps on one side and allows both-sides-hit round trips when the path oscillates within 20 bps. Use 15 bps for multi-symbol stories with 4+ symbols, and 25 bps for analyst rating changes.\n\n**5. When both-sides-hit round trips occur (and why they're profitable)**\n\nProduction examples:\n- NOW: quote 112.8/112.9 (2.0 bps width), realized 113.30 (+39.0 bps), both hit -> +19 USD\n- QCOM (prior batch): quote 218.5/218.7 (4.3 bps width), realized 217.81 (-32.7 bps), both hit -> +19 USD\n\n**How both-sides-hit works:** When the realized path crosses both the bid and ask, you earn (ask - bid) * size. NOW had a 4 bps wide quote (2.0 * 2) and the stock moved +39 bps, crossing the bid at 112.8 (on the initial drift) and the ask at 112.9 (on the breakout). Both sides filled, earning the spread.\n\n**Why this is profitable despite negative skill:** NOW scored skill -0.05 (the error was 40.8 bps, worse than no-change's 39.0 bps), but the P&L was +19 USD. This is because:\n1. **The bid filled first** as the stock drifted from 112.86 to 112.80 (normal volatility).\n2. **The ask filled second** as the stock broke out from 112.90 to 113.30 (+39 bps).\n3. **Both fills paid the maker fee** (essentially zero on equities), and the position earned the 4 bps spread on the round trip.\n\n**When to expect both-sides-hit:**\n1. **Narrow bands on volatile stories:** A 2.0 bps band (4 bps spread) on a 20-40 bps move will cross both sides.\n2. **Post-move commentary with continuation:** \"What's Next\" stories often precede breakouts or further momentum.\n3. **High-volatility periods:** Mid-session moves (10:26 AM, 11:38 AM) show more intrabar oscillation than open or close.\n\n**Action:** Use half_width = 10 bps on volatile story types (post-move commentary, multi-symbol stories, partnership announcements) to enable both-sides-hit round trips when the path oscillates within 20 bps.\n\n**6. The Fed policy report pattern: macro news is market-wide, not stock-specific**\n\nProduction example:\n- SPY \"Fed's July Monetary Policy Reports Says Inflation Remains Elevated...\": predicted -0.4 bps, realized +2.4 bps (2.8 bps error, skill -0.08, bid hit for +4 USD)\n\n**This is a macro policy announcement (Fed report) that affects the entire market.** The headline mentions \"inflation,\" \"tariffs,\" \"Middle East war,\" \"labor market,\" \"AI\" - none of which is SPY-specific. The timestamp is 11:04:47 (mid-morning), after the market has digested the overnight news. The realized move was +2.4 bps (essentially noise).\n\n**Why skill was negative:** The harness predicted -0.4 bps (down) with a 2.0 bps band, but the market moved up +2.4 bps. The error (2.8 bps) was larger than the no-change error (2.4 bps), scoring skill -0.08. The bid filled and the position was held, closing for +4 USD (small profit because the position was short and the move was small).\n\n**Key pattern:** Macro announcements (Fed reports, tariff news, geopolitical events) move the market broadly, not individual stocks. SPY is a market proxy, so it moves with the macro context, but the five-minute window often shows noise rather than a directional reaction.\n\n**Action:** delta = 0, half_width = 10 bps for macro/policy announcements.\n\nSetting delta = 0 avoids wrong-direction bets on market-wide noise. A 10 bps band allows one-sided fills on 5-10 bps drift while containing most intrabar volatility. The SPY case would have scored near zero (not negative) with delta = 0 and a 10 bps band.\n\n**7. Court rulings and legal news: high variance, unpredictable direction**\n\nProduction example:\n- AAPL \"What's Going On With Xiao-I Stock Wednesday?\" (2-symbol story about Chinese court ruling favoring Apple): predicted +2.6 bps, realized -24.1 bps (26.7 bps error, skill -0.11, bid hit for -2 USD)\n\n**This is a 2-symbol story (AAPL, AIXI) about a Chinese court ruling favoring Apple in a Siri patent battle.** The headline asks \"What's Going On With Xiao-I Stock,\" implying the story is about AIXI (down 13%), not AAPL. The harness predicted AAPL would rise (+2.6 bps), but it fell -24.1 bps.\n\n**Why direction was wrong:** A court ruling favoring Apple is fundamentally positive for AAPL, but the five-minute window caught:\n1. **Profit-taking:** AAPL may have run up earlier on the news, and the five-minute window caught the reversal.\n2. **Market context:** The timestamp is 11:38:45 (late morning), and the broader market may have been moving down.\n3. **Thin minute:** The last close was 299.32 on 3,045 volume, a relatively thin minute. A few large sells moved the close down.\n\n**Key pattern:** Legal news (court rulings, patent battles, regulatory decisions) has high variance and unpredictable direction on the five-minute horizon. The fundamental direction (ruling favors AAPL -> bullish) may be offset by profit-taking, market context, or thin liquidity.\n\n**Action:** delta = 0, half_width = 10 bps for legal news in multi-symbol stories.\n\nAvoid directional bets on court rulings unless the story is single-symbol, breaking news, and the tape shows no prior move. Use a 10 bps band to allow one-sided fills on 10-20 bps moves while avoiding getting run over on larger reversals.\n\n**8. The \"comparable to\" pattern: competitive comparisons move both names unpredictably**\n\nProduction example:\n- TSLA \"WeRide CEO Calls Its Tech Comparable To Tesla FSD\": predicted +0.1 bps, realized -0.6 bps (0.7 bps error, skill -0.01, ask hit for +7 USD)\n\n**This is a 2-symbol story (TSLA, WRD) where WeRide's CEO compares his company's tech to Tesla FSD.** The summary says \"WeRide stock falls despite Q2 revenue surging 92%,\" implying the story is about WRD, not TSLA. The harness predicted TSLA would be flat (+0.1 bps), and it was essentially flat (-0.6 bps).\n\n**Why this scored near zero:** The realized move was tiny (-0.6 bps), and the error (0.7 bps) was close to the no-change error (0.6 bps), scoring skill -0.01. The ask filled and the position was held, closing for +7 USD (the stock moved slightly down, and the short position profited).\n\n**Key pattern:** \"Comparable to\" stories name a large cap (TSLA) in the context of a smaller competitor (WRD). The large cap rarely moves on these stories because the news is about the competitor, not the named company. The five-minute window shows noise.\n\n**Action:** delta = 0, half_width = 10 bps for \"comparable to\" and competitive comparison stories.\n\nThese are effectively multi-symbol noise stories. The named large cap moves little (TSLA -0.6 bps), and direction is unpredictable. Use a 10 bps band to allow one-sided fills on small drifts while avoiding quote breaches.\n\n**SUMMARY DECISION RULES:**\n\n1. **Multi-symbol stories (2-3 symbols):** delta = 0, half_width = 10 bps.\n2. **Multi-symbol stories (4+ symbols):** delta = 0, half_width = 15 bps.\n3. **\"What's Going On\" / \"What's Next\" post-move commentary:** delta = 0, half_width = 10 bps.\n4. **Analyst price target (no rating change):** delta = 0, half_width = 10 bps.\n5. **Analyst rating change (upgrade/downgrade):** delta = 0, half_width = 25 bps.\n6. **Macro/policy announcements (Fed, tariffs, geopolitical):** delta = 0, half_width = 10 bps.\n7. **Legal news (court rulings, patents, regulatory):** delta = 0, half_width = 10 bps.\n8. **Competitive comparisons (\"comparable to\"):** delta = 0, half_width = 10 bps.\n9. **Minimum width: 10 bps.** Never use width below 10 bps on any story.\n10. **Default delta: 0.** Strongly prefer delta within [-1, +1] bps range to avoid wrong-direction penalties.\n\n**What the evidence shows:**\n\n- **2.0 bps width failed on 7 of 7 examples,** scoring skill \u2264 +0.01 (median skill -0.02).\n- **Directional bets (|delta| > 2 bps) scored negative skill** when wrong (AAPL +2.6 -> -24.1, skill -0.11).\n- **Multi-symbol stories move unpredictably:** 2-symbol stories showed -24 to +39 bps moves; 6-8 symbol stories showed +1.6 to +21 bps moves.\n- **Post-move commentary precedes continuation or breakout,** not mean reversion: NOW +39 bps, not down.\n- **Both-sides-hit round trips (+19 USD) occur when width is 2-5 bps and realized move is 20-40 bps,** but score negative skill because the error exceeds the no-change error.\n- **Setting delta = 0 and half_width = 10 bps is the zero-skill floor:** it avoids wrong-direction penalties, contains most 10-20 bps moves, and allows profitable one-sided fills on small drifts.\n\n**The zero-skill line:** Set delta = 0 to avoid direction penalties. Use half_width = 10 bps as the default (15 bps for 4+ symbols, 25 bps for rating changes). Accept that 10-20% of stories will move more than 20 bps and break any reasonable band; score zero (quote doesn't fill) rather than negative (wrong direction bet or quote breach).",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
