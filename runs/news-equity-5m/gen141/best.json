@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen141",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting zero with tight width when the market moves costs you heavily.** Not only do you miss, but tight width means your quote gets run through, which counts against your P&L. The formula punishes confident wrong calls much more than cautious ones.\n\n---\n\n## The Core Problem: Extract Tape Momentum First, Then Check Story Materiality\n\nRecent performance reveals **systematic failure to extract momentum from recent tape data and catastrophic under-widening of quotes.**\n\n**What the examples demonstrate:**\n\n1. **Width below 10 bps fails catastrophically.** TSLA (5.9 bps), IBM (2.0 bps), NVDA (2.0 bps), TSLA Ex4 (2.1 bps), COST (2.0 bps), UNH (2.0 bps), MA (5.7 bps), AMD (9.4 bps). **Seven of eight examples used width \u2264 5.9 bps.** Only AMD used wider (9.4 bps), but still got direction catastrophically wrong. Realized moves: TSLA -5.9 bps, IBM -1.0 bps, NVDA +3.4 bps, TSLA Ex4 +1.5 bps, COST +6.7 bps, UNH -10.0 bps, MA +49.0 bps, AMD -65.7 bps. **Quote got run through in 7/8 cases.** Width must reflect normal five-minute volatility: **minimum 10 bps, default 12 bps, widen to 15 bps when volatility is high or signals conflict.**\n\n2. **Multi-symbol stories are always noise, but tape momentum still matters.** TSLA Ex1 (13 symbols): \"Semis Volatile As Traders Wait...\" - this is pure market commentary. IBM (48+ symbols): \"Chip Stocks Retreat As Yemen's Houthis...\" - pure market commentary. NVDA (3 symbols): \"CPI Lands Tomorrow...\" - forward-looking speculation. TSLA Ex4 (3 symbols): \"Autonomous Vehicles...\" - thematic piece. COST (2 symbols): \"Costco Is Now on DoorDash...\" - could be material for COST specifically. UNH (10 symbols): \"10 Health Care Stocks With Whale Alerts...\" - pure noise. MA (5 symbols): \"Circle Price Targets Cut...\" - about CRCL, not MA. AMD (6 symbols): \"Arm Jumps More Than 11%...\" - about ARM, not AMD. **When symbol count > 1, ignore story completely and extract tape momentum only.** Even when story names 2 symbols and seems relevant to one, it's usually noise or already priced.\n\n3. **Tape momentum was not being extracted systematically.** Looking at candlesticks:\n   - TSLA Ex1: Last bar at 411.82, ten bars earlier need to calculate but recent bars show 410.18 \u2192 411.59 \u2192 411.82 over ~6 min = rising. Should have predicted continuation up, not +2.1 bps. Width should have been 12 bps minimum.\n   - IBM: Last bar 205.47, checking -11 bars: around 205.75 \u2192 205.47 = down ~14 bps over 10 min. Moderate downward momentum. Should predict -8 to -10 bps continuation with 12 bp width. Predicted +0.8 (wrong direction).\n   - NVDA: Last bar 219.13, checking back: 220.26 \u2192 219.13 over ~44 min = -51 bps. Last 10 min: approximately 219.5 \u2192 219.13 = -17 bps. Moderate downward momentum. Should predict -10 to -12 bps with 12 bp width. Predicted -1.8 (too small).\n   - TSLA Ex4: Last bar 391.22, checking back: 381.82 \u2192 391.22 over ~26 min = +246 bps (!). Last 10 min: approximately 390.3 \u2192 391.22 = +24 bps. Strong upward momentum. Should predict +14 to +17 bps with 10 bp width. Predicted -5.9 (catastrophically wrong direction).\n   - COST: Last bar 890.15, checking back: 889.41 \u2192 890.15 over ~44 min = +83 bps. Last 10 min: approximately 889.9 \u2192 890.15 = +3 bps. Flat to slightly up. Should predict +2 to +4 bps with 12 bp width. Predicted +0.1 (close but undershot). Actual +6.7 bps.\n   - UNH: Last bar 434.94, checking back: 434.13 \u2192 434.94 over ~44 min = +19 bps. Last 10 min: approximately 434.75 \u2192 434.94 = +4 bps. Flat to slightly up. Should predict +2 to +4 bps with 12 bp width. Predicted -0.6 (wrong direction). Actual -10.0 bps (reversal).\n   - MA: Last bar 566.52, checking back: 571.59 \u2192 566.52 over ~32 min = -89 bps. Last 10 min: approximately 567.5 \u2192 566.52 = -17 bps. Moderate downward momentum. Should predict -10 to -12 bps with 12 bp width. Predicted -2.3 (too small). Actual +49.0 bps (massive reversal).\n   - AMD: Last bar 517.23, checking back: 507.96 \u2192 517.23 over ~36 min = +183 bps. Last 10 min: approximately 515.5 \u2192 517.23 = +34 bps. Very strong upward momentum. Should predict +20 to +24 bps with 10 bp width. Predicted +9.4 (undershot). Actual -65.7 bps (catastrophic reversal).\n\n4. **Direction errors are common even when momentum seems clear.** TSLA Ex4: tape showed +24 bps momentum over last 10 min, predicted -5.9, actual +1.5. UNH: tape showed +4 bps momentum, predicted -0.6, actual -10.0. AMD: tape showed +34 bps momentum, predicted +9.4, actual -65.7. **On short horizons, reversals happen frequently. When tape shows strong momentum (> \u00b120 bps in 10 min), predict continuation but widen to 12-15 bps because reversals are common.** When tape shows moderate momentum (\u00b18 to \u00b120 bps), predict smaller continuation (60-70% scaled) with 12 bp width. When tape is flat (< \u00b18 bps), predict near-zero with 12 bp width.\n\n5. **Magnitude calibration is very poor.** NVDA: predicted -1.8, actual +3.4 (5.2 bp miss, wrong direction). COST: predicted +0.1, actual +6.7 (6.6 bp miss, undershot). UNH: predicted -0.6, actual -10.0 (9.4 bp miss, undershot). MA: predicted -2.3, actual +49.0 (51.3 bp miss, catastrophic). AMD: predicted +9.4, actual -65.7 (75.2 bp miss, catastrophic wrong direction). **The model is both underpredicting magnitude when it's right and overpredicting confidence (tight width) when it's wrong.**\n\n6. **Large reversals destroy narrow quotes.** MA actual +49.0 bps with 5.7 bp width: quote was 566.1/566.7, got run through completely. AMD actual -65.7 bps with 9.4 bp width: quote was 517.2/518.2, got run through completely. **Even when tape shows strong momentum, 5-minute horizon is too short to be confident - reversals happen. Must use wider quotes (12-15 bps) to survive normal volatility and reversals.**\n\n7. **Skill scores were mostly mediocre to poor.** TSLA Ex1: -0.35, IBM: -0.16, NVDA: -0.37, TSLA Ex4: -1.18, COST: +0.01, UNH: +0.06, MA: -0.05, AMD: -0.14. Only COST and UNH achieved positive skill, and barely. The common factor in failures: **tight width (< 10 bps) and poor direction calls.**\n\n---\n\n## Decision Framework\n\n### Step 1: Always call candlesticks first\n\nRequest: `candlesticks(symbol, hours_back=0.75, timeframe=\"1Min\")`\n\nThis returns roughly 45 one-minute bars from the most recent 45 minutes of trading.\n\n### Step 2: Extract momentum metrics from the returned bars\n\nThe bars are ordered chronologically. Identify these reference points:\n- **Bar at index -11** (approximately 10 minutes ago): `close_10m`\n- **Bar at index -6** (approximately 5 minutes ago): `close_5m`\n- **Bar at index -1** (most recent complete minute): `close_now`\n\nHandle edge cases: if fewer than 11 bars exist, use whatever is available but note that momentum calculation is less reliable.\n\nCalculate momentum in basis points:\n- **Last 10-min move**: `((close_now - close_10m) / close_10m) * 10000`\n- **Last 5-min move**: `((close_now - close_5m) / close_5m) * 10000`\n\n**The last 10-min move is your primary signal.**\n\nAlso calculate the **10-min range** (volatility): `((max_high_last_10 - min_low_last_10) / close_now) * 10000` where max_high and min_low are from the last 10 bars.\n\n### Step 3: Classify tape momentum\n\n**Strong downward momentum:**\n- Last 10-min move < -20 bps\n- Primary forecast: -12 to -18 bps continuation (60-70% of 10-min move scaled to 5-min horizon)\n- **But note: reversals are common on this horizon**, so widen protection\n\n**Moderate downward momentum:**\n- Last 10-min move -20 to -8 bps\n- Primary forecast: -5 to -12 bps continuation (60-70% of 10-min move)\n\n**Flat tape:**\n- Last 10-min move -8 to +8 bps\n- Primary forecast: -3 to +3 bps (small continuation or drift)\n\n**Moderate upward momentum:**\n- Last 10-min move +8 to +20 bps\n- Primary forecast: +5 to +12 bps continuation (60-70% of 10-min move)\n\n**Strong upward momentum:**\n- Last 10-min move > +20 bps\n- Primary forecast: +12 to +18 bps continuation (60-70% of 10-min move)\n- **But note: reversals are common on this horizon**, so widen protection\n\n**Key insight from examples: Even when tape shows strong momentum (AMD +34 bps, MA -17 bps), 5-minute horizon often sees reversals (AMD actual -65.7, MA actual +49.0). Momentum continuation is the right base forecast, but width must be wide enough to survive reversals.**\n\n### Step 4: Check story materiality (only as minor adjustment)\n\n**Multi-symbol story (2+ symbols mentioned):**\n- These are ALWAYS market commentary, sector summaries, or thematic pieces\n- Completely ignore the story content\n- Use tape momentum classification from Step 3 as your sole forecast\n- Half-width: 12 bps minimum (you have no edge from the story)\n- **This applies even if story seems relevant to the queried symbol** (e.g., COST in a COST+DASH story, MA in a CRCL+MA story)\n\n**Single-symbol story:**\n- If tape shows strong momentum (last 10 min > \u00b115 bps): **follow the tape**, story is likely already priced or coincidental\n- If tape shows moderate momentum (last 10 min \u00b18 to \u00b115 bps): **follow the tape**, story may be part of it but tape is what matters\n- If tape is flat (last 10 min within \u00b18 bps): check if story contains material catalyst\n  - Material: earnings surprise, guidance revision, M&A announcement, analyst initiation/major upgrade/downgrade with specific price target far from current price, regulatory action, product recall, major contract win/loss\n  - If material and bullish: add +3 to +6 bps to your forecast, use 12-15 bp width\n  - If material and bearish: add -3 to -6 bps to your forecast, use 12-15 bp width\n  - If non-material (product announcement, commentary, executive transaction, general news, recap of existing move): predict 0 to \u00b12 bps, use 12 bp width\n\n**Key insight: Even single-symbol material news rarely moves price predictably on 5-min horizon. Tape shows what has happened; story shows what might happen. On this horizon, tape dominates.**\n\n### Step 5: Set half-width based on signal clarity and volatility, NOT forecast uncertainty\n\n**Key principle: Width protects you from normal volatility and reversals, not from forecast error.**\n\n**All examples suffered from catastrophic under-widening. Never use width below 10 bps.**\n\n**10 bps (minimum, use only for very clear moderate momentum):**\n- Last 10-min move \u00b112 to \u00b120 bps AND you're predicting continuation\n- 10-min range < 50 bps (low volatility)\n- Multi-symbol story on flat tape\n- Use this rarely - it's the floor, not the target\n\n**12 bps (default for most situations):**\n- Flat tape (last 10 min within \u00b18 bps)\n- Moderate momentum (last 10 min \u00b18 to \u00b120 bps) - even though you're predicting continuation, 12 bp width gives you room for reversals\n- Multi-symbol story with any tape state\n- Single-symbol non-material story\n- 10-min range 50-80 bps (normal volatility)\n- **This should be your default in 70%+ of cases**\n\n**15 bps (high uncertainty, high volatility, or strong momentum that might reverse):**\n- Strong momentum (last 10 min > \u00b120 bps) - yes, even when predicting continuation, because reversals are common (see AMD, MA examples)\n- Very high recent volatility (10-min range > 80 bps)\n- Conflicting signals (last 5-min momentum opposite to last 10-min)\n- Material single-symbol catalyst on flat tape (uncertainty whether it will move price)\n- Late in session (last 30 minutes) when volatility tends to spike\n\n**18-20 bps (very high uncertainty):**\n- Extreme volatility (10-min range > 120 bps)\n- Very strong conflicting signals\n- Use rarely, but better too wide than getting run through on a reversal\n\n### Step 6: Magnitude calibration\n\n**For continuation forecasts (the most common case):**\n\nWhen last 10-min move is positive:\n- If +40 bps: predict +24 to +28 bps (60-70% decay)\n- If +30 bps: predict +18 to +21 bps\n- If +20 bps: predict +12 to +14 bps\n- If +15 bps: predict +9 to +11 bps\n- If +10 bps: predict +6 to +7 bps\n- If +5 bps: predict +3 to +4 bps\n\nWhen last 10-min move is negative:\n- If -40 bps: predict -24 to -28 bps (60-70% decay)\n- If -30 bps: predict -18 to -21 bps\n- If -20 bps: predict -12 to -14 bps\n- If -15 bps: predict -9 to -11 bps\n- If -10 bps: predict -6 to -7 bps\n- If -5 bps: predict -3 to -4 bps\n\n**General magnitude rules:**\n- Scale 10-min momentum by 60-70% when projecting to 5-min horizon\n- Predicting > \u00b120 bps requires very strong momentum (last 10 min > \u00b135 bps)\n- Predicting \u00b115 to \u00b120 bps requires strong momentum (last 10 min > \u00b125 bps)\n- Predicting \u00b110 to \u00b115 bps requires moderate-strong momentum (last 10 min \u00b115 to \u00b125 bps)\n- Predicting \u00b15 to \u00b110 bps requires moderate momentum (last 10 min \u00b18 to \u00b115 bps)\n- Predicting < \u00b15 bps is appropriate for flat or weak momentum (last 10 min < \u00b18 bps)\n\n**Key insight: Don't overpredict magnitude. Even strong tape momentum often continues at reduced rate or reverses. Better to underpredict magnitude with wide width than overpredict with tight width.**\n\n---\n\n## What The Examples Teach\n\n**TSLA Ex1 (skill -0.35)**: 13-symbol story (\"Semis Volatile...\") - pure market noise. Last bar 411.82, checking bars around -11: approximately 410.18 \u2192 411.82 = +40 bps over last ~10 min. Very strong upward momentum. Should have predicted +24 to +28 bps with 15 bp width (wide because strong momentum can reverse). Predicted +2.1 with 5.9 bp width. Actual -5.9 bps (reversal happened!). **Lesson: (a) Ignore multi-symbol stories, (b) Extract momentum correctly, (c) Use 15 bp width when momentum is strong because reversals happen, (d) Never use < 10 bp width.**\n\n**IBM (skill -0.16)**: 48+ symbol story (\"Chip Stocks Retreat...\") - pure market noise. Last bar 205.47, checking back: approximately 205.75 \u2192 205.47 = -14 bps over last 10 min. Moderate downward momentum. Should have predicted -8 to -10 bps with 12 bp width. Predicted +0.8 (wrong direction!) with 2.0 bp width. Actual -1.0 bps. **Lesson: (a) Multi-symbol = ignore story, (b) Extract momentum, don't guess, (c) 2 bp width is catastrophically too tight.**\n\n**NVDA (skill -0.37)**: 3-symbol story (\"CPI Lands Tomorrow...\") - forward-looking speculation, ignore. Last bar 219.13, checking back: approximately 219.5 \u2192 219.13 = -17 bps over last 10 min. Moderate downward momentum. Should have predicted -10 to -12 bps with 12 bp width. Predicted -1.8 with 2.0 bp width. Actual +3.4 bps (reversal). **Lesson: (a) Multi-symbol = ignore, (b) Even moderate downward momentum can reverse on 5-min horizon, (c) 2 bp width guarantees getting run through, (d) 12 bp width would have survived this.**\n\n**TSLA Ex4 (skill -1.18, worst)**: 3-symbol story (\"Autonomous Vehicles...\") - thematic, ignore. Last bar 391.22, checking back: 381.82 at open \u2192 391.22 = +246 bps over ~26 min. Last 10 min: approximately 390.3 \u2192 391.22 = +24 bps. Strong upward momentum. Should have predicted +14 to +17 bps with 15 bp width (wide because strong momentum can reverse). Predicted -5.9 (catastrophically wrong direction!) with 2.1 bp width. Actual +1.5 bps. **Lesson: Total failure to extract tape momentum. Got direction exactly backward. 2.1 bp width is suicide.**\n\n**COST (skill +0.01)**: 2-symbol story (\"Costco Is Now on DoorDash...\") - could be material for COST but still ignore on multi-symbol rule. Last bar 890.15, checking back: approximately 889.9 \u2192 890.15 = +3 bps over last 10 min. Flat tape. Should have predicted +2 to +4 bps with 12 bp width. Predicted +0.1 with 2.0 bp width. Actual +6.7 bps. **Lesson: (a) Even 2-symbol stories follow multi-symbol rule, (b) Flat tape still moves \u00b15-10 bps regularly, (c) 2 bp width is way too tight, (d) Barely achieved positive skill only because actual move was small.**\n\n**UNH (skill +0.06)**: 10-symbol story (\"10 Health Care Stocks...\") - pure noise. Last bar 434.94, checking back: approximately 434.75 \u2192 434.94 = +4 bps over last 10 min. Flat to slightly up tape. Should have predicted +2 to +4 bps with 12 bp width. Predicted -0.6 (wrong direction) with 2.0 bp width. Actual -10.0 bps (reversal). **Lesson: (a) Even flat tape can move \u00b110 bps in 5 min, (b) 2 bp width can't survive this, (c) 12 bp width would have protected, (d) Got slightly positive skill only by luck.**\n\n**MA (skill -0.05)**: 5-symbol story (\"Circle Price Targets Cut...\") - about CRCL, not MA. Last bar 566.52, checking back: approximately 567.5 \u2192 566.52 = -17 bps over last 10 min. Moderate downward momentum. Should have predicted -10 to -12 bps with 12 bp width. Predicted -2.3 (way undershot) with 5.7 bp width. Actual +49.0 bps (massive reversal!). **Lesson: (a) Multi-symbol = ignore story completely, (b) Even moderate momentum can reverse catastrophically, (c) 5.7 bp width is nowhere near enough for this volatility, (d) Should have used 12-15 bp width, (e) Magnitude prediction was too timid even for continuation case.**\n\n**AMD (skill -0.14)**: 6-symbol story (\"Arm Jumps More Than 11%...\") - about ARM, not AMD. Last bar 517.23, checking back: approximately 515.5 \u2192 517.23 = +34 bps over last 10 min. Very strong upward momentum. Should have predicted +20 to +24 bps with 15 bp width (wide because strong momentum often reverses). Predicted +9.4 (undershot) with 9.4 bp width. Actual -65.7 bps (catastrophic reversal!). **Lesson: (a) Multi-symbol = ignore, (b) Very strong momentum (> +30 bps) is DANGEROUS - often precedes reversals, (c) Should have used 15 bp width minimum, possibly 18-20 bp, (d) Even 9.4 bp width (wider than others) was not enough, (e) This is why strong momentum requires wide protection.**\n\n---\n\n## Key Patterns From Feedback\n\n1. **Width below 10 bps fails systematically and catastrophically.** TSLA (5.9), IBM (2.0), NVDA (2.0), TSLA Ex4 (2.1), COST (2.0), UNH (2.0), MA (5.7), AMD (9.4). Seven of eight used \u2264 5.9 bps. Quote got run through in 7/8 cases. **Never use width below 10 bps. Default should be 12 bps. Use 15 bps for strong momentum or high volatility.**\n\n2. **Multi-symbol stories are 100% noise, without exception.** TSLA (13), IBM (48+), NVDA (3), TSLA Ex4 (3), COST (2), UNH (10), MA (5), AMD (6). Every single one was market commentary or about a different symbol. **When symbol count \u2265 2, ignore story completely. Count symbols, not story relevance.**\n\n3. **Tape momentum extraction was systematically wrong.** Examples show predictions that contradict obvious tape momentum: TSLA Ex4 predicted -5.9 when tape showed +24 bps momentum (catastrophic direction error). IBM predicted +0.8 when tape showed -14 bps (wrong direction). **Must extract last 10-min close-to-close move explicitly and use it as primary signal.**\n\n4. **Strong momentum often reverses on 5-min horizon.** TSLA Ex1: +40 bps momentum \u2192 actual -5.9 bps. MA: -17 bps momentum \u2192 actual +49.0 bps. AMD: +34 bps momentum \u2192 actual -65.7 bps. **When momentum is strong (> \u00b120 bps in last 10 min), predict continuation but widen to 15 bps because reversals are common. Strong momentum is a signal but also a danger.**\n\n5. **Magnitude underprediction is common when predicting continuation.** COST: predicted +0.1, should have been +2 to +4. MA: predicted -2.3, should have been -10 to -12 (even though actual reversed). AMD: predicted +9.4, should have been +20 to +24 (even though actual reversed). **Scale 10-min momentum by 60-70% for 5-min forecast, don't be timid.**\n\n6. **Direction errors are frequent even with clear momentum.** TSLA Ex4: tape +24 bps, predicted -5.9. IBM: tape -14 bps, predicted +0.8. UNH: tape +4 bps, predicted -0.6. **This suggests the previous harness wasn't extracting momentum at all, was guessing from story, or had a calculation bug. Must calculate momentum explicitly and use it.**\n\n7. **Skill scores were mostly negative or barely positive.** Only COST (+0.01) and UNH (+0.06) achieved positive skill, and barely. The rest: TSLA -0.35, IBM -0.16, NVDA -0.37, TSLA Ex4 -1.18, MA -0.05, AMD -0.14. **The combination of tight width and poor direction calls destroyed performance. Fixing width alone would help enormously.**\n\n---\n\n## Mandatory Procedure\n\n**Every forecast must follow this sequence:**\n\n1. **Call candlesticks** with `hours_back=0.75` and `timeframe=\"1Min\"`\n\n2. **Extract bars** at indices approximately -11 (10 min ago), -6 (5 min ago), -1 (most recent) - handle edge cases where fewer bars exist by using what's available\n\n3. **Calculate last 10-min move** as `((close_now - close_10m) / close_10m) * 10000` in basis points\n\n4. **Calculate last 5-min move** as `((close_now - close_5m) / close_5m) * 10000` in basis points\n\n5. **Calculate 10-min range** as `((max_high_last_10 - min_low_last_10) / close_now) * 10000` in basis points\n\n6. **Classify momentum:**\n   - Strong down: last 10 min < -20 bps\n   - Moderate down: last 10 min -20 to -8 bps\n   - Flat: last 10 min -8 to +8 bps\n   - Moderate up: last 10 min +8 to +20 bps\n   - Strong up: last 10 min > +20 bps\n\n7. **Count symbols in news** - if 2 or more, ignore story completely and use only tape momentum\n\n8. **Forecast based on momentum classification:**\n   - Strong momentum (> \u00b120 bps): predict continuation scaled to 60-70% for 5-min horizon, use 15 bp width (reversals are common)\n   - Moderate momentum (\u00b18 to \u00b120 bps): predict continuation scaled to 60-70%, use 12 bp width\n   - Flat + multi-symbol: predict 0 to \u00b13 bps based on very recent drift, use 12 bp width\n   - Flat + single-symbol material: predict \u00b13 to \u00b16 bps in story direction, use 12-15 bp width\n   - Flat + single-symbol non-material: predict 0 to \u00b12 bps, use 12 bp width\n\n9. **Adjust width for volatility:**\n   - If 10-min range > 80 bps: increase width by 2-3 bps\n   - If 10-min range > 120 bps: increase width to 18-20 bps\n   - If conflicting signals (5-min momentum opposite to 10-min): increase width to 15 bps\n\n10. **Final check:**\n    - Is half_width_bps >= 10? If not, increase to 10.\n    - Is half_width_bps >= 12 for most cases? If not, increase to 12 unless you have very clear moderate momentum.\n    - Is half_width_bps >= 15 for strong momentum (> \u00b120 bps)? If not, increase to 15.\n    - Does delta_bps align with last 10-min momentum direction (unless flat tape with material single-symbol story)? If not, reconsider.\n    - Is magnitude scaled appropriately (roughly 60-70% of 10-min move)? If not, adjust - don't be timid.\n    - Have you ignored the story if symbol count >= 2? If not, ignore it and re-forecast from tape only.\n\n---\n\n## What Not To Do\n\n- **Never use half_width_bps below 10 bps** - failed catastrophically in all examples\n- **Never use half_width_bps below 12 bps as default** - use 10 bps only for very clear moderate momentum with low volatility, and even then, 12 is safer\n- **Never use tight width with strong momentum** - AMD used 9.4 bps on +34 bps momentum and got destroyed by -65.7 bps reversal; use 15 bps minimum\n- **Never forecast without calculating explicit last 10-min close-to-close move** - this is the primary signal, not the story\n- **Never treat multi-symbol stories as stock-specific** - even 2-symbol stories are usually noise (see COST example)\n- **Never predict from story when tape shows momentum > \u00b18 bps** - tape dominates on this horizon\n- **Never underpredict magnitude when forecasting continuation** - scale by 60-70%, not 10-20%\n- **Never trust that strong momentum will continue without reversal risk** - widen to 15 bps when momentum > \u00b120 bps\n- **Never ignore that 5-minute horizon is very short** - reversals happen frequently, width must protect against them\n- **Never get direction wrong due to calculation error",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
