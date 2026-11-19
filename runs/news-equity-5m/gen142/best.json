@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen142",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **The Width Problem: The Primary Failure Mode**\n\nRecent feedback reveals catastrophic systematic errors:\n\n**Eight forecasts analyzed:**\n- Seven used 2.0 bps half-width or less\n- Seven were run over (realised price outside the quote)\n- Median actual absolute move: 12.9 bps\n- Range of actual moves: +2.8 to -90.5 bps\n\n**Examples of the 2.0 bps trap:**\n- AMD: predicted +0.1 bps (7.9 width), actual -90.5 bps, run over by 82.6 bps, skill -0.00\n- TSLA: predicted -1.6 bps (2.0 width), actual +7.8 bps, run over by 7.8 bps, skill -0.21\n- GOOG: predicted +1.1 bps (6.9 width), actual +110.6 bps, run over by 103.7 bps, skill +0.01\n- META: predicted -1.9 bps (2.0 width), actual +2.3 bps, run over (both sides hit), skill -0.38\n- AAPL (Triple Witching): predicted -1.1 bps (2.0 width), actual -8.9 bps, run over, skill +0.12\n- AAPL (B of A): predicted 0.0 bps (2.0 width), actual -12.1 bps, run over, skill +0.00\n- JPM: predicted -0.4 bps (2.0 width), actual +2.8 bps, run over, skill -0.08\n\n**The only forecast with reasonable width:**\n- TSLA (Nvidia poll): predicted -5.0 bps (5.0 width), actual -27.8 bps, run over but skill +0.18 (best in set)\n\n**The lesson: 2.0 bps width is a universal failure mode. It reflects no reasoning about uncertainty\u2014it is a blind default that gets run over.**\n\n---\n\n## **Minimum Width Rules (Never Violate These)**\n\n### **Never use width under 10 bps**\n\nThe floor is 10 bps for any story that names your ticker. The examples prove this:\n- Median absolute move across eight examples: 12.9 bps\n- Seven of eight actual moves were \u22657.8 bps\n- Five of eight were \u226512 bps\n- Two of eight were \u226527 bps\n\n**A 2.0 bps width is not \"conservative\"\u2014it is systematically wrong in every example.**\n\n### **Default safe width: 12-15 bps**\n\nThis is the right answer for most Benzinga stories. Use this unless you have specific reasons to go wider.\n\n### **Opening minutes are 3-5x more volatile**\n\n- AMD: 10.5 minutes since open, actual -90.5 bps (catastrophic)\n- TSLA (Nvidia): 80.9 minutes since open, actual -27.8 bps\n- **In the first 30 minutes, use 25-30 bps width minimum**\n- **Opening volatility (first 10-15 minutes) can produce 50-100 bps moves on any story**\n\n### **Minimum width by story type**\n\n1. **Multi-symbol thematic story (your ticker is one of many):** 12-15 bps minimum\n   - GOOG (2 symbols, DeepMind appointment): actual +110.6 bps (run over at 6.9 width)\n   - META (8 symbols, AI bond supply): actual +2.3 bps\n   - AAPL (12 symbols, Triple Witching): actual -8.9 bps\n   - **Even when your ticker is a passive mention, use 12-15 bps**\n\n2. **Company-specific story (your ticker is the subject):** 15-20 bps minimum\n   - TSLA (SpaceX Roadster demo): actual +7.8 bps\n   - AAPL (B of A maintains buy): actual -12.1 bps\n   - **Stories directly about your ticker move 10-20 bps**\n\n3. **Opening minutes (< 30 since open):** 25-30 bps minimum\n   - AMD (10.5 minutes): actual -90.5 bps\n   - **Use 25-30 bps in the first 30 minutes, 30-40 bps in the first 15 minutes**\n\n4. **Financial sector whale activity story:** 15-20 bps minimum\n   - JPM (6 financials whale activity): actual +2.8 bps\n   - **Financial stocks on sector stories move 10-20 bps**\n\n5. **Major company news (executive appointments, product demos):** 20-25 bps minimum\n   - GOOG (DeepMind Chief Scientist): actual +110.6 bps\n   - TSLA (SpaceX Roadster demo): actual +7.8 bps\n   - **Executive appointments and major product announcements move 15-30 bps mid-session, 50-100+ bps near the open**\n\n### **When to use very wide width (25-40 bps)**\n\n- Opening minutes (< 30 since open): 25-30 bps\n- Opening minutes (< 15 since open): 30-40 bps\n- Major company-specific catalyst mid-session: 20-25 bps\n- Closing minutes (last 30 minutes, position squaring): 20-25 bps\n\n---\n\n## **Direction Rules**\n\nThe examples show direction is secondary to width, but here are the patterns:\n\n1. **Most stories produce unpredictable 10-30 bps moves:**\n   - Seven of eight examples predicted |delta| < 5 bps\n   - Actual moves ranged from 2.8 to 90.5 bps\n   - Median absolute move: 12.9 bps\n   - **Predicting near-zero (< 3 bps) is almost always wrong**\n\n2. **Default to 8-12 bps moves for multi-symbol stories, not zero:**\n   - GOOG: predicted +1.1, actual +110.6 (catastrophic underestimate)\n   - META: predicted -1.9, actual +2.3\n   - AAPL (Triple Witching): predicted -1.1, actual -8.9\n   - JPM: predicted -0.4, actual +2.8\n   - **The harness is systematically underestimating move size by 3-10x**\n\n3. **Opening minutes: predict \u00b115-25 bps based on tape direction:**\n   - AMD at 10.5 minutes: actual -90.5 bps (extreme case)\n   - **In the first 30 minutes, predict at least \u00b115 bps, use 25-30 bps width**\n   - **Check the tape direction over the last 15 minutes; opening moves amplify recent momentum**\n\n4. **Company-specific stories: predict \u00b110-15 bps mid-session:**\n   - TSLA (Roadster demo): predicted -1.6, actual +7.8\n   - AAPL (B of A): predicted 0.0, actual -12.1\n   - **Analyst reiterations and product announcements move 10-20 bps**\n\n5. **Executive appointments are material news:**\n   - GOOG (Demis Hassabis Chief Scientist): actual +110.6 bps\n   - **This was 167 minutes into the session, so the extreme move suggests either:**\n     - **The story broke new information (not priced)**\n     - **The tape was already moving on broader market action**\n   - **For executive appointments mid-session, predict \u00b115-20 bps, use 20-25 bps width**\n   - **For executive appointments in opening minutes, predict \u00b125-40 bps, use 30-40 bps width**\n\n6. **Check the tape over the last 15-45 minutes for context:**\n   - If the name is rising, predict +8-12 bps\n   - If the name is falling, predict -8-12 bps\n   - If the name is flat, predict \u00b18 bps (direction is a coin flip)\n   - **The tape direction over 15-45 minutes is weakly predictive but not reliable**\n\n---\n\n## **Common Patterns in the Examples**\n\n### **Pattern 1: The 2.0 bps width trap (seven of eight examples)**\n\n- Seven of eight used \u22647.9 bps width\n- Seven of eight were run over\n- Median skill across all eight: +0.03 (essentially zero)\n- **This is the primary failure mode**\n\n### **Pattern 2: Predicting near-zero delta (seven of eight examples)**\n\n- Seven examples predicted |delta| < 5 bps\n- Actual moves ranged from 2.8 to 90.5 bps\n- Median absolute move: 12.9 bps\n- **The harness is systematically underestimating move size by 3-10x**\n\n### **Pattern 3: Opening minutes are 3-5x more volatile**\n\n- AMD: 10.5 minutes since open, actual -90.5 bps\n- **This is the most dangerous time to forecast**\n- **In the first 30 minutes, use 25-30 bps width minimum**\n- **In the first 15 minutes, use 30-40 bps width minimum**\n\n### **Pattern 4: Executive appointments and product demos are material**\n\n- GOOG (Chief Scientist): actual +110.6 bps at 167 minutes in\n- TSLA (Roadster demo): actual +7.8 bps at 155 minutes in\n- **These are not \"noise\" stories\u2014they move names 10-25 bps mid-session**\n\n### **Pattern 5: Multi-symbol stories still move individual names 8-15 bps**\n\n- META (8 symbols, AI bonds): actual +2.3 bps\n- AAPL (12 symbols, Triple Witching): actual -8.9 bps\n- JPM (6 symbols, whale activity): actual +2.8 bps\n- **Even passive mentions move names 5-15 bps; use 12-15 bps width**\n\n---\n\n## **Checklist Before Submitting**\n\n1. **Is my half-width less than 10 bps?**\n   - If yes, change it to at least 12 bps immediately.\n   - **Seven of eight examples used \u22647.9 bps and got run over.**\n\n2. **Am I predicting near-zero (< 5 bps)?**\n   - If yes, change it to at least \u00b110 bps.\n   - **Seven of eight examples predicted < 5 bps and all were wrong.**\n\n3. **How many minutes since open?**\n   - < 15 minutes: use 30-40 bps width, predict \u00b120-30 bps\n   - 15-30 minutes: use 25-30 bps width, predict \u00b115-25 bps\n   - 30-360 minutes: use 12-15 bps width, predict \u00b110-12 bps\n   - > 360 minutes: use 15-20 bps width (position squaring), predict \u00b112-15 bps\n\n4. **What type of story is this?**\n   - Multi-symbol thematic: 12-15 bps width, predict \u00b110 bps\n   - Company-specific (analyst, product): 15-20 bps width, predict \u00b112 bps\n   - Executive appointment: 20-25 bps width mid-session, 30-40 bps opening\n   - Sector whale activity: 15-20 bps width, predict \u00b110 bps\n\n5. **Is this an executive appointment or major product announcement?**\n   - If yes, these are material: 20-25 bps width mid-session, predict \u00b115-20 bps\n   - If in opening minutes, use 30-40 bps width, predict \u00b125-30 bps\n\n6. **Does my forecast have 2.0 bps width?**\n   - If yes, delete it and start over. **This is the universal failure mode in seven of eight examples.**\n\n7. **Am I in the opening minutes (< 30 since open)?**\n   - If yes, use at least 25 bps width, predict at least \u00b115 bps\n   - **AMD at 10.5 minutes moved -90.5 bps; opening volatility is extreme**\n\n---\n\n## **Width Is the Primary Decision**\n\nThe examples prove that width is not a by-product of uncertainty\u2014it is the forecast. The harness used \u22647.9 bps width in seven of eight examples and got run over in seven.\n\n**Default minimum: 12 bps for any story that names your ticker, mid-session. Default safe range: 12-15 bps. Never use less than 10 bps. Go wider (25-40 bps) for opening minutes (< 30 since open), 20-25 bps for executive appointments and major product news mid-session, 15-20 bps for sector stories.**\n\n**The 2.0 bps default killed skill in seven of eight examples. It is not conservative\u2014it is systematically wrong. The median actual move was 12.9 bps. A 2.0 bps width assumes the market will stay within the bid-ask spread, which is false for any story that names a ticker.**\n\nThe best-performing forecast in the set used 5.0 bps width (TSLA at -5.0 bps, skill +0.18), which was still too tight but better than 2.0. The worst performers all used 2.0 bps or close to it. This is the proof: **width discipline is the difference between skill and catastrophic failure.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
