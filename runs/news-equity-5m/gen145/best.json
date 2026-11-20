@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen145",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**PRODUCTION EVIDENCE:**\n\n**Rule 1: Never use half_width_bps under 5.0**\n\nRecent cycle analysis of 8 forecasts:\n- 7 used half_width_bps = 2.0\n- 4 had realised moves outside the band (skill -0.56, -0.09, -0.77, -0.02 on average)\n- Even \"successes\" were at the edge: moves of -0.3, +7.5, -14.6 bps barely inside or just outside 2.0 bps bands\n\n**A 2.0 bps half-width (4.0 bps total band) captures only the smallest moves and fails catastrophically on everything else.**\n\nObserved move distribution (8 recent cases): -16.6, -14.6, -8.8, -3.4, -0.3, +7.5, +11.2, +13.3 bps\n- Median absolute move: 10.6 bps\n- 75th percentile: 13.9 bps\n- Only 1 of 8 cases (12.5%) stayed within a 4 bps band\n- 5 of 8 cases (62.5%) exceeded 10 bps\n\n**Minimum viable widths by story type:**\n\n**Category A: Pure market commentary, question symbol mentioned in passing**\n- Example: \"CNBC Halftime Report Final Trades: Alphabet, Netflix, Nike, Target\" (GOOGL moved +7.5 bps)\n- Example: Multi-symbol sector rotation, listicles, historical returns fluff\n- **Use half_width_bps = 5.0** (10 bps band)\n- Rationale: Even pure noise moves 5-15 bps. A 10 bps band captures 60-70% of noise cases.\n\n**Category B: Ambiguous or indirect connection**\n- Example: \"Nvidia Isn't The Only Potential Winner From SpaceX's $85 Billion IPO\" (TXN moved -16.6 bps, 20 symbols listed)\n- Example: \"STMicroelectronics Stock Sinks 18%\" mentioning AAPL (AAPL moved -14.6 bps)\n- Example: Supplier/customer stories, sector-wide news with indirect effects\n- **Use half_width_bps = 10.0** (20 bps band)\n- Rationale: Indirect connections can produce 10-20 bps moves via correlation. A 20 bps band loses less than no-change on these.\n\n**Category C: Direct, material catalyst**\n- Example: \"BofA's $520 Million OpenAI Loan\" (BAC moved -3.4 bps, but could have been 20-40 bps)\n- Example: Company-specific announcements, product launches, executive changes directly about the question symbol\n- **Use half_width_bps = 15.0** (30 bps band)\n- Rationale: Material news can move 20-50 bps. A 30 bps band beats no-change by 20+ bps on big moves, loses only 10-15 bps on small ones.\n\n**Category D: Major catalyst with large expected move**\n- Example: Index inclusion, earnings surprise, major deal announcement\n- Expected moves: 40-100+ bps\n- **Use half_width_bps = 25.0** (50 bps band)\n- Rationale: These are rare in Benzinga flow but do occur. A 50 bps band on a 60 bps move beats no-change by 10 bps.\n\n**Rule 2: Set delta_bps = 0 by default**\n\nAnalysis of directional forecasts (8 recent cases):\n- 6 made directional bets: +2.8, +2.6, +6.8, -1.2, -2.1, +0.3 bps\n- 3 were directionally wrong (AVGO +6.8 \u2192 -8.8, GOOGL -1.2 \u2192 +13.3, GOOGL -2.1 \u2192 +7.5)\n- Average error when wrong: 15-20 bps\n- Average error when right: 2-3 bps\n- **The asymmetry is catastrophic: wrong costs 15 bps, right gains 2 bps**\n\n**Set delta_bps = 0 unless:**\n1. You have tape evidence the story already moved the price (e.g., candlesticks show a 20+ bps jump in the last 2 minutes \u2192 fade by forecasting reversion)\n2. The story is a known catalyst with predictable direction (upgrade \u2192 up, downgrade \u2192 down) AND the tape has not moved yet\n\n**If you do set a non-zero delta, use it to fade an existing move, not to chase one.**\n\n**Rule 3: Content classification trumps symbol count**\n\nThe number of symbols in the story is **not** a reliable signal:\n- BAC (1 symbol): direct company news \u2192 moved -3.4 bps\n- GOOGL (7 symbols): indirect sector news \u2192 moved +13.3 bps\n- TXN (20 symbols): indirect supplier news \u2192 moved -16.6 bps\n- AAPL (4 symbols): indirect sector news \u2192 moved -14.6 bps\n\n**The right question: \"Is the question symbol the subject of the story, or mentioned in passing?\"**\n\n**Subject of the story:**\n- Headline names the company directly (\"BofA's $520 Million OpenAI Loan\")\n- Summary leads with the company's action (\"Bank of America has moved deeper...\")\n- Story is about a company-specific event (product launch, loan, executive change)\n- **Action: Category B or C depending on materiality**\n\n**Mentioned in passing:**\n- Headline is about another company (\"STMicroelectronics Stock Sinks 18%\")\n- Question symbol appears in a list (\"CNBC Halftime Report Final Trades: Alphabet, Netflix, Nike, Target\")\n- Story is sector commentary or market roundup\n- **Action: Category A (5 bps width)**\n\n**Indirect connection:**\n- Story is about a supplier, customer, or competitor\n- Story is about a sector-wide trend that could affect the question symbol\n- Story names the question symbol as a potential beneficiary but not the main subject\n- **Action: Category B (10 bps width)**\n\n**Rule 4: Confidence and probabilities must match the width**\n\nIf you set half_width_bps = 5.0 (10 bps band) and assign 90% probability to \"unchanged, within 10 basis points either way\" (score 3), you are consistent.\n\nIf you set half_width_bps = 2.0 (4 bps band) and assign 90% probability to \"unchanged, within 10 basis points\" (score 3), you are contradicting yourself. A 4 bps band is not 10 bps.\n\n**Match your stated confidence to your quoted width:**\n- half_width_bps = 5.0 (10 bps band) \u2192 70-80% confidence in score 3 (within 10 bps)\n- half_width_bps = 10.0 (20 bps band) \u2192 70-80% confidence the move is within 20 bps\n- half_width_bps = 15.0 (30 bps band) \u2192 70-80% confidence the move is within 30 bps\n\n**Rule 5: Width is your uncertainty, not your forecast**\n\nA half_width_bps of 2.0 means you are 90%+ confident the realised move will be within 2 bps of your delta. If you are not confident of this, widen the band.\n\n**The recent cycle shows you should almost never be this confident.** Even pure noise (CNBC listicles, sector rotation) moved 7-15 bps.\n\n**Rule 6: Specific story types and their typical moves**\n\nBased on production evidence:\n\n**\"CNBC Halftime Report Final Trades\"**: Pure noise, question symbol mentioned in a list.\n- Typical move: 5-10 bps (correlation with market, no stock-specific content)\n- **Action: delta = 0, half_width = 5.0**\n\n**\"[Company] Stock Surges/Sinks X%: [Reason]\"**: Story is about another company.\n- If question symbol is a supplier/customer/competitor: indirect connection, 10-20 bps move possible\n- If question symbol is mentioned in passing: pure noise, 5-10 bps move\n- **Action: delta = 0, half_width = 10.0 if indirect connection, 5.0 if pure noise**\n\n**\"[Question Symbol]'s $X Million [Event]\"**: Direct company news.\n- Materiality depends on event size and type (loan, deal, product launch)\n- Typical move: 10-30 bps if material, 0-10 bps if immaterial\n- **Action: delta = 0, half_width = 15.0 if material, 10.0 if ambiguous**\n\n**\"[Other Company] Isn't The Only Winner From [Event]\"**: Question symbol is a potential beneficiary.\n- Indirect connection, speculative linkage\n- Typical move: 10-20 bps\n- **Action: delta = 0, half_width = 10.0**\n\n**\"U.S., [Countries] Issue Joint Statement\"**: Geopolitical news, broad market impact.\n- Question symbol (SPY, sector ETF) moves with the market\n- Typical move: 5-15 bps\n- **Action: delta = 0, half_width = 10.0 for ETFs, 5.0 for stocks mentioned in passing**\n\n**\"[Company] Announces General Availability Of [Product]\"**: Product launch, direct company news.\n- Materiality depends on product significance (AI model, enterprise software, consumer product)\n- Typical move: 5-20 bps (small move on this horizon unless transformative product)\n- **Action: delta = 0, half_width = 10.0 (AI/enterprise products are noisy but rarely move 20+ bps in 5 minutes unless earnings-linked)**\n\n**Rule 7: The realized distribution is wider than you think**\n\n8 recent cases: -16.6, -14.6, -8.8, -3.4, -0.3, +7.5, +11.2, +13.3 bps\n- Mean absolute move: 9.2 bps\n- Median absolute move: 10.6 bps\n- 10th percentile: -16.6 bps\n- 90th percentile: +13.3 bps\n\n**A 10 bps half-width (20 bps band) captures about 70% of cases. A 5 bps half-width (10 bps band) captures about 40% of cases. A 2 bps half-width (4 bps band) captures about 12% of cases.**\n\n**Default to half_width_bps = 10.0 when in doubt.** This loses 10 bps on the smallest moves (opportunity cost) but beats no-change by 5-15 bps on the median moves.\n\n**Rule 8: Fading existing moves**\n\nIf candlesticks show the question symbol already moved 20+ bps in the last 2-5 minutes (before the story timestamp), consider fading:\n- Set delta = -0.3 to -0.5 of the existing move (e.g., if moved +30 bps, forecast -10 bps reversion)\n- Widen half_width to 15-20 bps (reversion is noisy)\n\nIf the tape has not moved yet (e.g., story breaks at 15:10:08, last close is 15:09, candlesticks show no reaction), set delta = 0 and quote a wide band.\n\n**Most Benzinga stories arrive after the initial reaction (the story is written after the event). By the time you see it, the tape has often already moved.** Check candlesticks and recent_trades to see if absorption has begun.\n\n**Rule 9: Practical decision tree**\n\n1. **Read the headline and summary. Is the question symbol the subject?**\n   - Yes, direct company news (earnings, deal, product, executive) \u2192 Category C (half_width = 15)\n   - Yes, but immaterial (fluff, historical data, analyst chatter) \u2192 Category A (half_width = 5)\n   - No, but indirect connection (supplier, customer, sector) \u2192 Category B (half_width = 10)\n   - No, mentioned in a list or pure market commentary \u2192 Category A (half_width = 5)\n\n2. **Check candlesticks. Has the tape already moved 20+ bps in the last 2-5 minutes?**\n   - Yes \u2192 consider fading (delta = -0.3 to -0.5 of move, half_width = 15-20)\n   - No \u2192 set delta = 0\n\n3. **Set half_width to match the category, not your confidence.**\n   - Category A (noise): half_width = 5.0\n   - Category B (indirect): half_width = 10.0\n   - Category C (material): half_width = 15.0\n   - Category D (major catalyst): half_width = 25.0\n\n4. **Assign probabilities that match your width.**\n   - half_width = 5.0 \u2192 70-80% in score 3 (within 10 bps)\n   - half_width = 10.0 \u2192 70-80% in score 3 + score 2/4 (within 20 bps)\n   - half_width = 15.0 \u2192 70-80% in score 2-4 (within 30 bps)\n\n**Rule 10: Skill comes from getting the width right, not the direction**\n\nRecent skill scores: -0.56, -0.09, -0.77, -0.02 (all used 2.0 bps width), +0.24, +0.10 (wider widths).\n\n**The harnesses with positive skill used 5-10 bps width. The harnesses with negative skill used 2.0 bps width.** The lesson is clear: width matters more than delta.\n\nA forecast of delta = 0, half_width = 10 on a +12 bps move: error 12 bps, skill = 1 - 12/max(12,5) = 0.0.\n\nA forecast of delta = +2, half_width = 2 on a +12 bps move: error 10 bps, skill = 1 - 10/max(12,5) = +0.17.\n\nA forecast of delta = -2, half_width = 2 on a +12 bps move: error 14 bps, skill = 1 - 14/max(12,5) = -0.17.\n\n**But:** A forecast of delta = 0, half_width = 2 on a +12 bps move: error 12 bps, skill = 1 - 12/max(12,5) = 0.0, **and the quote is hit, losing P&L**.\n\n**The choice is between (delta=0, width=10, miss by 12, skill 0.0, quote not hit) and (delta=0, width=2, miss by 12, skill 0.0, quote hit, lose P&L).**\n\n**Wider is safer.** Quote narrow only when you have strong evidence the move will be small (and even then, 5 bps is the floor).",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
