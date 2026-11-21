@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen148",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**The realized distribution is far wider than you expect.** Even on pure noise headlines with zero fundamental signal, liquid large-cap stocks drift 5-15 bps in five minutes due to:\n- Bid-ask bounce (each minute close can land on bid or ask, a 2-5 bp swing)\n- Market maker inventory adjustments\n- Correlation to SPY moves (SPY drifting 2-3 bps moves correlated names 1-2 bps)\n- Algorithmic activity in thin minutes\n- Normal intraday volatility and microstructure noise\n\nThis is not a sign you were wrong about direction or fundamentals. It is the baseline noise floor of equity microstructure. Your quotes must be wide enough to contain it.\n\n**Your primary error mode is quoting too narrow, not getting direction wrong.** Recent results:\n\nGOOGL (6-symbol July listicle): realized +1.9 bp, predicted +2.3 \u00b1 5.7 bp \u2192 inside, skill +0.29\nNFLX (4-symbol CNBC Final Trades): realized +6.1 bp, predicted +0.8 \u00b1 2.0 bp \u2192 **outside**, skill +0.13\nAMD (\"What's Going on\" stock-specific): realized -31.0 bp, predicted -4.4 \u00b1 4.4 bp \u2192 **outside**, skill +0.14\nGOOG (3-symbol Crenshaw stock sale): realized -16.2 bp, predicted -1.0 \u00b1 2.0 bp \u2192 **outside**, skill +0.06\nAVGO (12-symbol SpaceX/Cuban/ETF story): realized +9.5 bp, predicted -1.5 \u00b1 2.0 bp \u2192 **outside**, skill -0.16\nSPY (2-symbol Trump/Xi meeting announcement): realized -6.3 bp, predicted -0.2 \u00b1 2.0 bp \u2192 **outside**, skill +0.04\nV (10-symbol whale alerts listicle): realized +5.2 bp, predicted -1.6 \u00b1 2.0 bp \u2192 **outside**, skill -0.31\nV (10-symbol crypto bull market story): realized +3.5 bp, predicted -1.6 \u00b1 6.4 bp \u2192 inside, skill -0.31\n\nSix of eight went outside the bands. The pattern: **\u00b12.0 bp half-width fails systematically, even on correctly identified noise.**\n\nThe one success (GOOGL at \u00b15.7 bp) and one marginal success (V at \u00b16.4 bp) were the only quotes wider than \u00b14.4 bp. Every \u00b12.0 bp quote failed when realized moves were 5-16 bps.\n\n**Default to 8 bp half-width** as your starting point for any headline, then adjust up or down based on specific factors.\n\n**Why 8 bp is the minimum viable default:**\n\nThe examples show that even when you correctly identify noise (high confidence 0.87-0.97, scores near 3.0 \"unchanged\"), realized moves are routinely 5-15 bps:\n- NFLX: 0.88 confidence, score 3.06, realized +6.1 bp (missed at \u00b12.0 bp)\n- GOOG: 0.77 confidence, score 2.95, realized -16.2 bp (missed at \u00b12.0 bp)\n- SPY: 0.97 confidence, score 2.97, realized -6.3 bp (missed at \u00b12.0 bp)\n- V: 0.87 confidence, score 2.82, realized +5.2 bp (missed at \u00b12.0 bp)\n\nMicrostructure noise components stack:\n- Bid-ask bounce: 2-5 bp\n- Market maker rebalancing: 2-4 bp\n- SPY correlation: 1-3 bp\n- Random walk / thin minute effects: 2-4 bp\n\nThese don't cancel; they accumulate. A \"no move\" headline still produces 8-12 bp of path variation.\n\n**Width guidelines by headline type:**\n\n**6-7 bp half-width** only for:\n- The most liquid mega-caps (AAPL, MSFT, GOOGL, NVDA, TSLA, META, AMZN, SPY, QQQ) \n- Pure noise headlines (broad multi-stock listicles, market commentary, tangential mentions)\n- Tight recent tape (prior 10 minutes trading in 3-5 bp range)\n- Mid-to-late session (past 2 PM ET) when volatility has settled\n- Very high confidence (0.90+) that news is already absorbed or irrelevant\n\nThis is a floor for the highest-conviction noise calls only. The GOOGL example at \u00b15.7 bp worked, but barely (realized +1.9 bp).\n\n**8-10 bp half-width** for:\n- **Default baseline for any headline** you haven't specifically categorized\n- Multi-stock listicles (3+ symbols) where the stock has no specific relevance\n- Late-breaking summaries or recaps of earlier news\n- Opening period volatility (first 30-60 minutes of trading)\n- Mid-caps or less liquid large-caps\n- Moderate confidence (0.70-0.85) noise calls\n\nThe examples show \u00b12.0 bp failed on routine listicles (NFLX, V), even with high confidence. \u00b18-10 bp would have contained these moves.\n\n**12-15 bp half-width** for:\n- Stock mentioned in another stock's story (like AVGO in a META story, or V in a crypto story)\n- Stock appears in a list but might have specific relevance (whale activity on that name, analyst mention)\n- Unclear whether news is fresh or stale\n- Analyst commentary, previews, or sector rotation stories\n- Early session volatility (first 15 minutes)\n- Lower confidence (0.50-0.70) about absorption\n\nThe AVGO example (realized +9.5 bp) and GOOG example (realized -16.2 bp) would have been contained at \u00b112-15 bp.\n\n**15-25 bp half-width** for:\n- Stock-specific headline with the name in the title (\"What's Going on With AMD\")\n- Analyst rating changes, target changes, upgrades/downgrades\n- Product announcements, partnerships, contract wins\n- Any directional call where you expect a move but magnitude is uncertain\n- Lower conviction (0.40-0.60) directional forecasts\n\nThe AMD \"What's Going on\" example realized -31.0 bp. At \u00b14.4 bp it failed; \u00b120 bp would have contained it.\n\n**25-40 bp half-width** for:\n- Earnings reports, guidance revisions\n- M&A announcements, stake building/activist positions\n- FDA decisions, major regulatory actions\n- Executive changes at major companies\n- Any headline where you expect >20 bp move but are uncertain of magnitude\n\n**Pattern recognition by headline type:**\n\n**Multi-symbol listicles (3+ symbols):**\nThese are almost never stock-specific catalysts:\n- \"5 Tech Stocks Beat the Market\" (6 symbols)\n- \"CNBC Final Trades\" (4 symbols)\n- \"10 Financials Stocks With Whale Alerts\" (10 symbols)\n- \"SpaceX Millionaires Fuel...\" (12 symbols)\n\nPredict small or zero delta, but use **8-10 bp minimum half-width** (10-12 bp for mid-caps). Even perfect fundamental calls get run over by 5-15 bp of microstructure noise.\n\n**Stock mentioned in multi-theme story:**\nWhen the stock is in a story primarily about something else:\n- V in a crypto bull market story (10 symbols, theme is HOOD/HYPE)\n- AVGO in a META earnings preview\n\nThe stock may drift on sector moves, implied correlations, or just noise. Predict small move, use **10-15 bp half-width**.\n\n**Stock-specific \"What's Going on\" or explainer articles:**\nArticles with the stock name in the headline asking \"what's going on\" or explaining recent moves:\n- \"What's Going on With AMD Stock Thursday?\"\n\nThese frame recent price action with market context. Even if no new fundamental news, the article itself can catalyze continuation or reversal. Use **15-25 bp half-width** because:\n1. The article may surface information some market participants hadn't absorbed\n2. Framing effects can drive momentum\n3. These often hit during volatile periods (hence the explainer)\n\nThe AMD example moved -31 bp; \u00b120 bp would have contained most of the path.\n\n**13F filings and stake disclosures:**\nExamples: \"Representative X Sold Y Worth of Stock Z\", \"Tiger Global Decreases Stake\"\n\nThese are usually stale (13F filings lag 45 days). Predict minimal move, but use **8-10 bp half-width** because:\n- Algos may still react briefly\n- If the holder is famous (Buffett, Icahn, Pelosi), use 12-15 bp\n- If the filing is fresh (same-day 13G), use 15-20 bp\n\nThe GOOG Crenshaw example (filed July 16 for June 1 transaction) realized -16.2 bp despite being stale. At \u00b12.0 bp it failed; \u00b110 bp would have contained it better.\n\n**Major announcements to market indices (SPY, QQQ):**\nPolitical/policy announcements that affect broad markets:\n- \"Trump Says Xi Visiting U.S.\" (realized -6.3 bp on SPY)\n\nEven mega-liquid SPY drifts 5-10 bps on no-action news. Use **8 bp minimum** for SPY/QQQ on announcement headlines, **10-12 bp** if the announcement is genuinely market-moving (rate decisions, geopolitical events).\n\n**Why wider bands even when you're confident about direction:**\n\nThe examples show correct direction calls still miss on magnitude:\n- AMD: predicted -4.4 bp, realized -31.0 bp (right direction, 7x underestimate)\n- NFLX: predicted +0.8 bp, realized +6.1 bp (right direction, 7.6x underestimate)\n\nAnd wrong direction calls happen when market microstructure dominates:\n- AVGO: predicted -1.5 bp, realized +9.5 bp (wrong direction)\n- V: predicted -1.6 bp, realized +5.2 bp (wrong direction)\n\nFor directional calls:\n- If you expect \u00b110 bp, quote \u00b115-20 bp\n- If you expect \u00b120 bp, quote \u00b130 bp\n- If you expect \u00b130 bp, quote \u00b140 bp\n\nWidth protects you from:\n1. Magnitude errors (you're right it moves, wrong about how much)\n2. Direction errors (market microstructure overwhelms your signal)\n3. Timing errors (the move starts before the five-minute window or after)\n\n**The confidence trap:**\n\nHigh confidence in your fundamental view does not reduce microstructure noise:\n- SPY: 0.97 confidence \u2192 still missed by 6.1 bps at \u00b12.0 bp\n- V: 0.87 confidence \u2192 still missed by 6.8 bps at \u00b12.0 bp\n- NFLX: 0.88 confidence \u2192 still missed by 5.3 bps at \u00b12.0 bp\n\nBeing 97% sure the headline doesn't matter still requires 8+ bp half-width because bid-ask bounce, market maker activity, and correlated moves operate independently of your fundamental view.\n\nConfidence should affect your delta (how much you lean directionally), not your width. High confidence means tighter probability distribution around your expected bucket, but every bucket still needs 8+ bp of path clearance.\n\n**The asymmetric tradeoff:**\n\nBeing too wide costs you little:\n- You trade less frequently\n- Your skill stays near zero (baseline)\n- You avoid negative skill from getting run over\n\nBeing too narrow costs you heavily:\n- V whale alerts: skill -0.31\n- AVGO: skill -0.16\n- Multiple examples of small positive skill (+0.04, +0.06, +0.13) that would have been higher with wider quotes\n\nThe GOOGL success at +0.29 skill came from \u00b15.7 bp width on a +1.9 bp realized move. That's the template: wide enough that you're rarely outside, tight enough that you occasionally capture the spread.\n\n**Opening period volatility:**\n\nSeveral examples hit during or shortly after the open:\n- AMD at 10:18:13 (48 minutes after open): -31.0 bp realized\n- V at 09:55:56 (26 minutes after open): +3.5 bp realized\n\nThe first 30-60 minutes are more volatile. If your headline hits before 11:00 AM ET, add 2-5 bp to your baseline width.\n\n**Revised width discipline:**\n\n1. **Start at 8 bp half-width** for every headline as your default baseline\n\n2. **Narrow to 6-7 bp** only when ALL of these apply:\n   - Mega-cap (AAPL, MSFT, GOOGL, NVDA, TSLA, META, AMZN, SPY, QQQ)\n   - Pure multi-stock noise headline (5+ symbols, broad theme)\n   - After 2 PM ET (session has settled)\n   - Prior 10 minutes traded in tight 3-5 bp range\n   - Confidence 0.85+ that news is irrelevant\n\n3. **Widen to 10-12 bp** when any of these apply:\n   - Mid-cap or less liquid name\n   - Stock mentioned in another stock's story\n   - Before 11 AM ET (opening volatility)\n   - Listicle where stock might have specific relevance\n   - Confidence 0.60-0.80 about no-move\n\n4. **Widen to 15-25 bp** when any of these apply:\n   - Stock name in headline/title\n   - \"What's going on\" or explainer article\n   - Analyst action (rating, target, commentary)\n   - Product/partnership/contract announcement\n   - Any directional call where you expect 10-20 bp move\n   - Confidence 0.40-0.70 about direction\n\n5. **Widen to 25-40 bp** for high-impact events:\n   - Earnings, guidance, M&A, FDA decisions\n   - Major stake changes by famous investors\n   - Executive changes, activist positions\n\n6. **When in doubt, go wider:** If torn between 8 bp and 10 bp, choose 10 bp. If torn between 10 bp and 15 bp, choose 15 bp. \n\n7. **Never use 2 bp half-width:** The examples show it fails on everything\u2014noise headlines, directional calls, high-confidence forecasts, mega-caps, mid-session calm. The microstructure noise floor is 5-15 bps. A 2 bp band cannot contain it.\n\n8. **Check the recent tape:** If the prior 10 minutes show 15+ bp range, add 3-5 bp to your baseline. Volatility persists.\n\n**On delta (direction and magnitude):**\n\nYour delta should reflect:\n1. Whether the news is material and stock-specific\n2. Whether it's already priced (check recent price action)\n3. Market direction (is SPY up? sector momentum?)\n4. Your confidence distribution across move buckets\n\nBut keep deltas modest unless you have strong signal:\n- For noise headlines: -2 to +2 bp delta (near zero)\n- For weak directional signals: -5 to +5 bp delta\n- For moderate signals: -10 to +10 bp delta\n- For strong stock-specific news: -20 to +20 bp delta\n\nThe examples show most predictions clustered at \u00b10 to \u00b12 bp delta, which is correct for noise headlines. But the width was systematically too narrow.\n\n**Width first, direction second.** A wide band centered on the wrong direction can still contain the path. A narrow band centered on the right direction cannot.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
