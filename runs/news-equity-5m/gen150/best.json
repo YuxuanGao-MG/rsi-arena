@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen150",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: Normal five-minute drift in liquid large caps is 20-60 basis points, NOT 2-5 basis points.**\n\n**Production data from 48 examples shows UNIVERSAL FAILURE of narrow bands (under 30 bps):**\n\nLatest eight examples ALL used narrow bands (2.0 bps or 7.9 bps) and ALL failed:\n- ORCL (10 symbols): predicted -0.9 \u00b1 2.0 bps, realized +1.7 bps, missed by 2.6 bps, skill -0.18\n- GS (3 symbols): predicted -0.9 \u00b1 2.0 bps, realized +21.4 bps, missed by 22.4 bps, skill -0.04\n- MSFT (4 symbols): predicted +0.0 \u00b1 2.0 bps, realized -5.9 bps, missed by 5.9 bps, skill -0.01\n- META (1 symbol, analyst target): predicted +0.1 \u00b1 7.9 bps, realized +16.5 bps, missed by 16.4 bps, skill +0.01\n- INTC (5 symbols): predicted -0.7 \u00b1 2.0 bps, realized -39.7 bps, missed by 39.0 bps, skill +0.02\n- HD (10 symbols): predicted -0.2 \u00b1 2.0 bps, realized +0.6 bps, missed by 0.9 bps, skill -0.05 (LUCKY)\n- QQQ (6 symbols, sector selloff): predicted -0.6 \u00b1 2.0 bps, realized +5.5 bps, missed by 6.0 bps, skill -0.10\n- TSLA (1 symbol, fleet news): predicted -0.4 \u00b1 2.0 bps, realized -42.3 bps, missed by 41.9 bps, skill +0.01\n\n**Realized moves: +1.7, +21.4, -5.9, +16.5, -39.7, +0.6, +5.5, -42.3 bps**\n- Range: -42.3 to +21.4 bps (63.7 bps spread)\n- 7 of 8 moves exceeded 5 bps\n- 4 of 8 moves exceeded 15 bps\n- 2 of 8 moves exceeded 35 bps\n\n**Pattern: 2.0 bps bands fail on EVERYTHING, including multi-symbol stories**\n\nThe harness predicted 2.0 bps bands on:\n- 10-symbol stories (ORCL +1.7 bps, HD +0.6 bps): even when realized moves were tiny, skill was negative\n- 3-6 symbol stories (GS +21.4 bps, MSFT -5.9 bps, QQQ +5.5 bps): all missed badly\n- Single-symbol stories (TSLA -42.3 bps): catastrophic\n\nOnly HD (+0.6 bps realized) stayed inside a 2.0 bps band, and even that earned -0.05 skill because the forecast was -0.2 bps (wrong direction).\n\n**New failure: GS on SpaceX IPO fee news**\n\nHeadline: \"Goldman and Morgan Stanley to Pocket $100 Million Each In SpaceX IPO Fees\"\n- 3 symbols (GS, MS, SPCX)\n- Material financial news (major fee revenue)\n- Predicted -0.9 \u00b1 2.0 bps\n- Realized: +21.4 bps\n- Skill: -0.04\n\nThis is a 3-symbol story with stock-specific catalyst (fee revenue), not generic noise. The 2.0 bps band missed by 22.4 bps.\n\n**New failure: TSLA on Cybercab fleet news**\n\nHeadline: \"Tesla's Cybercab Fleet Hits 45 Ahead of Austin Launch\"\nSummary: \"Tesla's Cybercab fleet in Texas has reached 45 vehicles ahead of its September 3 Austin launch\"\n- Single symbol, specific business milestone\n- Predicted -0.4 \u00b1 2.0 bps\n- Realized: -42.3 bps\n- Skill: +0.01\n\nGot direction right but band was 20x too narrow. A 42 bps move is normal for TSLA on business news.\n\n**New failure: INTC on AMD upgrade (sector news)**\n\nHeadline: \"Everyone Bought Nvidia for AI: Now AMD Could Win the $211 Billion CPU Race\"\nSummary: \"Bank of America lifts its AMD target to $720\"\n- 5 symbols (AKAM, AMD, ARM, INTC, NVDA)\n- Sector news about AMD, INTC named as competitor\n- Predicted -0.7 \u00b1 2.0 bps\n- Realized: -39.7 bps\n- Skill: +0.02\n\nA 2.0 bps band on sector news with 5 symbols missed by 39.0 bps. Even multi-symbol stories can produce 30-40 bps moves.\n\n**Combined with previous 40 examples:**\n- 45 of 48 examples with narrow bands (under 30 bps) earned skill between -1.51 and +0.72\n- Only 3 earned positive skill above +0.50, all lucky hits where realized moves happened to be small\n- The worst skill scores are on directional calls with narrow bands when the move is already done\n\n**MANDATORY DECISION TREE (no exceptions):**\n\n**Step 0: READ THE SUMMARY FIRST (mandatory)**\n\nBefore anything else, check if the summary describes past price action:\n- \"shares fell X%\" \u2192 move already happened\n- \"stock dropped after\" \u2192 move already happened\n- \"rallied X% on\" \u2192 move already happened\n- \"tumbled following\" \u2192 move already happened\n\n**If summary describes past move of 50+ bps: predict delta_bps = 0, half_width_bps = 40, DONE**\n\nThe move is priced. Making a directional call on continuation is wrong.\n\n**Step 1: Count symbols (after checking summary)**\n\n**If 6+ symbols:**\n- Generic list story or broad sector move\n- Predict delta_bps = 0, half_width_bps = 40, DONE\n\n**If 3-5 symbols:**\n- Could be sector news or multi-name story\n- Check if headline describes stock-specific catalyst for the question symbol:\n  - \"Goldman and Morgan Stanley to Pocket $100M Each\" on GS \u2192 stock-specific (fee revenue)\n  - \"AMD Could Win $211B CPU Race\" on INTC \u2192 sector comparison (not stock-specific for INTC)\n- If stock-specific catalyst: proceed to Step 2 (treat as single-symbol)\n- If sector/multi-name story: predict delta_bps = 0, half_width_bps = 40, DONE\n\n**If 2 symbols:**\n- Predict delta_bps = 0, half_width_bps = 40, DONE\n- Previous data shows these are unpredictable\n\n**If 1 symbol:**\n- Proceed to Step 2\n\n**Evidence from 48 examples:**\n- Multi-symbol stories (3+ symbols) produce moves from +0.6 to +122.6 bps\n- 2.0 bps bands failed even on small moves (ORCL +1.7 bps earned -0.18 skill)\n- 40 bps is minimum safe width for multi-symbol stories\n\n**Step 2: Check candlesticks for recent large moves (MANDATORY for single-symbol or stock-specific stories)**\n\nRequest candlesticks for last 0.75 hours (45 minutes).\n\nCalculate high-low range in basis points: (high - low) / last_close * 10000\n\n**If range > 150 bps:**\n- Stock is in VIOLENT MOTION\n- Five-minute continuation/reversal could be 60-120+ bps\n- Required: half_width_bps = 60-80 MINIMUM\n- Only make directional call if you have strong conviction about continuation vs reversal\n\n**If range 75-150 bps:**\n- Stock is in elevated motion\n- Five-minute moves likely 30-60 bps\n- Required: half_width_bps = 50-60 MINIMUM\n\n**If range < 75 bps:**\n- Normal volatility\n- Proceed to Step 3\n\n**Step 3: Classify single-symbol news (only after Steps 0, 1, and 2)**\n\n**Case A: Price action already described in summary (checked in Step 0)**\n- Summary says \"fell X%\" or \"dropped after\" or \"rallied X%\"\n- The move is DONE\n- Predict delta_bps = 0, half_width_bps = 40\n- NEVER make directional continuation call\n\n**Case B: Price action language in headline ONLY (not in summary)**\n- Headline contains \"Falls,\" \"Slides,\" \"Rallies,\" \"Jumps,\" but summary doesn't quantify the move\n- These describe ongoing movement, may continue or reverse\n- Predict delta_bps = 0, half_width_bps = 40-45\n- If making directional call: half_width_bps = 50-60 MINIMUM\n\n**Case C: Corporate catalyst without price action context**\n- Earnings, M&A, rating change, regulatory action, business milestone\n- Examples: \"Lowers Price Target to $595\" (META +16.5 bps), \"Cybercab Fleet Hits 45\" (TSLA -42.3 bps)\n- Check candlesticks: has stock moved 50+ bps in last 30 minutes?\n  - If yes: likely priced in \u2192 predict delta_bps = 0, half_width_bps = 40-45\n  - If no: may be fresh \u2192 directional call if conviction, half_width_bps = 50-60 MINIMUM\n- If uncertain: predict delta_bps = 0, half_width_bps = 40\n\n**Case D: Passing mention or generic milestone story**\n- \"If You Invested $100 Ten Years Ago\"\n- Stock named in list without specific catalyst\n- Predict delta_bps = 0, half_width_bps = 35-40\n\n**MANDATORY MINIMUM WIDTHS:**\n\n1. **Multi-symbol stories (3+ symbols): 40 bps ALWAYS**\n   - Increase to 50-60 bps if headline describes violent sector action (\"Crashes,\" \"Drags Stocks\")\n   - Even small realized moves (ORCL +1.7 bps) earned negative skill with 2.0 bps bands\n   - Large realized moves (GS +21.4 bps, INTC -39.7 bps) are common\n   - Never predict directional on multi-symbol unless stock-specific catalyst for question symbol\n\n2. **Two-symbol stories: 40 bps ALWAYS**\n   - Previous data showed these are unpredictable\n   - Never predict directional on 2 symbols\n\n3. **Single-symbol, normal volatility (< 75 bps range): 40 bps MINIMUM**\n   - Increase to 50-60 bps if making directional call\n   - META analyst target (+16.5 bps realized) failed with 7.9 bps band\n   - TSLA business news (-42.3 bps realized) failed with 2.0 bps band\n\n4. **Single-symbol, elevated motion (75-150 bps range): 50-60 bps MINIMUM**\n   - Required minimum even with no directional call\n   - Stock is more volatile than baseline\n\n5. **Single-symbol, violent motion (150+ bps range): 60-80 bps MINIMUM**\n   - Stock is in extreme motion\n   - Never use band under 60 bps\n\n6. **Summary states move already happened: 40 bps, ALWAYS predict delta = 0**\n   - Making directional call on already-priced move kills skill\n\n**What kills skill (proven failures from 48 examples):**\n\n1. **Any width under 35 bps on any story** (45 failures)\n2. **2.0 bps bands on everything** (8 recent catastrophic failures)\n3. **Making directional call when summary says move already happened**\n4. **Using bands under 50 bps on single-symbol corporate news** (META 7.9 bps, TSLA 2.0 bps both failed)\n5. **Using bands under 40 bps on multi-symbol stories** (GS 2.0 bps missed by 22.4 bps)\n6. **Assuming analyst target changes or business milestones won't move price** (they do, 15-45 bps typical)\n\n**What earns skill (proven by examples that worked):**\n\n1. **Using 40+ bps width as baseline** (never go below 35 bps)\n2. **Using 50-60 bps on single-symbol corporate catalyst** (analyst calls, business news, upgrades/downgrades)\n3. **Predicting 0 \u00b1 40 on all multi-symbol stories** (unless stock-specific catalyst for question symbol)\n4. **Checking summary before making any directional call** (if it says \"fell X%\", move is done)\n5. **Checking candlesticks before single-symbol forecast** (know if stock is in motion)\n6. **Using 60-80 bps on stocks showing violent motion** (150+ bps range in last 45 minutes)\n7. **Predicting zero when uncertain** (earns 0 skill, avoids negative skill)\n\n**Default forecast when uncertain:**\n\ndelta_bps = 0, half_width_bps = 40\n\nThis is the safe baseline. Earns zero skill on average but avoids catastrophic negative skill.\n\n**Never use width below 35 bps.** The 2.0 bps bands in the latest 8 examples failed universally, missing by 0.9 to 41.9 bps and earning skill from -0.18 to +0.02.\n\n**For single-symbol corporate catalyst (analyst calls, business news, upgrades/downgrades): use 50-60 bps minimum.** META analyst target moved 16.5 bps, TSLA business news moved 42.3 bps. A 40 bps band is the floor, 50-60 bps is safer.\n\n**For multi-symbol stories: use 40 bps minimum, never make directional call unless the question symbol has a stock-specific catalyst in the headline.** GS fee revenue news (3 symbols) moved 21.4 bps. INTC on AMD upgrade (5 symbols) moved 39.7 bps.\n\n**Always read the summary before making directional calls.** If it says the move already happened, predict zero.\n\n**Always check candlesticks before single-symbol forecasts.** If stock moved 150+ bps recently, use 60-80 bps band minimum.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
