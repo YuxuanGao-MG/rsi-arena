@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen151",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\nCrucially: **predicting zero with tight width when the market moves costs you heavily**. Not only do you miss, but tight width amplifies the penalty because you claimed high confidence in the wrong answer. The formula punishes confident wrong calls much more than cautious ones.\n\n**Core insight: on a five-minute horizon, the tape's current momentum dominates. A story that names your stock does not mean the stock will move on that story.**\n\n**Critical lesson from 8 examples:**\n\n**Realized moves:** +7.3, +87.5, +0.8, +38.5, -12.3, +5.9, +14.9, +1.6 bps\n- Range: -12.3 to +87.5 bps\n- Median absolute: ~11 bps\n- 5 out of 8 exceeded 10 bps (62%)\n- 2 out of 8 exceeded 30 bps (25%)\n\n**Width performance:**\n- Example 1: 2.0 bps width, +7.3 bps realized \u2192 ran over (outside quote)\n- Example 2: 8.9 bps width, +87.5 bps realized \u2192 ran over massively (outside quote)\n- Example 3: 2.0 bps width, +0.8 bps realized \u2192 inside quote (correct)\n- Example 4: 2.0 bps width, +38.5 bps realized \u2192 ran over (outside quote)\n- Example 5: 2.0 bps width, -12.3 bps realized \u2192 ran over (outside quote)\n- Example 6: 2.0 bps width, +5.9 bps realized \u2192 ran over (outside quote)\n- Example 7: 4.3 bps width, +14.9 bps realized \u2192 ran over (outside quote)\n- Example 8: 10.6 bps width, +1.6 bps realized \u2192 inside quote (correct)\n\n**Pattern: 6 out of 8 quotes were run over. The two that survived used either 10.6 bps width (Example 8) or caught a genuinely flat move (Example 3). Widths under 10 bps failed 5 out of 7 times (71% failure rate).**\n\n**Story classification in the examples:**\n\n**Pure noise (correctly identified):**\n- Example 1 (MSFT): OpenAI GPT-5.6 improvement \u2192 generic AI news \u2192 +7.3 bps move\n- Example 3 (COP): Trump Hormuz article listing 9 symbols \u2192 +0.8 bps move\n- Example 5 (AMZN): Snap glasses article, 4 symbols \u2192 -12.3 bps move\n- Example 6 (QQQ): Long bond article, 11 symbols \u2192 +5.9 bps move\n\n**Material news (correctly identified):**\n- Example 2 (INTC): Cantor raises price target to $150 (Neutral maintained) \u2192 +87.5 bps move\n- Example 4 (ORCL): Oracle cloud layoffs (Business Insider exclusive) \u2192 +38.5 bps move\n- Example 7 (NOW): \"ServiceNow Stock Rises as...\" (headline explicitly says stock is rising) \u2192 +14.9 bps move\n- Example 8 (MSFT): Post-earnings rally article (14% jump, Azure 43% growth) \u2192 +1.6 bps move (already priced)\n\n**Key insight: The harness correctly identified noise vs. material stories. The problem was width, not story classification.**\n\n**Decision framework:**\n\n1. **Measure recent tape momentum in basis points:**\n   - Get candlesticks for the last 45 minutes (or whatever is available)\n   - Find the earliest available close in that window\n   - Calculate drift: ((current_close - earliest_close) / earliest_close) * 10000\n   \n   **Classify the momentum magnitude (absolute value):**\n   - Flat: <15 bps total drift over the window\n   - Modest: 15-40 bps drift\n   - Strong: 40-80 bps drift\n   - Very strong: 80+ bps drift\n\n2. **Classify the story's materiality to YOUR symbol:**\n   \n   **Material catalyst** (maybe 15-20% of stories):\n   - Analyst upgrade/downgrade with rating change on YOUR stock specifically\n   - Analyst price target change of 5%+ on YOUR stock specifically\n   - YOUR stock's earnings, guidance, or earnings preview\n   - Deal announcement where YOUR stock is a primary party\n   - Major business event (layoffs, restructuring, executive change)\n   - Headline explicitly says \"Stock Rises\" or \"Stock Falls\" with YOUR symbol\n   \n   **Pure noise** (80-85% of stories):\n   - Stories naming 3+ symbols (almost always noise)\n   - Market commentary pieces\n   - Industry trend pieces\n   - Stories where your symbol is mentioned in passing\n   - Post-move articles describing a move that already happened\n\n3. **Check if material news is already priced:**\n   - If story says \"stock rises/falls\" or \"best rally since...\", the move already happened\n   - If price moved 30+ bps in the direction of the catalyst in the last 10-15 minutes, it's priced\n   - Example 8: MSFT post-earnings article about 14% rally \u2192 only +1.6 bps realized \u2192 already priced\n\n4. **Forecast rules based on evidence:**\n\n   **A. For noise stories (80-85% of cases):**\n   \n   - **Flat tape (<15 bps drift):**\n     * Predict: 0 bps\n     * Width: 15 bps\n     * Logic: No signal, need protection against normal 5-15 bps drift\n   \n   - **Modest drift (15-40 bps):**\n     * Predict: 0.3 to 0.5 of the drift (e.g., 20 bps drift \u2192 predict +8 bps)\n     * Width: 15 bps\n     * Logic: Momentum may continue weakly or fade\n   \n   - **Strong drift (40-80 bps):**\n     * Predict: 0.2 to 0.3 of the drift (e.g., 60 bps drift \u2192 predict +15 bps)\n     * Width: 20 bps\n     * Logic: Strong move may persist but is less predictable\n   \n   - **Very strong drift (80+ bps):**\n     * Predict: 0.1 to 0.2 of the drift (e.g., 100 bps drift \u2192 predict +15 bps)\n     * Width: 25 bps\n     * Logic: Extreme moves are highly volatile, predict slowing but wide uncertainty\n\n   **B. For material catalyst stories (15-20% of cases):**\n   \n   **First check: has the tape already moved significantly?**\n   - If price moved 30+ bps in catalyst direction in last 10-15 min \u2192 story is priced\n   - If headline says \"stock rises\" or \"best rally\" \u2192 story is priced\n   - If priced: predict per tape momentum rules above, width 15-20 bps\n   \n   **If NOT priced yet:**\n   - Positive catalyst (upgrade, raised guidance, positive exclusive): predict +15 to +25 bps, width 25 bps\n   - Negative catalyst (downgrade, layoffs, negative exclusive): predict -15 to -25 bps, width 25 bps\n   - Width must be wide because material news can produce large moves (see Example 2: +87.5 bps)\n\n5. **Half-width selection (critical survival mechanism):**\n\n   **The evidence is unambiguous:**\n   - Widths of 2.0 bps failed in 5 out of 6 cases (83% failure rate)\n   - Width of 4.3 bps failed (1 out of 1)\n   - Width of 8.9 bps failed catastrophically on an +87.5 bps move\n   - Width of 10.6 bps succeeded (1 out of 1)\n   \n   **Realized move distribution:**\n   - 62% exceeded 10 bps\n   - 50% exceeded 7 bps\n   - 25% exceeded 30 bps\n   - One move was +87.5 bps (massive analyst target raise)\n   \n   **Your width rules:**\n   - **Absolute minimum: 15 bps** (this protects against the 62% of moves over 10 bps)\n   - **Standard for noise stories with modest/flat momentum: 15 bps**\n   - **For strong momentum (40-80 bps drift): 20 bps**\n   - **For very strong momentum (80+ bps drift): 25 bps**\n   - **For material news not yet priced: 25 bps** (protects against large reactions like +87.5 bps)\n   - **For high uncertainty (volatile tape, conflicting signals): 25-30 bps**\n   \n   **Never go below 15 bps. The 10 bps minimum mentioned in prior context was wrong - the evidence shows even that is too tight.**\n\n6. **Direction accuracy in the examples:**\n\n   - Example 1: Predicted +0.6, realized +7.3 \u2192 correct direction, wrong magnitude\n   - Example 2: Predicted -8.9, realized +87.5 \u2192 **wrong direction catastrophically**\n   - Example 3: Predicted +0.7, realized +0.8 \u2192 correct\n   - Example 4: Predicted -1.0, realized +38.5 \u2192 **wrong direction**\n   - Example 5: Predicted -1.2, realized -12.3 \u2192 correct direction, wrong magnitude\n   - Example 6: Predicted -0.1, realized +5.9 \u2192 **wrong direction**\n   - Example 7: Predicted -3.7, realized +14.9 \u2192 **wrong direction**\n   - Example 8: Predicted +2.6, realized +1.6 \u2192 correct direction, correct magnitude\n   \n   **Direction accuracy: 4 out of 8 correct (50%). This is coin-flip accuracy. The problem: trying to predict precise continuation when momentum can reverse or when material news creates unpredictable moves.**\n\n7. **Corrected approach based on failures:**\n\n   **Example 2 failure analysis (INTC):**\n   - Material news: Cantor raises target to $150\n   - Tape: Extreme volatility, dropped from 125+ to 118.79 in prior 45 min (-500+ bps crash)\n   - Predicted: -8.9 bps (following the crash momentum)\n   - Realized: +87.5 bps (massive reversal on positive catalyst)\n   - **Lesson: Material positive news can override recent negative momentum. Need to recognize catalyst dominance and use wide width for high uncertainty.**\n   \n   **Example 4 failure analysis (ORCL):**\n   - Material news: Oracle cloud layoffs (Business Insider exclusive)\n   - Tape: Dropped from 150+ to 149.38 (-300+ bps decline)\n   - Predicted: -1.0 bps (weak continuation)\n   - Realized: +38.5 bps (reversal)\n   - **Lesson: When tape shows strong recent decline, don't assume continuation. Consider reversal or wait-and-see. Need wider width.**\n   \n   **Example 7 failure analysis (NOW):**\n   - Material news: \"ServiceNow Stock Rises\" (headline explicitly states rising)\n   - Tape: Dropped from 140+ to 137.98 in prior 15 minutes (-145 bps)\n   - Predicted: -3.7 bps (following momentum)\n   - Realized: +14.9 bps (reversal matching the headline)\n   - **Lesson: When headline says \"stock rises\", that's the signal. Don't fight the stated direction.**\n\n8. **Revised decision table:**\n\n   | Tape momentum | Story type | Predicted delta | Half width | Logic |\n   |---------------|------------|-----------------|------------|-------|\n   | Flat (<15 bps) | Noise | 0 bps | 15 bps | No signal |\n   | Modest (15-40 bps) | Noise | 0.3-0.5 of drift | 15 bps | Weak continuation |\n   | Strong (40-80 bps) | Noise | 0.2-0.3 of drift | 20 bps | Momentum with uncertainty |\n   | Very strong (80+ bps) | Noise | 0.1-0.2 of drift | 25 bps | High volatility |\n   | Any | Material, priced | Per tape momentum | 15-20 bps | Move done |\n   | Flat to modest | Material, NOT priced, positive | +15 to +25 bps | 25 bps | Catalyst reaction |\n   | Flat to modest | Material, NOT priced, negative | -15 to -25 bps | 25 bps | Catalyst reaction |\n   | Strong decline | Material positive catalyst | +10 to +20 bps | 25 bps | Catalyst may reverse |\n   | Strong rise | Material negative catalyst | -10 to -20 bps | 25 bps | Catalyst may reverse |\n   | Any | Headline says \"stock rises/falls\" | Per headline direction | 20 bps | Follow stated move |\n\n9. **Your checklist for every forecast:**\n\n   1. \u2713 Get candlesticks for last 45 minutes (or available window)\n   2. \u2713 Calculate drift from earliest close to current close in basis points\n   3. \u2713 Classify drift magnitude: flat (<15), modest (15-40), strong (40-80), very strong (80+)\n   4. \u2713 Is story material news specifically about MY stock?\n   5. \u2713 If material: does headline say \"stock rises/falls\" or \"best rally/worst drop\"? \u2192 priced\n   6. \u2713 If material and not priced: is it positive or negative catalyst?\n   7. \u2713 Is my half_width_bps at least 15? (If not, STOP and fix it)\n   8. \u2713 Does my width match the uncertainty: 15 (baseline), 20 (strong momentum), 25 (very strong or material)?\n   9. \u2713 Am I treating stories with 3+ symbols as noise?\n   10. \u2713 If strong recent move opposite to catalyst direction, am I considering reversal?\n\n10. **Width philosophy - the final lesson:**\n\nYour half-width is not a confidence interval. It is a business decision about how wide a market you'll stand behind.\n\n**The evidence from 8 examples:**\n- 2 bps width: 83% failure rate (5 out of 6 quotes run over)\n- 4-9 bps width: 100% failure rate (2 out of 2 quotes run over)\n- 10+ bps width: 50% failure rate (1 out of 2 quotes run over, but the survivor had a genuinely flat 0.8 bps move)\n\n**Realized move percentiles:**\n- 25th percentile: ~2 bps\n- 50th percentile: ~11 bps\n- 75th percentile: ~25 bps\n- Max: 87.5 bps\n\n**The conclusion: 15 bps is the minimum viable width. It covers up to the 60th percentile of realized moves. For anything beyond baseline uncertainty, use 20-25 bps.**\n\n**Key principle: When uncertain between two widths, always choose the wider one.** The cost of being too tight is negative skill (worse than doing nothing). The cost of being too wide is missing fills, which scores zero (neutral).\n\n**Final summary:**\n\n1. Measure tape drift over 45 minutes in basis points\n2. Classify drift magnitude: <15 (flat), 15-40 (modest), 40-80 (strong), 80+ (very strong)\n3. Identify material news: analyst actions on YOUR stock, earnings, major business events, headlines stating \"stock rises/falls\"\n4. Check if material news is priced: headline describes past move, or price already moved 30+ bps\n5. Predict: for noise, use 0 to 0.5 of drift; for unpriced material news, use \u00b115 to \u00b125 bps\n6. Set width: 15 bps baseline, 20 bps for strong momentum, 25 bps for very strong or material news\n7. Never go below 15 bps width\n8. When direction is uncertain (conflicting signals, volatile tape), widen further and reduce delta magnitude",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
