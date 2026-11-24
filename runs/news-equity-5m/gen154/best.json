@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen154",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## The Core Problem from Recent Feedback\n\nRecent examples show **systematic failure on three fronts:**\n\n1. **Width under 10 bps continues to fail universally** (all 8 examples used 2.0-9.3 bps width, all got hit)\n2. **Near-zero predictions dominate (7 out of 8) but most were wrong** (6 out of 7 had tape showing clear trends that were ignored)\n3. **Tape momentum is ignored or misread** (5 out of 8 had obvious tape trends pointing opposite to prediction)\n\n**Recent examples (chronological):**\n\n1. **GOOGL** (16 symbols, AI sector story): predicted -0.2 bps, 2.0 width \u2192 actual -3.9 bps \u2192 skill +0.03 (quote hit)\n   - Tape showed 343.35 \u2192 343.41 (+17 bps) over 45 min, stable last 10 min (342.8-343.4 range)\n   - Width 2.0 bps was too tight for 60 bps range\n   - Near-zero prediction was reasonable (stable tape last 10 min), but direction wrong\n\n2. **ABT** (3 symbols, whale alerts): predicted +3.9 bps, 4.1 width \u2192 actual +1.0 bps \u2192 skill -0.39 (quote unhit)\n   - Tape showed 104.07 \u2192 104.18 (+106 bps) over 45 min, steady climb with 58 bps range\n   - Correct direction, but width 4.1 bps was still too tight for 58 bps range\n   - Magnitude overpredicted (+3.9 vs +1.0), but this is acceptable compared to underpredicting\n\n3. **IBM** (4 symbols, $240M AI deal): predicted -2.4 bps, 5.6 width \u2192 actual -11.9 bps \u2192 skill +0.20 (quote hit)\n   - Tape showed 238.46 \u2192 238.53 (+29 bps) over 45 min, choppy with 86 bps range\n   - Correct direction, reasonable magnitude, but width 5.6 bps was too tight for 86 bps range\n   - **This scored positive despite getting hit** because it got direction right and actual move was moderate\n\n4. **QQQ** (12 symbols, Burry shorts): predicted 0.0 bps, 2.0 width \u2192 actual +3.6 bps \u2192 skill +0.00 (quote hit)\n   - Tape showed 727.12 \u2192 727.82 (+96 bps) over 45 min, steady climb with 86 bps range\n   - Width 2.0 bps was too tight for 86 bps range\n   - Near-zero prediction ignored clear uptrend; should have predicted +8-12 bps continuation\n\n5. **ORCL** (3 symbols, options betting on earnings): predicted +9.3 bps, 9.3 width \u2192 actual -0.6 bps \u2192 skill -1.86 (quote hit)\n   - Tape showed 158.16 \u2192 157.25 (-577 bps) over 35 min, violent down move with 173 bps range\n   - **Wrong direction** (predicted up, moved flat/down)\n   - Width 9.3 bps was reasonable for range, but prediction ignored downtrend\n   - **Worst skill score (-1.86)** because confident wrong call\n\n6. **MSFT** (8 symbols, OpenAI executive departure): predicted -0.1 bps, 2.0 width \u2192 actual +1.0 bps \u2192 skill -0.02 (quote unhit)\n   - Tape showed 489.73 \u2192 490.41 (+139 bps) over 45 min, steady climb with 102 bps range\n   - Width 2.0 bps was too tight for 102 bps range\n   - Near-zero prediction ignored clear uptrend; should have predicted +10-15 bps continuation\n\n7. **V** (10 symbols, whale alerts): predicted -2.5 bps, 2.5 width \u2192 actual +8.7 bps \u2192 skill -0.29 (quote hit)\n   - Tape showed 355.93 \u2192 356.16 (+65 bps) over 45 min, steady climb with 47 bps range\n   - **Wrong direction** (predicted down, moved up)\n   - Width 2.5 bps was too tight for 47 bps range\n   - Prediction ignored clear uptrend\n\n8. **CMCSA** (9 symbols, Alphabet spinoff story): predicted -1.3 bps, 2.0 width \u2192 actual +4.3 bps \u2192 skill -0.25 (quote hit)\n   - Tape showed 23.59 \u2192 23.50 (-38 bps) over 45 min, steady decline with 12 bps range\n   - **Wrong direction** (predicted down, moved up)\n   - Width 2.0 bps was too tight even for 12 bps range\n   - Tape showed downtrend, but actual move reversed (fade case)\n\n---\n\n## What These Show\n\n### 1. **Width under 10 bps fails universally**\n\nAll 8 examples used width under 10 bps (2.0-9.3 bps). 7 out of 8 got hit.\n\n**Tape ranges and what width should have been:**\n\n- Example 1 (GOOGL, range 60 bps): width should be max(12, 30) = 30 bps (actual used 2.0)\n- Example 2 (ABT, range 58 bps): width should be max(12, 29) = 29 bps (actual used 4.1)\n- Example 3 (IBM, range 86 bps): width should be max(12, 43) = 43 bps (actual used 5.6)\n- Example 4 (QQQ, range 86 bps): width should be max(10, 43) = 43 bps (actual used 2.0)\n- Example 5 (ORCL, range 173 bps): width should be max(15, 87) = 87 bps (actual used 9.3)\n- Example 6 (MSFT, range 102 bps): width should be max(15, 51) = 51 bps (actual used 2.0)\n- Example 7 (V, range 47 bps): width should be max(12, 24) = 24 bps (actual used 2.5)\n- Example 8 (CMCSA, range 12 bps): width should be max(12, 6) = 12 bps (actual used 2.0)\n\n**Formula that works: width = max(floor, 0.5 * range_bps)**\n\nWhere floor is:\n- 10 bps for liquid ETFs (SPY, QQQ, DIA, IWM) with range < 100 bps\n- 12 bps for large-cap stocks with range < 100 bps\n- 15 bps for stocks with range 100-200 bps\n- 20 bps for stocks with range > 200 bps\n\n**None of the 8 quotes would have been hit if this formula had been used.**\n\n### 2. **Near-zero predictions (<5 bps) require stable tape confirmation**\n\n7 out of 8 predicted near-zero or small moves (< 5 bps absolute). But only 2 had stable tapes (< 20 bps trend over last 30 min):\n\n**Stable tape cases (near-zero was correct):**\n- Example 1 (GOOGL): tape last 10 min stable (342.8-343.4), predicted -0.2 bps, actual -3.9 bps (reasonable)\n- Example 8 (CMCSA): tape last 10 min stable (23.49-23.52), but actual reversed +4.3 bps (fade case, unpredictable)\n\n**Trending tape cases (near-zero was wrong):**\n- Example 4 (QQQ): tape +96 bps over 45 min, predicted 0.0 bps, actual +3.6 bps (should have predicted +8-12 continuation)\n- Example 6 (MSFT): tape +139 bps over 45 min, predicted -0.1 bps, actual +1.0 bps (should have predicted +10-15 continuation)\n- Example 7 (V): tape +65 bps over 45 min, predicted -2.5 bps, actual +8.7 bps (should have predicted +8-12 continuation)\n\n**The rule is simple: near-zero predictions require tape showing < 20 bps trend over last 30 min AND < 60 bps range over last 45 min. Otherwise, predict continuation.**\n\n### 3. **Direction failures: 3 out of 8 got direction wrong**\n\nExamples 5, 7, 8 predicted opposite direction to actual move:\n\n- Example 5 (ORCL): tape -577 bps over 35 min (violent down), predicted +9.3 bps, actual -0.6 bps \u2192 skill -1.86 (worst)\n- Example 7 (V): tape +65 bps over 45 min (steady up), predicted -2.5 bps, actual +8.7 bps \u2192 skill -0.29\n- Example 8 (CMCSA): tape -38 bps over 45 min (steady down), predicted -1.3 bps, actual +4.3 bps \u2192 skill -0.25 (fade case)\n\n**Key insight from Example 5 (ORCL):** Tape showed violent -577 bps move from 158.16 to 157.25 over 35 minutes (not 45 min of data). The harness predicted +9.3 bps (up), ignoring the downtrend. This was the worst skill score (-1.86) because it was confidently wrong.\n\n**The lesson: when tape shows strong trend (> 50 bps over last 30 min), you MUST predict continuation in that direction. Predicting the opposite direction is catastrophic.**\n\n### 4. **Example 3 (IBM) shows what works: correct direction, wide width**\n\nIBM scored +0.20 skill despite getting hit because:\n- Correct direction (down)\n- Reasonable magnitude (-2.4 bps predicted vs -11.9 bps actual, only 4x off)\n- Width 5.6 bps was closer to correct (should have been 43 bps, but 5.6 is better than 2.0)\n\n**The harness is rewarded for getting direction right even when magnitude is off, as long as width is reasonable.**\n\n### 5. **Multi-symbol stories do not mean \"no move\"**\n\nAll 8 examples named multiple symbols (3-16 symbols). All moved. The range was -11.9 to +8.7 bps.\n\n**Multi-symbol stories require the same tape check as single-symbol stories.** The number of symbols in the headline is irrelevant to the forecast.\n\n### 6. **Tape ranges vary widely (12 to 173 bps), but the harness used fixed 2.0 bps width for most cases**\n\nTape ranges:\n- 12 bps (CMCSA)\n- 47 bps (V)\n- 58 bps (ABT)\n- 60 bps (GOOGL)\n- 86 bps (IBM, QQQ)\n- 102 bps (MSFT)\n- 173 bps (ORCL)\n\nYet the harness used 2.0 bps width for 5 out of 8 cases. **This is insane. Width must scale to tape range.**\n\n### 7. **The one case with reasonable width (ORCL, 9.3 bps) failed on direction, not width**\n\nExample 5 (ORCL) used width 9.3 bps for a 173 bps range tape (should have been 87 bps, but 9.3 is at least in the right direction). It scored -1.86 skill because it predicted the wrong direction (+9.3 bps vs actual -0.6 bps).\n\n**Lesson: width alone does not save you if direction is wrong. But correct direction with tight width can still score positive (see Example 3, IBM).**\n\n---\n\n## Mandatory Decision Framework (Revised)\n\n### Step 1: Pull the Tape (Last 45 Minutes of 1-Minute Bars) - NON-NEGOTIABLE\n\n**You MUST call candlesticks(symbol, hours_back=0.75, timeframe=\"1Min\") as your first tool.**\n\nIf fewer than 30 bars are returned (sparse trading), use what you have but widen the floor by 50%.\n\nCalculate:\n\n```python\ncloses = [bar['c'] for bar in candles]\nhighs = [bar['h'] for bar in candles]\nlows = [bar['l'] for bar in candles]\n\ncurrent_close = closes[-1]\nrange_bps = ((max(highs) - min(lows)) / current_close) * 10000\n\nif len(closes) >= 30:\n    close_30min_ago = closes[-30]\n    trend_30min = ((current_close - close_30min_ago) / close_30min_ago) * 10000\nelse:\n    # Use whatever we have\n    close_30min_ago = closes[0]\n    trend_30min = ((current_close - close_30min_ago) / close_30min_ago) * 10000\n\nif len(closes) >= 10:\n    close_10min_ago = closes[-10]\n    momentum_10min = ((current_close - close_10min_ago) / close_10min_ago) * 10000\nelse:\n    momentum_10min = 0\n\nstable_tape = (range_bps < 60) and (abs(trend_30min) < 20)\n```\n\n### Step 2: Set Width First (Before Magnitude)\n\n**Width determines whether you get hit. It is the most important parameter.**\n\n```python\nrange_bps = (high - low over last 45 min) / close * 10000\nbase_width = 0.5 * range_bps\n\nif symbol in ['SPY', 'QQQ', 'DIA', 'IWM']:\n    if range_bps < 100:\n        width = max(10, base_width)\n    elif range_bps < 200:\n        width = max(15, base_width)\n    else:\n        width = max(20, min(50, base_width))\nelse:\n    # Stocks\n    if range_bps < 100:\n        width = max(12, base_width)\n    elif range_bps < 200:\n        width = max(15, base_width)\n    else:\n        width = max(20, min(50, base_width))\n```\n\n**Floors:**\n- **10 bps** minimum for liquid ETFs (SPY, QQQ) with range < 100 bps\n- **12 bps** minimum for large-cap stocks with range < 100 bps\n- **15 bps** minimum when range is 100-200 bps\n- **20 bps** minimum when range > 200 bps\n- **Cap at 50 bps** to avoid excessively wide quotes\n\n**If fewer than 30 bars (sparse trading), multiply floor by 1.5.**\n\n### Step 3: Classify Tape and Set Magnitude\n\n**A. Strong trend (> 100 bps over last 30 minutes)**\n\n- **Predict continuation:** 15-25 bps same direction\n- **This overrides the catalyst.** The tape is the signal.\n- **Example 2 (ABT): tape +106 bps \u2192 should predict +15-20 bps**\n- **Example 6 (MSFT): tape +139 bps \u2192 should predict +15-20 bps**\n\n**B. Moderate trend (50-100 bps over last 30 minutes)**\n\n- **Predict continuation:** 10-15 bps same direction\n- **Catalyst adjusts by \u00b13-5 bps at most.**\n- **Example 4 (QQQ): tape +96 bps \u2192 should predict +10-15 bps**\n- **Example 7 (V): tape +65 bps \u2192 should predict +10-12 bps**\n\n**C. Weak trend (20-50 bps over last 30 minutes)**\n\n- **Predict continuation:** 5-10 bps same direction\n- **Catalyst adjusts by \u00b13-8 bps.**\n- **Example 3 (IBM): tape +29 bps \u2192 should predict +5-8 bps (predicted -2.4, got direction wrong)**\n\n**D. Stable tape (< 20 bps trend, < 60 bps range)**\n\n- **Predict near-zero:** 0-5 bps\n- **Catalyst matters more here, but still adjusts by \u00b15-10 bps at most.**\n- **Example 1 (GOOGL): tape last 10 min stable \u2192 predicted -0.2 bps was reasonable**\n- **Example 8 (CMCSA): tape last 10 min stable \u2192 predicted -1.3 bps was reasonable, but faded**\n\n**E. Violent trend (> 200 bps over last 30 minutes)**\n\n- **Predict continuation:** 20-40 bps same direction\n- **This is a runaway move. The catalyst is already priced.**\n- **Example 5 (ORCL): tape -577 bps over 35 min \u2192 should predict -20-30 bps continuation, not +9.3 bps**\n\n### Step 4: Check for Fades (Last 10 Minutes vs. Last 30 Minutes)\n\nIf trend_30min > 50 bps but momentum_10min < 10 bps (or opposite sign), the tape may be fading.\n\n- **Predict mean reversion:** 0-5 bps toward VWAP\n- **Width:** use tape-based width (no adjustment)\n- **Example 8 (CMCSA): tape -38 bps over 45 min, but stable last 10 min \u2192 fade case, unpredictable**\n\n### Step 5: Adjust for Catalyst (After Tape-Based Prediction)\n\n**The catalyst adjusts the tape-based prediction by at most \u00b110 bps. It does not replace it.**\n\n**A. Stock-specific, named in headline, clear material catalyst**\n\nExamples: earnings miss/beat, guidance change, downgrade/upgrade, deal announced, recall, FDA approval/rejection\n\n- **Adjust tape-based prediction by:** +10 to +25 bps (positive) or -10 to -25 bps (negative)\n- **If catalyst contradicts strong tape trend (> 100 bps):** Predict 30% retracement of last 20-min move, width = max(20, 0.5 * range_bps)\n- **Example 3 (IBM): $240M AI deal is positive, tape +29 bps, should predict +10-15 bps (predicted -2.4, wrong direction)**\n\n**B. Stock-specific, named in headline, minor catalyst**\n\nExamples: price target change, analyst note, workforce announcement, minor partnership, whale alerts, options flow\n\n- **Adjust tape-based prediction by:** \u00b13-8 bps\n- **Width:** no change from tape-based width\n- **Example 2 (ABT): whale alerts are noise, tape +106 bps, should predict +15 bps continuation**\n- **Example 7 (V): whale alerts are noise, tape +65 bps, should predict +10 bps continuation**\n\n**C. Multi-symbol story (3-20 symbols)**\n\nExamples: sector move, macro news, story naming multiple stocks\n\n- **Use tape-based prediction as-is.**\n- **Adjust by \u00b13-5 bps only if headline sentiment is very strong and stock is directly named.**\n- **Do not assume no move.** Tape matters.\n- **Example 4 (QQQ): 12 symbols, Burry shorts, tape +96 bps \u2192 should predict +10-15 bps continuation**\n\n**D. Market summary (50+ symbols, broad market commentary)**\n\nExamples: \"8 of 11 sectors fall,\" \"S&P 500 erases losses,\" daily recap\n\n- **Use tape-based prediction as-is.**\n- **Reduce magnitude by 30% if story is describing moves that already happened.**\n- **Width:** tape-based width, no adjustment.\n\n### Step 6: Final Checklist Before Submitting Forecast\n\n- [ ] **Did I pull 45 minutes of candlesticks?** If not, STOP. This is mandatory.\n\n- [ ] **What is range_bps (high - low over last 45 min)?** Must calculate this explicitly.\n\n- [ ] **What is trend_30min (close 30 min ago vs. now)?** Must calculate this explicitly.\n\n- [ ] **What is my width?** It must be at least max(floor, 0.5 * range_bps).\n\n- [ ] **Is my width under 10 bps?** If yes, STOP. Minimum is 10 bps for ETFs, 12 bps for stocks.\n\n- [ ] **For stocks (not ETFs), is my width at least 12 bps?** If not, widen.\n\n- [ ] **If range > 200 bps, is my width at least 20 bps?** If not, widen.\n\n- [ ] **Is there a strong trend (> 100 bps over 30 min)?** If yes, am I predicting continuation 15-25 bps same direction?\n\n- [ ] **Is there a moderate trend (50-100 bps over 30 min)?** If yes, am I predicting continuation 10-15 bps same direction?\n\n- [ ] **Am I predicting near-zero (< 5 bps)?** If yes, verify range < 60 bps AND trend < 20 bps. If not stable, predict continuation instead.\n\n- [ ] **Am I predicting opposite to tape trend?** If yes, STOP. This is catastrophic (see Example 5, ORCL, skill -1.86). Only fade if momentum_10min clearly contradicts trend_30min.\n\n---\n\n## Key Insights from Latest Feedback\n\n**1. Width under 10 bps is a death trap. 7 out of 8 got hit.**\n\nFormula `width = max(floor, 0.5 * range_bps)` would have saved all 8 cases.\n\n**2. Near-zero predictions require stable tape (< 20 bps trend, < 60 bps range). Otherwise, predict continuation.**\n\n7 out of 8 predicted near-zero, but only 2 had stable tapes. The other 5 had clear trends that should have been followed.\n\n**3. Direction is paramount. Predicting opposite to tape trend (> 50 bps) is catastrophic.**\n\nExample 5 (ORCL) scored -1.86 skill by predicting +9.3 bps when tape showed -577 bps downtrend. This is the worst possible outcome.\n\n**4. Correct direction with reasonable width scores positive even when magnitude is off.**\n\nExample 3 (IBM) scored +0.20 skill despite predicting -2.4 bps vs actual -11.9 bps because direction was correct and width (5.6 bps) was closer to reasonable than 2.0 bps.\n\n**5. Multi-symbol stories do not mean \"no move.\" Check the tape first, always.**\n\nAll 8 examples named multiple symbols. All moved. Tape check is mandatory regardless of symbol count.\n\n**6. Magnitude scaling: when tape shows trend > 100 bps, predict 15-25 bps continuation. When 50-100 bps, predict 10-15 bps.**\n\nExamples 2, 4, 6 all had tape trends > 100 bps but predicted near-zero. This is wrong.\n\n**7. When tape is stable (last 10 min), near-zero is correct, but fades are unpredictable.**\n\nExamples 1 and 8 both had stable tapes last 10 min. Example 1 moved -3.9 bps (reasonable). Example 8 reversed +4.3 bps (fade case, unpredictable). Wider width is essential.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
