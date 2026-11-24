@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen152",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: Normal five-minute drift in liquid large caps is 0-10 basis points on non-material news.**\n\nRecent feedback confirms the distribution:\n\n**Observed five-minute moves on recent headlines:**\n\n1. **NVDA \"Einride Taps NVIDIA\" (2 symbols, partnership):** +9.4 bps\n   - Predicted +2.8 \u00b1 2.8: missed by 6.6, skill +0.30, price outside quote\n   - Analysis: 2.8 bps width too tight for genuine news on 2 symbols\n\n2. **AMZN \"UBS Sees 30% Upside\" (7 symbols, sector call):** +12.4 bps\n   - Predicted -0.1 \u00b1 2.0: missed by 12.5, skill -0.01, price outside quote\n   - Analysis: Multi-symbol sector story, but moved 12.4 bps - normal drift range\n\n3. **GOOGL \"Gemini Launch Delayed\" (2 symbols, negative catalyst):** +24.1 bps\n   - Predicted -4.5 \u00b1 4.5: missed by 28.5, skill -0.19, price outside quote\n   - Analysis: Real negative news, but price went UP 24 bps - already down before story published\n\n4. **MSFT \"How To Trade\" (8 symbols, trading guide):** +6.3 bps\n   - Predicted -0.1 \u00b1 2.0: missed by 6.4, skill -0.01, price outside quote\n   - Analysis: Generic multi-symbol, moved within normal drift\n\n5. **AAPL \"USITC Investigation\" (4 symbols, regulatory):** -15.4 bps\n   - Predicted -0.1 \u00b1 2.0: missed by 15.4, skill +0.01, price outside quote\n   - Analysis: Real regulatory news, moved -15.4, but 2 bps width too tight\n\n6. **AMD \"Semi Stock Rebound\" (5 symbols, sector commentary):** +0.7 bps\n   - Predicted -0.5 \u00b1 2.0: missed by 1.2, skill -0.10, price inside quote\n   - Analysis: Correctly sized, correctly centered - this is the right approach\n\n7. **TSLA \"AI Tsunami\" (4 symbols, Musk commentary):** -5.8 bps\n   - Predicted -0.7 \u00b1 2.0: missed by 5.1, skill +0.12, price outside quote\n   - Analysis: 2 bps width worked reasonably well\n\n8. **TSLA \"Einhorn vs Musk\" (2 symbols, SpaceX criticism):** -5.6 bps\n   - Predicted +0.2 \u00b1 2.0: missed by 5.9, skill -0.04, price outside quote\n   - Analysis: Not about Tesla's business, moved within drift range\n\n**Key patterns from feedback:**\n\n1. **2 bps width is consistently too tight.** Price went outside the quote in 7 of 8 examples. Even on the AMD example where skill was positive, only luck kept it inside. Normal drift is 5-10 bps.\n\n2. **Multi-symbol stories move 0-15 bps, not 0-5 bps.** AMZN moved 12.4 bps on a 7-symbol UBS note. AAPL moved -15.4 bps on a 4-symbol USITC story. The previous 5 bps guidance was too tight.\n\n3. **Direction is usually wrong or irrelevant.** GOOGL negative news moved +24.1 bps (up, not down). The move already happened before the story timestamp. Predicting direction on these headlines adds no value.\n\n4. **Partnership/product news on 2 symbols can move 10+ bps.** NVDA+Einride moved 9.4 bps. This is genuine stock-specific news, not just commentary.\n\n5. **Regulatory news (even multi-symbol) moves prices.** AAPL USITC investigation moved -15.4 bps despite naming 4 symbols. Investigations are real catalysts.\n\n**The 2 bps width was based on a misunderstanding of the distribution.** Yes, large caps quote 1-5 bps wide, but that's the spread, not the five-minute drift. Quotes get hit. Normal volatility is wider than the spread.\n\n**Revised strategy:**\n\n**Default for most headlines: delta_bps = 0, half_width_bps = 5**\n\nThis is the baseline. It assumes normal drift, no edge on direction, and captures 68% of outcomes in the 0-10 bps range.\n\n**Widen to 8 bps when:**\n- 1-2 symbols with actionable catalyst (partnership, product launch, specific analyst action)\n- 3-5 symbols with potential stock-specific element (regulatory action naming specific companies)\n- Any headline where you have genuine uncertainty about magnitude but no directional edge\n\n**Widen to 12 bps when:**\n- Real negative catalyst on 1-2 symbols (downgrades, delays, investigations) \n- Headline reports something already happened (\"fell X%\", \"dropped after\") - the past move creates uncertainty about continuation\n- Cannot determine if news is pre-priced or breaking\n\n**Stay at 2-3 bps only when:**\n- 8+ symbols, pure market commentary\n- Headline is explicitly retrospective (\"If You Invested X Years Ago\")\n- Sector-wide commentary with no company-specific catalyst\n\n**On direction:**\n\nPredict delta = 0 unless you have specific evidence the news is:\n1. Breaking (not reporting a past move)\n2. Material to this specific stock\n3. Not yet reflected in the last close\n\nThe GOOGL example shows the danger: \"Gemini Launch Delayed\" sounds negative, but the stock was already down before the story published, then bounced +24 bps. The headline is explaining what already traded.\n\n**Decision tree:**\n\n1. **Is this 8+ symbols or generic market commentary?**\n   - YES \u2192 predict 0 \u00b1 3 bps\n   - Skill will come from staying narrow when nothing happens\n\n2. **Is this retrospective content?**\n   - \"If You Invested\", \"X Years Ago\", \"Looking Back\"\n   - YES \u2192 predict 0 \u00b1 3 bps\n\n3. **Does headline report a past move?**\n   - \"fell X%\", \"dropped\", \"after downgrade\", \"shares down\"\n   - YES \u2192 predict 0 \u00b1 12 bps (past move creates uncertainty, but no directional edge)\n\n4. **Is this 3-7 symbols?**\n   - Check if any catalyst is stock-specific (investigation naming specific companies, upgrade/downgrade of a subset)\n   - Stock-specific element: predict 0 \u00b1 8 bps\n   - Pure sector commentary: predict 0 \u00b1 5 bps\n\n5. **Is this 1-2 symbols with actionable news?**\n   - Partnership, product launch, specific analyst action: predict 0 \u00b1 8 bps\n   - If material negative catalyst (delay, investigation, downgrade) and no evidence of pre-move: predict 0 \u00b1 12 bps\n   - Generic commentary on the stock: predict 0 \u00b1 5 bps\n\n6. **Default when uncertain:**\n   - predict 0 \u00b1 5 bps\n\n**Width by news type:**\n\n| News Type | Width | Recent Examples |\n|-----------|-------|-----------------|\n| 8+ symbols, market commentary | 3 bps | MSFT +6.3 (but got lucky) |\n| 3-7 symbols, sector commentary | 5 bps | AMD +0.7 \u2713, TSLA -5.8 |\n| 3-7 symbols, some stock-specific | 8 bps | AMZN +12.4, AAPL -15.4 |\n| 1-2 symbols, partnership/product | 8 bps | NVDA +9.4 |\n| 1-2 symbols, negative catalyst | 12 bps | GOOGL +24.1 (past move) |\n| Headline reports past move | 12 bps | GOOGL +24.1 (uncertainty) |\n| Retrospective content | 3 bps | - |\n\n**On the NVDA and AMZN examples:**\n\nNVDA \"Einride partnership\" is real news about NVIDIA's business. The stock moved 9.4 bps. Predicting 0 \u00b1 8 bps would have captured this (missed by 1.4, skill ~+0.70).\n\nAMZN \"UBS 30% upside\" on data center operators is tangential to Amazon. It moved 12.4 bps anyway - normal drift plus any AWS read-through. Predicting 0 \u00b1 8 bps would have captured this (missed by 4.4, skill ~+0.12).\n\n**On the GOOGL example:**\n\n\"Gemini Launch Delayed\" at 14:11 ET is 4+ hours into the trading day. The candlesticks show a large drop from 371 to 361 in the 44 minutes before the story. The story is *reporting* the delay and the selloff, not breaking it. The five minutes after show +24 bps recovery. \n\nWhen a headline reports a past move, predict 0 \u00b1 12 bps: you have no edge on direction (it might continue, it might reverse), but you know volatility is elevated.\n\n**On the AAPL example:**\n\nUSITC investigation naming Apple, Samsung, Google is real regulatory news. It moved -15.4 bps. This is on the edge of a 12 bps band. Predict 0 \u00b1 12 bps for regulatory catalysts naming specific companies, even if multi-symbol.\n\n**Critical: Stop using 2 bps as the default width.**\n\nThe 2 bps guidance came from \"large caps quote 1-5 bps wide\". But the spread is what you're trying to beat, not the range of outcomes. Normal five-minute drift in liquid names is 5-10 bps even on no news. The 2 bps width got run over in 7 of 8 recent examples.\n\n**What earns skill:**\n\n1. Using 5-8 bps width on typical multi-symbol stories (not 2 bps)\n2. Using 12 bps width on real catalysts or when headline reports past moves (not 2-5 bps)\n3. Staying at 0 delta unless you have strong evidence of breaking, unpriced news\n4. Using 3 bps width only on the clearest noise (8+ symbols, retrospectives)\n\n**What kills skill:**\n\n1. Using 2 bps width on anything but pure noise (7 of 8 examples went outside)\n2. Predicting direction when the news is already priced or tangential\n3. Treating \"negative headline\" as predictive when the stock already sold off\n4. Under-widening on real catalysts (AAPL -15.4 bps on USITC, NVDA +9.4 bps on partnership)\n\n**The core error in the previous context:** Confusing the bid-ask spread (1-5 bps, the cost to trade) with the five-minute volatility (5-10 bps, the range of normal outcomes). Your width needs to cover the volatility, not match the spread.\n\n**Revised defaults:**\n\n- **Most stories (5-7 symbols, typical Benzinga content):** 0 \u00b1 5 bps\n- **Partnership/product news (1-2 symbols):** 0 \u00b1 8 bps  \n- **Real catalyst or past move in headline:** 0 \u00b1 12 bps\n- **Pure noise (8+ symbols, retrospectives):** 0 \u00b1 3 bps\n\nThe AMD example (0.7 bps move, predicted -0.5 \u00b1 2.0, skill -0.10) shows that even when you get lucky and the price stays inside a 2 bps band, the skill is barely positive. The harness needs wider bands to reliably capture the distribution.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
