@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen156",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no change, and saying so is the right answer.\n\nThe harness earns skill by calling direction and size correctly. The skill formula is 1 minus (your error / no-change error), pooled across forecasts. This means:\n- Missing by the same amount as no-change scores exactly zero\n- Missing by less scores positive (your error was smaller)\n- Missing by more scores negative (you did worse than silence)\n- When the stock doesn't move, no-change error is floored at 5 bps, so your tiny miss can still score negative\n\n**Crucially: predicting near-zero with tight width when the market moves costs you heavily.** Not only do you miss, but you get run over on paper trades and your confident wrong call amplifies the skill penalty. The formula punishes confident misses much more than cautious ones.\n\n---\n\n## **The Pattern from Recent Errors**\n\nThe harness systematically predicts near-zero (-2.6 to +0.4 bps) with 2.0 bps width on stories where stocks then move -51.4 to +107.6 bps. Eight recent examples show the problem:\n\n1. **INTC \"A Congress Member Sold Up To $30K In General Dynamics Stock\" (3 symbols, GD congressional trade disclosure)**: predicted -5.1 bps (5.1 width), actual +107.6 bps \u2014 member sold GD, not INTC; INTC named in passing; stock was rallying hard last 45 mins (129.12 \u2192 130.11, +76 bps), continued to 131.51; correct direction but vastly underestimated continuation, skill -0.05\n\n2. **META \"What Is Going On With Arm Stock On Tuesday?\" (9 symbols, ARM up 4% on AI rack-scale CPU role)**: predicted +0.4 bps (2.0 width), actual -36.8 bps \u2014 headline is about ARM, not META; META named in list of tech stocks; META was dropping sharply last 45 mins (655.07 \u2192 648.96, -93 bps), continued down; wrong direction, 2.0 width far too tight for ongoing selloff, skill -0.01\n\n3. **INTC \"Why Is SK Hynix Stock Surging Thursday?\" (8 symbols, SKHY/memory chips rally on SanDisk outlook + AI demand)**: predicted -2.6 bps (2.6 width), actual +24.2 bps \u2014 headline is about SK Hynix, not INTC; INTC named in memory chip sector list; tape was drifting down slightly (105.74 \u2192 105.28, -44 bps) then reversed up; wrong direction, 2.6 width too tight, skill -0.11\n\n4. **SPY \"Fed's Goolsbee On Wired Says 'Labor Market Is Stable, Without Being Good'\" (1 symbol, dovish Fed speech)**: predicted -0.1 bps (2.0 width), actual -2.5 bps \u2014 Goolsbee saying \"stable, without being good\" is neutral-to-dovish (acknowledges weakness without panic); tape was flat (772.25 unchanged last 45 mins); correct direction, correct magnitude, but got lucky \u2014 2.0 width is still too tight for Fed speech, skill +0.02\n\n5. **QQQ \"S&P 500 Gains, Crude Falls Ahead Of Fed's Expected First Hike Since 2023\" (100+ symbols, market recap)**: predicted -0.1 bps (2.0 width), actual -0.7 bps \u2014 market recap with 100+ symbols describes moves already done; tape was flat (710.13 unchanged last 45 mins); correct direction and magnitude, but 2.0 width is too tight even for market recap on flat tape, skill +0.02\n\n6. **QQQ \"Oil Rises As US Strikes Iran; Warsh's Hawkishness Reverberates; Weak Stock Market Seasonality Ahead\" (12 symbols, market recap)**: predicted -0.2 bps (2.0 width), actual +4.1 bps \u2014 market recap with 12 symbols describes moves already done; tape was drifting up slightly (713.9 \u2192 714.0 last few minutes); wrong direction (predicted down, went up), 2.0 width too tight, skill -0.03\n\n7. **AMZN \"'Microsoft Gives Salespeople Tips to Knock Down Anthropic, OpenAI' - Bloomberg\" (4 symbols, MSFT competitive strategy vs Anthropic/OpenAI)**: predicted -0.6 bps (2.0 width), actual -51.4 bps \u2014 headline is about Microsoft's AI competitive strategy; AMZN named because it backs Anthropic (competitor to MSFT); AMZN was rallying hard last 45 mins (251.78 \u2192 255.79, +159 bps on huge volume spike at 14:01-14:36), then reversed sharply down; correct direction on reversal, but vastly underestimated magnitude, 2.0 width far too tight, skill +0.01\n\n8. **AMZN \"'Anthropic to stop Decart AI deal while investing in counts ahead of expected IPO' - Bloomberg\" (3 symbols, Anthropic M&A and IPO news)**: predicted -1.7 bps (2.0 width), actual +14.1 bps \u2014 headline is about Anthropic stopping a deal and preparing for IPO; AMZN is Anthropic's largest investor; Anthropic IPO would be liquidity event for AMZN, potentially positive; tape was dropping sharply (256.435 \u2192 255.04, -54 bps last 45 mins) then stabilized; wrong direction (predicted down, went up), 2.0 width too tight, skill -0.12\n\n---\n\n## **What These Reveal**\n\n### **1. When the stock is named in passing (not the headline subject) and the tape is running hard, predict continuation at 50-80% of the recent move with 15-25 bps width**\n\n- **INTC \"Congress Member Sold GD Stock\" (INTC named in passing, not headline subject)**: Tape rallied +76 bps last 45 mins (129.12 \u2192 130.11), continued +107.6 bps next 5 mins\n- **Predicted -5.1 bps (5.1 width), should have predicted +40 to +60 bps with 20 bps width**\n- **When stock is not the headline subject but tape is running hard (40+ bps move last 45 mins), predict 50-80% continuation with 15-25 bps width**\n\n### **2. When the stock is named in passing and the tape is moving sharply, predict continuation in tape direction with 10-20 bps width, never predict reversal unless there's a catalyst**\n\n- **META \"What Is Going On With Arm Stock\" (META named in tech stock list, not headline subject)**: Tape dropped -93 bps last 45 mins (655.07 \u2192 648.96), continued -36.8 bps next 5 mins\n- **Predicted +0.4 bps (2.0 width), should have predicted -20 to -40 bps with 15 bps width**\n- **When stock is named in passing and tape is moving sharply (50+ bps last 45 mins), predict 20-40% continuation in tape direction with 10-20 bps width**\n\n### **3. When the stock is named in a sector list (not the headline subject) and tape is flat or drifting, predict 0-5 bps with 8-12 bps width**\n\n- **INTC \"Why Is SK Hynix Stock Surging\" (INTC named in memory chip sector list)**: Tape drifted -44 bps last 45 mins (105.74 \u2192 105.28), then reversed +24.2 bps\n- **Predicted -2.6 bps (2.6 width), should have predicted 0-5 bps with 10 bps width**\n- **When stock is named in sector list and tape is drifting, predict 0-5 bps with 8-12 bps width** (high uncertainty on continuation vs reversal)\n\n### **4. Fed speeches: \"Labor Market Is Stable, Without Being Good\" is neutral-to-dovish, not hawkish; predict 0-5 bps with 6-10 bps width when tape is flat**\n\n- **SPY \"Fed's Goolsbee Says Labor Market Is Stable, Without Being Good\" (1 symbol)**: Tape was flat (772.25 unchanged last 45 mins), moved -2.5 bps\n- **Predicted -0.1 bps (2.0 width), correct direction and magnitude, but 2.0 width is too tight for Fed speech**\n- **Fed speech describing labor market as \"stable, without being good\" is neutral-to-dovish** (acknowledges weakness without panic)\n- **When Fed speech is neutral-to-dovish and tape is flat, predict 0-5 bps with 6-10 bps width**\n\n### **5. Market recap (10+ symbols) on flat tape: predict 0-3 bps with 4-8 bps width, never 2.0 bps**\n\n- **QQQ \"S&P 500 Gains, Crude Falls Ahead Of Fed's Expected First Hike Since 2023\" (100+ symbols)**: Tape flat (710.13 unchanged last 45 mins), moved -0.7 bps\n- **Predicted -0.1 bps (2.0 width), correct but 2.0 width too tight**\n- **QQQ \"Oil Rises As US Strikes Iran; Warsh's Hawkishness Reverberates\" (12 symbols)**: Tape drifting up (713.9 \u2192 714.0), moved +4.1 bps\n- **Predicted -0.2 bps (2.0 width), wrong direction and 2.0 width too tight**\n- **Market recap (10+ symbols) describes moves already done or underway**\n- **On flat tape, predict 0-3 bps with 4-8 bps width**\n- **On drifting tape, predict 0-5 bps continuation in tape direction with 6-10 bps width**\n\n### **6. When stock is an investor in a company mentioned in headline (e.g., AMZN backs Anthropic), and tape is running hard, predict reversal or continuation based on volume spike pattern**\n\n- **AMZN \"Microsoft Tips to Knock Down Anthropic, OpenAI\" (AMZN backs Anthropic)**: Tape rallied +159 bps last 45 mins (251.78 \u2192 255.79) with huge volume spike at 14:01-14:36, then reversed -51.4 bps\n- **Predicted -0.6 bps (2.0 width), correct direction on reversal but vastly underestimated**\n- **AMZN \"Anthropic to Stop Decart AI Deal, IPO Ahead\" (AMZN is Anthropic's largest investor)**: Tape dropped -54 bps last 45 mins (256.435 \u2192 255.04), then reversed +14.1 bps\n- **Predicted -1.7 bps (2.0 width), wrong direction (predicted down, went up)**\n- **When stock is an investor in company mentioned in headline:**\n  - **If tape rallied hard (100+ bps) with volume spike in last 15-20 mins, then volume drops off \u2192 predict 20-40 bps reversal down with 15-25 bps width** (exhaustion)\n  - **If tape dropped hard (40+ bps) last 45 mins and volume is normalizing \u2192 predict 10-20 bps reversal up with 10-15 bps width** (oversold bounce)\n  - **Never predict under 10 bps on these setups**\n\n### **7. Volume spike exhaustion: when tape rallies 100+ bps with volume spike in last 15-20 mins, then volume drops off, predict 20-50 bps reversal down with 15-25 bps width**\n\n- **AMZN rallied 251.78 \u2192 255.79 (+159 bps) with volume spike at 14:01 (7485 shares, previous avg ~3000-5000), then volume dropped to 2707 at 14:36, reversed -51.4 bps next 5 mins**\n- **This is exhaustion: big rally on volume spike, then volume dries up \u2192 predict reversal**\n- **When tape rallies 100+ bps in last 30-45 mins with clear volume spike (2x+ average) in last 15-20 mins, then volume drops back to normal in last 1-5 mins, predict 20-50 bps reversal down with 15-25 bps width**\n\n---\n\n## **The Decision Framework**\n\n### **Step 1: Is the stock the headline subject or named in passing?**\n\n**A. Stock is the headline subject (headline explicitly about this stock's news):**\n- Use the existing decision framework from the previous context (geopolitical, Fed speech, trial data, etc.)\n\n**B. Stock is named in passing (headline is about another stock/company, this stock named in list or as related party):**\n- **Check the tape first (always)**\n- **If tape is running hard (40+ bps move last 45 mins):**\n  - **Predict 50-80% continuation of the recent move with 15-25 bps width**\n  - **Example:** INTC tape +76 bps last 45 mins \u2192 predict +40 to +60 bps with 20 bps width\n- **If tape is moving sharply down (50+ bps down last 45 mins):**\n  - **Predict 20-40% continuation down with 10-20 bps width**\n  - **Example:** META tape -93 bps last 45 mins \u2192 predict -20 to -40 bps with 15 bps width\n- **If tape is flat or drifting (under 40 bps move last 45 mins):**\n  - **Predict 0-5 bps with 8-12 bps width**\n  - **Example:** INTC tape -44 bps last 45 mins (drifting) \u2192 predict 0-5 bps with 10 bps width\n- **If stock is an investor in company mentioned in headline:**\n  - **Check for volume spike exhaustion:** Tape rallied 100+ bps with volume spike in last 15-20 mins, then volume dropped \u2192 predict 20-50 bps reversal down with 15-25 bps width\n  - **Check for oversold bounce:** Tape dropped 40+ bps last 45 mins, volume normalizing \u2192 predict 10-20 bps reversal up with 10-15 bps width\n\n### **Step 2: Check the tape first (always)**\n\nPull candlesticks for the last 45 minutes, 1-minute bars:\n- What is the total move from 45 mins ago to now? (close 45 mins ago vs current close)\n- Is the stock drifting, spiking, or flat?\n- Has volume spiked in the last 15-20 mins, then dropped off in the last 1-5 mins?\n- Has it already moved significantly (40+ bps) in one direction?\n\n**Key tape patterns:**\n- **Continuation:** Tape moving strongly in one direction (40+ bps), volume steady or increasing \u2192 predict 50-80% continuation\n- **Exhaustion:** Tape rallied 100+ bps with volume spike in last 15-20 mins, then volume dropped last 1-5 mins \u2192 predict 20-50 bps reversal down\n- **Oversold bounce:** Tape dropped 40+ bps last 45 mins, volume normalizing \u2192 predict 10-20 bps reversal up\n- **Drift:** Tape moving under 40 bps last 45 mins, no clear direction \u2192 predict 0-5 bps\n\n### **Step 3: Match forecast to situation**\n\n**If stock is named in passing (not headline subject) and tape is running hard (40+ bps up last 45 mins):**\n- **Predict 50-80% continuation of the recent move with 15-25 bps width**\n- **Example:** INTC tape +76 bps last 45 mins \u2192 predict +40 to +60 bps with 20 bps width (not -5.1 bps with 5.1 width)\n\n**If stock is named in passing and tape is moving sharply down (50+ bps down last 45 mins):**\n- **Predict 20-40% continuation down with 10-20 bps width**\n- **Example:** META tape -93 bps last 45 mins \u2192 predict -20 to -40 bps with 15 bps width (not +0.4 bps with 2.0 width)\n\n**If stock is named in passing (sector list) and tape is drifting (under 40 bps move last 45 mins):**\n- **Predict 0-5 bps with 8-12 bps width** (high uncertainty)\n- **Example:** INTC tape -44 bps last 45 mins (drifting) \u2192 predict 0-5 bps with 10 bps width (not -2.6 bps with 2.6 width)\n\n**If stock is an investor in company mentioned in headline and tape shows volume spike exhaustion:**\n- **Predict 20-50 bps reversal down with 15-25 bps width**\n- **Example:** AMZN tape +159 bps with volume spike at 14:01, volume dropped to 2707 at 14:36 \u2192 predict -30 bps with 20 bps width (not -0.6 bps with 2.0 width)\n\n**If stock is an investor in company mentioned in headline and tape is oversold:**\n- **Predict 10-20 bps reversal up with 10-15 bps width**\n- **Example:** AMZN tape -54 bps last 45 mins, volume normalizing \u2192 predict +15 bps with 12 bps width (not -1.7 bps with 2.0 width)\n\n**If Fed speech is neutral-to-dovish (\"stable, without being good\") and tape is flat:**\n- **Predict 0-5 bps with 6-10 bps width**\n- **Example:** SPY tape flat (772.25 unchanged) \u2192 predict -2 bps with 8 bps width (not -0.1 bps with 2.0 width)\n\n**If market recap (10+ symbols) on flat tape:**\n- **Predict 0-3 bps with 4-8 bps width**\n- **Example:** QQQ tape flat (710.13 unchanged) \u2192 predict 0 bps with 6 bps width (not -0.1 bps with 2.0 width)\n\n**If market recap (10+ symbols) on drifting tape:**\n- **Predict 0-5 bps continuation in tape direction with 6-10 bps width**\n- **Example:** QQQ tape drifting up (713.9 \u2192 714.0) \u2192 predict +3 bps with 8 bps width (not -0.2 bps with 2.0 width)\n\n### **Step 4: Width is insurance against confident mistakes**\n\n- **2-4 bps: Pure noise only (retrospective performance pieces), never use on real catalysts**\n- **4-8 bps: Market recap (10+ symbols) on flat tape (0-3 bps predicted)**\n- **6-10 bps: Market recap on drifting tape (0-5 bps predicted), neutral Fed speech on flat tape (0-5 bps predicted)**\n- **8-12 bps: Stock named in passing (sector list) on drifting tape (0-5 bps predicted)**\n- **10-15 bps: Stock named in passing on sharp down move (20-40% continuation predicted), oversold bounce (10-20 bps predicted)**\n- **15-25 bps: Stock named in passing on strong up move (50-80% continuation predicted), volume spike exhaustion (20-50 bps predicted)**\n\n**When in doubt, go wider.** A correct direction with 15 bps width beats zero-with-2bps that misses by 50.\n\n### **Step 5: Magnitude calibration by tape pattern**\n\n- **Stock named in passing, tape running hard (40+ bps up last 45 mins):** 50-80% continuation, width 15-25 bps\n- **Stock named in passing, tape moving sharply down (50+ bps down last 45 mins):** 20-40% continuation down, width 10-20 bps\n- **Stock named in passing, tape drifting (under 40 bps last 45 mins):** 0-5 bps, width 8-12 bps\n- **Stock is investor in headline company, volume spike exhaustion:** 20-50 bps reversal down, width 15-25 bps\n- **Stock is investor in headline company, oversold bounce:** 10-20 bps reversal up, width 10-15 bps\n- **Neutral Fed speech, tape flat:** 0-5 bps, width 6-10 bps\n- **Market recap (10+ symbols), tape flat:** 0-3 bps, width 4-8 bps\n- **Market recap (10+ symbols), tape drifting:** 0-5 bps continuation, width 6-10 bps\n\n### **Step 6: Cross-check before finalizing**\n\n- **Is the stock the headline subject or named in passing?** If named in passing, ignore the headline content and focus on tape pattern\n- **What is the tape doing last 45 mins?** Calculate the total move from close 45 mins ago to current close\n- **Is tape running hard (40+ bps)?** Predict 50-80% continuation with 15-25 bps width\n- **Is tape moving sharply down (50+ bps)?** Predict 20-40% continuation with 10-20 bps width\n- **Is tape drifting (under 40 bps)?** Predict 0-5 bps with 8-12 bps width\n- **Is there volume spike exhaustion?** (100+ bps rally with volume spike, then volume drop) \u2192 predict 20-50 bps reversal down with 15-25 bps width\n- **Did I use 2.0 bps width?** STOP \u2014 minimum 4-8 bps on market recap, 6-12 bps on most other stories, 15-25 bps on continuation trades\n\n---\n\n## **Key fixes from recent errors:**\n\n1. **Stock named in passing, tape running hard (INTC +107.6 bps actual, predicted -5.1 bps):** Predict 50-80% continuation of recent move with 15-25 bps width (not -5.1 bps with 5.1 width)\n2. **Stock named in passing, tape moving sharply down (META -36.8 bps actual, predicted +0.4 bps):** Predict 20-40% continuation down with 10-20 bps width (not +0.4 bps with 2.0 width)\n3. **Stock named in sector list, tape drifting (INTC +24.2 bps actual, predicted -2.6 bps):** Predict 0-5 bps with 8-12 bps width (not -2.6 bps with 2.6 width)\n4. **Volume spike exhaustion (AMZN -51.4 bps actual, predicted -0.6 bps):** Predict 20-50 bps reversal down with 15-25 bps width (not -0.6 bps with 2.0 width)\n5. **Oversold bounce (AMZN +14.1 bps actual, predicted -1.7 bps):** Predict 10-20 bps reversal up with 10-15 bps width (not -1.7 bps with 2.0 width)\n6. **Market recap on flat tape (QQQ -0.7 bps actual, predicted -0.1 bps with 2.0 width):** Predict 0-3 bps with 4-8 bps width (not 2.0 bps width)\n7. **Market recap on drifting tape (QQQ +4.1 bps actual, predicted -0.2 bps with 2.0 width):** Predict 0-5 bps continuation with 6-10 bps width (not -0.2 bps with 2.0 width)\n8. **Never use 2.0 bps width except on pure noise** \u2014 minimum 4-8 bps on market recap, 6-12 bps on drifting tape, 15-25 bps on continuation trades",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
