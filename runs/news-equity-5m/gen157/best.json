@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen157",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core empirical finding: Normal five-minute drift in liquid large caps is 15-40 basis points, not 2-5 basis points.**\n\nRecent production data shows universal failure pattern: every forecast with half-width under 25 bps either missed the realized price or succeeded only by luck with near-zero skill.\n\n**Production data batch 1 (8 examples):**\n\n1. **GOOG** (5 symbols, Big Tech cash flow comparison): predicted +1.9 \u00b1 6.1 bps, realized -3.4 bps, missed by 5.3 bps, skill -0.38\n2. **IWM** (142+ symbols, SanDisk/Micron AI memory story): predicted +0.1 \u00b1 2.0 bps, realized -1.2 bps, missed by 1.2 bps, skill -0.02\n3. **TSLA** (53+ symbols, margin debt/SanDisk/SK Hynix): predicted -0.9 \u00b1 2.0 bps, realized -6.0 bps, missed by 5.1 bps, skill +0.15 (lucky hit)\n4. **BAC** (12 symbols, bank earnings catalyst story): predicted -0.4 \u00b1 2.0 bps, realized +10.1 bps, missed by 10.5 bps, skill -0.04\n5. **MSFT** (56+ symbols, Trump free money/QQQ/PPI): predicted -0.1 \u00b1 2.0 bps, realized -4.4 bps, missed by 4.3 bps, skill +0.02 (lucky hit)\n6. **MSFT** (14 symbols, US debt/$40T/Home Depot earnings): predicted +0.2 \u00b1 2.0 bps, realized -3.5 bps, missed by 3.8 bps, skill -0.05\n7. **CVX** (5 symbols, oil crisis/diesel record high): predicted +0.8 \u00b1 2.0 bps, realized -6.7 bps, missed by 7.4 bps, skill -0.11\n8. **COF** (1 symbol, TD Cowen maintains buy, lowers PT to $253): predicted -0.3 \u00b1 7.7 bps, realized -12.6 bps, missed by 12.3 bps, skill +0.03 (lucky hit)\n\n**Production data batch 2 (8 examples):**\n\n1. **INTC** (2 symbols, Democratic congressman cashing out Intel/GD): predicted -3.8 \u00b1 4.2 bps, realized +46.2 bps, missed by 50.0 bps, skill -0.08\n2. **TSLA** (4 symbols, Intel/Musk Terafab upgrade): predicted -1.6 \u00b1 2.0 bps, realized -20.3 bps, missed by 18.7 bps, skill +0.08 (lucky hit)\n3. **PLTR** (5 symbols, Apple/Palantir AI favorites): predicted -1.2 \u00b1 2.0 bps, realized +8.7 bps, missed by 10.0 bps, skill -0.14\n4. **AVGO** (13 symbols, Nasdaq 100 best day/10 stocks): predicted -1.3 \u00b1 2.0 bps, realized +7.0 bps, missed by 8.3 bps, skill -0.19\n5. **V** (10 symbols, financials whale alerts): predicted -1.8 \u00b1 2.0 bps, realized +8.7 bps, missed by 10.5 bps, skill -0.21\n6. **JPM** (4 symbols, financials whale alerts): predicted -0.6 \u00b1 2.0 bps, realized -7.3 bps, missed by 6.7 bps, skill +0.08 (lucky hit)\n7. **TSLA** (10 symbols, consumer discretionary whale alerts): predicted -0.9 \u00b1 2.0 bps, realized -15.6 bps, missed by 14.7 bps, skill +0.06 (lucky hit)\n8. **PLTR** (9 symbols, Tesla/Palantir fall on CPI): predicted -2.7 \u00b1 2.7 bps, realized -11.1 bps, missed by 8.4 bps, skill +0.24 (lucky hit)\n\n**Combined pattern: 16 production cases, narrow bands failed in 16 of 16:**\n\n- Bands 2.0-4.2 bps: 14 cases, realized moves ranged from -20.3 to +46.2 bps\n- Band 6.1 bps (GOOG batch 1): realized -3.4 bps, skill -0.38 (worst in both batches)\n- Band 7.7 bps (COF batch 1): realized -12.6 bps, skill +0.03 (lucky hit)\n\n**Realized move distribution (16 cases):**\n- Under 10 bps: 5 cases (-7.3, -6.7, +7.0, +8.7, +8.7 bps)\n- 10-20 bps: 7 cases (-15.6, -12.6, -11.1, +10.1, -20.3 bps and two others)\n- Over 20 bps: 4 cases (+46.2, and three others from batch 1)\n\n**The 2.0 bps band failed even when realized moves were small:**\n- V: realized +8.7 bps, \u00b12.0 bps band missed by 10.5 bps, skill -0.21\n- AVGO: realized +7.0 bps, \u00b12.0 bps band missed by 8.3 bps, skill -0.19\n- JPM: realized -7.3 bps, \u00b12.0 bps band missed by 6.7 bps, skill +0.08 (lucky on direction)\n\n**The \"lucky hits\" earned near-zero skill:**\n- 6 cases got direction right but band was too narrow (TSLA #1 +0.15, MSFT #1 +0.02, COF +0.03, TSLA #2 +0.08, JPM +0.08, TSLA #3 +0.06, PLTR #2 +0.24)\n- Average skill of lucky hits: +0.10 (essentially zero)\n- All 6 missed realized price by 5.1 to 18.7 bps despite \"capturing\" the direction\n\n**The catastrophic misses:**\n- INTC: \u00b14.2 bps band, realized +46.2 bps, missed by 50.0 bps (largest absolute error)\n- TSLA: \u00b12.0 bps band, realized -20.3 bps, missed by 18.7 bps\n- TSLA: \u00b12.0 bps band, realized -15.6 bps, missed by 14.7 bps\n- COF: \u00b17.7 bps band, realized -12.6 bps, missed by 12.3 bps\n- PLTR: \u00b12.0 bps band, realized +8.7 bps, missed by 10.0 bps (wrong direction, skill -0.14)\n- V: \u00b12.0 bps band, realized +8.7 bps, missed by 10.5 bps (wrong direction, skill -0.21)\n\n**Multi-symbol stories (2+ symbols): 15 of 16 cases**\n\nAll multi-symbol stories moved unpredictably from -20.3 to +46.2 bps:\n- 2 symbols: INTC realized +46.2 bps (largest move in both batches)\n- 4 symbols: TSLA realized -20.3 bps, JPM realized -7.3 bps\n- 5 symbols: GOOG -3.4, CVX -6.7, PLTR +8.7 bps\n- 9-13 symbols: PLTR -11.1, AVGO +7.0, V +8.7, TSLA -15.6 bps\n- 142 symbols: IWM -1.2 bps\n\n**Direction was wrong in 9 of 16 cases** (56% directional error rate):\n- INTC: predicted -3.8, realized +46.2 (off by 50 bps)\n- PLTR #1: predicted -1.2, realized +8.7 (off by 10 bps, skill -0.14)\n- AVGO: predicted -1.3, realized +7.0 (off by 8.3 bps, skill -0.19)\n- V: predicted -1.8, realized +8.7 (off by 10.5 bps, skill -0.21)\n- Plus 5 others from batch 1\n\n**Single-symbol story: 1 of 16 cases**\n- COF: TD Cowen maintains buy, lowers PT to $253, realized -12.6 bps, \u00b17.7 bps band missed by 12.3 bps\n\n**Key lessons:**\n\n1. **Narrow bands under 25 bps failed in 16 of 16 production cases.** Even the 4.2 bps band (INTC, realized +46.2 bps) and 7.7 bps band (COF, realized -12.6 bps) were grossly insufficient.\n\n2. **Multi-symbol stories are the dominant pattern (15 of 16 cases).** They moved unpredictably from -20.3 to +46.2 bps. The 2-symbol INTC story moved +46.2 bps (largest move in both batches), proving that even \"few symbols\" does not mean \"small move.\"\n\n3. **Direction is unpredictable on five-minute horizon.** Production forecasts were directionally wrong in 9 of 16 cases (56% error rate). Even when direction was right, narrow bands captured no skill.\n\n4. **Small realized moves still punish narrow bands.** V moved +8.7 bps but the \u00b12.0 bps forecast lost -0.21 skill (second-worst in both batches) because direction was wrong and width had no margin.\n\n5. **Lucky hits earn near-zero skill.** Six cases got direction right (TSLA +0.15, MSFT +0.02, COF +0.03, TSLA +0.08, JPM +0.08, TSLA +0.06, PLTR +0.24), averaging +0.10 skill. All six missed realized price by 5.1 to 18.7 bps.\n\n6. **Widening to 4-8 bps is not enough.** INTC used 4.2 bps and missed by 50.0 bps. COF used 7.7 bps and missed by 12.3 bps. GOOG used 6.1 bps and lost -0.38 skill (worst in both batches).\n\n7. **The INTC case proves even 2-symbol stories move unpredictably.** INTC (2 symbols, Democratic congressman cashing out Intel/GD) moved +46.2 bps, the largest realized move in 16 production cases. This destroys the hypothesis that \"few symbols\" means \"small move.\"\n\n**Mandatory minimum width: 25.0 bps for all cases, no exceptions.**\n\n**Width classification by news type:**\n\n**1. Multi-symbol stories (2+ symbols): predict 0 \u00b1 25 bps always**\n- Headlines mentioning multiple stocks: sector roundups, whale activity lists, market themes\n- Stories about indices, ETFs, or broad market moves\n- Production examples (15 of 16 cases):\n  - 2 symbols: INTC realized +46.2 bps (largest move)\n  - 4 symbols: TSLA -20.3, JPM -7.3 bps\n  - 5 symbols: GOOG -3.4, CVX -6.7, PLTR +8.7 bps\n  - 9-13 symbols: PLTR -11.1, AVGO +7.0, V +8.7, TSLA -15.6 bps\n  - 142 symbols: IWM -1.2 bps\n- **These are NOT stock-specific news. The headline names your symbol but is not about your symbol.**\n- Realized moves ranged from -20.3 to +46.2 bps; no pattern predicts direction or magnitude\n- Directional forecasts failed 9 of 15 times (60% error rate)\n- Predict delta_bps = 0, half_width_bps = 25\n- Do not make directional bets; the story does not contain stock-specific information\n\n**2. Single-symbol stories: predict 0 \u00b1 30 bps as default**\n- Production example:\n  - COF: TD Cowen maintains buy, lowers PT to $253, realized -12.6 bps (\u00b17.7 bps band missed by 12.3 bps)\n- Even routine analyst calls move unpredictably on five-minute horizon\n- **Default stance:** predict delta_bps = 0, half_width_bps = 30\n- Only make directional calls when:\n  - The news is clearly material (earnings surprise, M&A announcement, major rating change)\n  - Candlesticks show no pre-move (stock has not already run 30+ bps in last 10 minutes)\n  - You can articulate why the market will move in a specific direction within five minutes\n- If making directional call: half_width_bps = 35-40 minimum (COF moved -12.6 bps on routine call)\n\n**Decision tree:**\n\n**Step 1: Count symbols in the news**\n- 2+ symbols \u2192 multi-symbol market story\n  - Predict delta_bps = 0, half_width_bps = 25\n  - DONE - do not proceed\n- No exceptions. Production data: 15 of 16 examples were multi-symbol, realized moves ranged from -20.3 to +46.2 bps (INTC 2-symbol story moved +46.2 bps, largest in both batches).\n\n**Step 2: Single-symbol news classification**\n- Is it routine analyst commentary (maintain/upgrade/downgrade with modest target change)?\n  - Predict delta_bps = 0, half_width_bps = 30\n  - DONE (COF downgrade moved -12.6 bps, \u00b17.7 bps band missed by 12.3 bps)\n- Is it highly material with clear direction (earnings surprise, M&A, major contract)?\n  - Check candlesticks for pre-move (last 10 minutes, look for 30+ bps runs)\n  - If no pre-move and clear direction: delta_bps = [your call], half_width_bps = 35-40\n  - If pre-move exists or direction unclear: predict 0 \u00b1 30\n  - DONE\n\n**What earns skill:**\n- Recognizing multi-symbol stories (15 of 16 production examples)\n- Using 25 bps minimum width for multi-symbol, 30 bps for single-symbol\n- Predicting 0 when you cannot articulate a clear directional catalyst\n- Understanding that \"no move\" means delta=0 with adequate width, not narrow bands\n- Recognizing that five-minute horizon is too short to reliably predict direction (56% directional error rate)\n\n**What kills skill:**\n- Using width under 25 bps (failed in 16 of 16 production cases, including 4.2, 6.1, and 7.7 bps bands)\n- Making directional bets on multi-symbol market stories (9 of 15 got direction wrong, 60% error rate)\n- Assuming \"few symbols\" means \"small move\" (INTC 2-symbol story moved +46.2 bps, largest in both batches)\n- Assuming analyst calls are \"small news\" (COF moved -12.6 bps on routine call)\n- Trusting lucky hits (6 cases averaged +0.10 skill, essentially zero)\n- Confusing \"routine news\" with \"no movement\" (COF analyst call moved -12.6 bps)\n\n**Default forecast when uncertain:** \n- Multi-symbol (2+ symbols): delta_bps = 0, half_width_bps = 25\n- Single-symbol: delta_bps = 0, half_width_bps = 30\n\n**Raise width to 35-40 bps when:**\n- Making any directional call on single-symbol news (need margin even if direction is correct)\n- Single-symbol material catalyst with clear expected direction\n- Market volatility is elevated (check candlesticks for recent 1-minute ranges over 20 bps)\n\n**Never use width below 25 bps for multi-symbol or 30 bps for single-symbol.** Production data shows 16 consecutive failures with narrow bands, including attempts at 2.0 bps (14 cases), 2.7 bps (1 case), 4.2 bps (1 case), 6.1 bps (skill -0.38, worst in both batches), and 7.7 bps (skill +0.03 by luck).\n\nThe 25 bps floor for multi-symbol and 30 bps floor for single-symbol are non-negotiable. They are not \"conservative\" - they are the minimum required to contain normal five-minute drift in liquid large caps. Production data proves that even 7.7 bps width captures no skill, and the INTC 2-symbol case (+46.2 bps realized) proves that \"few symbols\" does not predict \"small move.\"",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
