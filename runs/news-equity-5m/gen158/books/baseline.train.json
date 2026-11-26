@@ -1,0 +1,517 @@
+{
+ "book_id": "gen158@news-equity-5m:baseline:train",
+ "topic": "news-equity-5m",
+ "harness_fp": "e449463554e3",
+ "harness_name": "news-equity-5m-jev",
+ "kind": "replay",
+ "run_id": "gen158@news-equity-5m",
+ "side": "baseline",
+ "split": "train",
+ "started_at": "2026-06-29T13:42:20+00:00",
+ "stats": {
+  "total_return": 0.00020813023896959493,
+  "sharpe": null,
+  "daily_sharpe": null,
+  "contiguous": false,
+  "trade_t": 2.9734962279312547,
+  "max_drawdown": 2.1748529691220482e-06,
+  "hit_rate": 0.8,
+  "avg_win": 52.110915730817624,
+  "avg_loss": -0.31342395359263264,
+  "profit_factor": 665.053390252972,
+  "turnover": 0.06402128710216,
+  "fees_usd": 0.9660948503251641,
+  "trades": 5,
+  "cycles": 40,
+  "open_positions": 0,
+  "start_equity": 1000000.0,
+  "end_equity": 1000208.1302389697,
+  "handovers": 0,
+  "refusals": 4,
+  "quotes_posted": 40,
+  "fills": 7,
+  "fill_rate": 0.175
+ },
+ "trades": [
+  {
+   "instrument": "CMCSA",
+   "side": "long",
+   "opened_at": "2026-06-29T13:43:00+00:00",
+   "closed_at": "2026-06-29T13:46:00+00:00",
+   "entry_px": 25.028478959999997,
+   "exit_px": 25.2433254,
+   "qty": 308.0,
+   "size_usd": 7708.771519679999,
+   "fees_usd": 0.26727144940496,
+   "pnl_usd": 65.90543207059636,
+   "reason": "quote",
+   "run_id": "",
+   "instance_id": "CMCSA@2026-06-29T13:42:20+00:00#60156308",
+   "source": "quote"
+  },
+  {
+   "instrument": "CMCSA",
+   "side": "long",
+   "opened_at": "2026-06-29T13:43:00+00:00",
+   "closed_at": "2026-06-29T16:31:00+00:00",
+   "entry_px": 25.028478959999997,
+   "exit_px": 24.92486322,
+   "qty": 3.0,
+   "size_usd": 75.08543688000009,
+   "fees_usd": 0.0025767335925480006,
+   "pnl_usd": -0.31342395359263264,
+   "reason": "quote",
+   "run_id": "",
+   "instance_id": "CMCSA@2026-06-29T13:42:20+00:00#60156308",
+   "source": "quote"
+  },
+  {
+   "instrument": "C",
+   "side": "short",
+   "opened_at": "2026-07-17T13:42:00+00:00",
+   "closed_at": "2026-07-21T13:36:19+00:00",
+   "entry_px": 128.38574896,
+   "exit_px": 127.87835199999999,
+   "qty": 42.0,
+   "size_usd": 5392.20145632,
+   "fees_usd": 0.156875200485696,
+   "pnl_usd": 21.15379711951482,
+   "reason": "force_close",
+   "run_id": "",
+   "instance_id": "C@2026-07-17T13:37:29+00:00#60522418",
+   "source": "quote"
+  },
+  {
+   "instrument": "DHR",
+   "side": "short",
+   "opened_at": "2026-07-21T14:13:00+00:00",
+   "closed_at": "2026-07-21T14:15:00+00:00",
+   "entry_px": 177.91039348,
+   "exit_px": 176.90171084,
+   "qty": 75.0,
+   "size_usd": 13343.279511,
+   "fees_usd": 0.38339317040580007,
+   "pnl_usd": 75.26780482959475,
+   "reason": "quote",
+   "run_id": "",
+   "instance_id": "DHR@2026-07-21T14:12:55+00:00#60579740",
+   "source": "quote"
+  },
+  {
+   "instrument": "AMZN",
+   "side": "short",
+   "opened_at": "2026-08-06T13:51:00+00:00",
+   "closed_at": "2026-08-21T13:57:15+00:00",
+   "entry_px": 274.56528136000003,
+   "exit_px": 272.251651,
+   "qty": 20.0,
+   "size_usd": 5491.3056272,
+   "fees_usd": 0.15597829643616,
+   "pnl_usd": 46.11662890356456,
+   "reason": "force_close",
+   "run_id": "",
+   "instance_id": "AMZN@2026-08-06T13:49:52+00:00#60997436",
+   "source": "quote"
+  }
+ ],
+ "marks": [
+  {
+   "at": "2026-06-29T13:42:20+00:00",
+   "equity_usd": 1000000.0,
+   "cash_usd": 1000000.0,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-06-29T13:58:27+00:00",
+   "equity_usd": 1000067.6049951906,
+   "cash_usd": 999990.8199951906,
+   "gross_exposure_usd": 76.785,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-06-29T16:30:49+00:00",
+   "equity_usd": 1000065.4299951906,
+   "cash_usd": 999990.8199951906,
+   "gross_exposure_usd": 74.61,
+   "open_positions": 1,
+   "drawdown": 2.1748529691220482e-06,
+   "event": null
+  },
+  {
+   "at": "2026-06-29T17:05:18+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-06-30T14:26:37+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-06-30T17:35:36+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-01T14:53:54+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-09T15:33:28+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-15T19:31:05+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-17T13:37:29+00:00",
+   "equity_usd": 1000065.592008117,
+   "cash_usd": 1000065.592008117,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 2.0128509948454745e-06,
+   "event": null
+  },
+  {
+   "at": "2026-07-21T13:36:19+00:00",
+   "equity_usd": 1000086.7458052365,
+   "cash_usd": 1000086.7458052365,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-21T14:12:55+00:00",
+   "equity_usd": 1000086.7458052365,
+   "cash_usd": 1000086.7458052365,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-21T17:40:08+00:00",
+   "equity_usd": 1000162.0136100661,
+   "cash_usd": 1000162.0136100661,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-21T18:18:12+00:00",
+   "equity_usd": 1000162.0136100661,
+   "cash_usd": 1000162.0136100661,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-27T19:09:16+00:00",
+   "equity_usd": 1000162.0136100661,
+   "cash_usd": 1000162.0136100661,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-28T17:35:10+00:00",
+   "equity_usd": 1000162.0136100661,
+   "cash_usd": 1000162.0136100661,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-07-30T16:41:58+00:00",
+   "equity_usd": 1000162.0136100661,
+   "cash_usd": 1000162.0136100661,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-08-06T13:49:52+00:00",
+   "equity_usd": 1000162.0136100661,
+   "cash_usd": 1000162.0136100661,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-08-06T14:01:32+00:00",
+   "equity_usd": 1000177.8632589696,
+   "cash_usd": 1005653.1632589697,
+   "gross_exposure_usd": 5475.299999999999,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-08-06T17:11:46+00:00",
+   "equity_usd": 1000207.5632589697,
+   "cash_usd": 1005653.1632589697,
+   "gross_exposure_usd": 5445.599999999999,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-08-06T17:35:22+00:00",
+   "equity_usd": 1000209.7632589696,
+   "cash_usd": 1005653.1632589697,
+   "gross_exposure_usd": 5443.400000000001,
+   "open_positions": 1,
+   "drawdown": 0.0,
+   "event": null
+  },
+  {
+   "at": "2026-08-21T13:57:15+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-08-31T15:30:40+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-08-31T16:52:59+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-08-31T17:48:27+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-08-31T18:22:01+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-01T14:41:28+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-01T17:45:12+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-03T17:01:36+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-03T17:35:19+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-16T15:20:57+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-16T16:13:41+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-16T16:56:30+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-16T17:48:01+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-21T14:22:31+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-21T18:37:01+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-23T14:18:12+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-23T14:38:35+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-23T16:52:48+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  },
+  {
+   "at": "2026-09-23T18:05:14+00:00",
+   "equity_usd": 1000208.1302389697,
+   "cash_usd": 1000208.1302389697,
+   "gross_exposure_usd": 0,
+   "open_positions": 0,
+   "drawdown": 1.6326775241918719e-06,
+   "event": null
+  }
+ ],
+ "refusals": [
+  {
+   "at": "2026-06-29T13:59:00+00:00",
+   "instrument": "CMCSA",
+   "side": "long",
+   "wanted_usd": 3200.22,
+   "room_usd": 99929.98,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-07-21T13:37:00+00:00",
+   "instrument": "DHR",
+   "side": "short",
+   "wanted_usd": 3700.32,
+   "room_usd": 100008.67,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-01T14:45:00+00:00",
+   "instrument": "BAC",
+   "side": "long",
+   "wanted_usd": 2800.58,
+   "room_usd": 100020.81,
+   "reason": "dust",
+   "kind": "quote"
+  },
+  {
+   "at": "2026-09-21T14:26:00+00:00",
+   "instrument": "CAT",
+   "side": "short",
+   "wanted_usd": 1300.27,
+   "room_usd": 100020.81,
+   "reason": "dust",
+   "kind": "quote"
+  }
+ ]
+}

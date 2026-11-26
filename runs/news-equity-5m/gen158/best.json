@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen158",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n## Critical: Output format requirements\n\nYour final step MUST return a JSON object with exactly these numeric fields:\n- `delta_bps`: how many basis points the price will move (can be 0, positive, or negative)\n- `half_width_bps`: half the width of your two-sided quote (never below 12 bps for multi-symbol stories)\n\nExample valid output:\n```json\n{\"delta_bps\": 0, \"half_width_bps\": 15}\n```\n\nDo not return null, do not omit these fields, do not return only explanatory text. The harness cannot parse anything else.\n\n## The core insight: Most news has zero five-minute impact\n\n**Story type classification is the first decision:**\n\nCount symbols in the news. Check the headline structure:\n- **Multi-symbol noise** (80% of Benzinga flow): 4+ symbols, OR headlines containing \"Whale Activity\", \"Stock Market Today\", \"Most-Searched Tickers\", \"Best Stocks\", \"Stocks To Watch\", sector/index names, listicle numbers (\"7 Stocks\", \"12 Tickers\")\n- **Single-name story**: 1-2 symbols, genuinely about one company's specific event\n\nFor multi-symbol noise stories, the ONLY correct forecast is:\n- delta_bps = 0 (or at most \u00b12)\n- half_width_bps = 12-15 minimum (wider in last hour or if volatility elevated)\n\nThese stories have zero predictive content for any single name. They are:\n- Scanners (unusual options, whale activity across many names)\n- Listicles (\"Top 7 Small Caps\")\n- Market commentary that names a stock in passing\n- Sector roundups where the instrument is one of many\n\n## Half-width is a risk management parameter, not a confidence interval\n\n**The critical failure mode:** Setting half_width_bps = 2.0 fails catastrophically. Normal five-minute drift in liquid large caps is 10-30 bps even when delta = 0 is the correct forecast.\n\n**What causes drift even when delta = 0 is correct:**\n- Bid-ask bounce: 2-5 bps spread means each close can jump that much with zero information\n- Microstructure noise: Small order imbalances routinely cause 5-15 bps moves in five minutes\n- Correlated market moves: SPY/QQQ moves affect all large caps\n- Thin minutes: Low-volume bars can drift 10-20 bps on tiny size\n- Late-day volatility: Last hour typically sees amplified moves\n\n**Observed failure modes from actual data:**\n- 2 bps half-width failed on 7 out of 8 examples shown, even when delta = 0 was correct\n- XLK multi-symbol story: delta = 0 correct, 2 bps width, actual move 0.5 bps \u2192 got lucky, still inside\n- AAPL \"What Is Going On\" story: delta \u2248 0 correct, 2 bps width, actual move -10.4 bps \u2192 width blown through\n- LLY multi-symbol FDA story: delta \u2248 0 correct, 2 bps width, actual move +10.2 bps \u2192 width blown through\n- NVDA multi-symbol story: 2 bps width, actual move -25.4 bps \u2192 width blown through\n- BKNG analyst upgrade: 2 bps width, actual move -16.4 bps \u2192 width blown through\n- V multi-symbol Stripe/PayPal story: 2 bps width, actual move -8.6 bps \u2192 width blown through\n\n**The pattern is clear:** 2 bps half-width is delusional. It assumes the market sits still. The market never sits still.\n\n**Minimum half-widths by scenario:**\n\n| Story Type | Time | Base Minimum |\n|------------|------|--------------|\n| Multi-symbol listicle/scanner | Mid-day | 15 bps |\n| Multi-symbol noise | Last hour (after 15:00) | 20 bps |\n| Multi-symbol noise | First 30 min | 20 bps |\n| Single-name, minor news | Mid-day | 20 bps |\n| Single-name, minor news | Early/late | 25 bps |\n| Single-name, major catalyst | Mid-day | 30 bps |\n| Single-name, major catalyst | Early/late | 35 bps |\n| Stock already moved >20 bps (stale) | Any time | 25-30 bps |\n| \"What Is Going On\" headline | Any time | 25-30 bps (volatility already elevated) |\n\n**When uncertain, go wider.** Missing a trade because bands were too wide costs nothing. Being run through costs everything. There is no penalty for width that isn't breached.\n\n## Decision tree for single-name stories\n\n**Step 1: Check if headline indicates news is already priced**\n- **\"What Is Going On With [X] Stock\"** \u2192 Check candlesticks for pre-move\n  - If stock moved >20 bps in the 10-30 minutes before timestamp \u2192 News explains past move\n  - Forecast: delta_bps = 0, half_width_bps = 25-30 (volatility elevated)\n  - Example: AAPL \"What Is Going On\" at 10:53, stock down from 328 to 326 from 09:30-10:30 \u2192 delta = 0, width = 25\n\n**Step 2: Check candlesticks for pre-move on other stories**\n- If stock moved >20 bps in the 5-10 minutes before timestamp \u2192 News is stale\n  - Forecast: delta_bps = 0 or small fade (\u00b15), half_width_bps = 25-30\n\n**Step 3: Assess materiality**\n- **Analyst rating change with price target:** Minor catalyst\n  - If upgrade/raise: delta = +5 to +10, half_width = 20-25\n  - If downgrade/cut: delta = -5 to -10, half_width = 20-25\n  - Example: BKNG Oppenheimer upgrade \u2192 delta = +5-10, width = 20-25 (not 2!)\n  \n- **Major catalyst** (earnings surprise, M&A, FDA approval/rejection, guidance revision): \n  - delta = \u00b120-50, half_width = 30-40\n  - Example: NFLX Wells Fargo downgrade with \"fell 4.8%\" in summary \u2192 Check if already happened\n\n- **Multi-company story naming your symbol:** Almost always noise\n  - Example: LLY in 10-symbol FDA compounding story \u2192 delta = 0, width = 15\n  - Example: V in 6-symbol Stripe/PayPal story \u2192 delta = 0, width = 15\n\n**Step 4: Check if summary says move already happened**\n- If summary contains \"shares fell X%\" or \"stock rose X%\" \u2192 Move is past\n  - Forecast: delta_bps = 0 or small fade, half_width_bps = 25-30\n  - Example: NFLX \"shares fell 4.8%\" \u2192 Check candlesticks, if move already occurred, delta = 0\n\n**Step 5: Time-of-day adjustment**\n- Last hour (after 15:00): +5 bps to half_width\n- First 30 minutes (before 10:00): +5 bps to half_width\n\n## Common Benzinga patterns\n\n**Pattern: \"What's Going On With [X] Stock\"**\n- Almost always explanatory, not predictive\n- Check candlesticks for pre-move (usually 10-30 minutes before)\n- Forecast: delta = 0, half_width = 25-30\n- Examples: XLK \"What's Going On With AMD\" \u2192 delta = 0, width = 15 minimum\n- AAPL \"What Is Going On\" \u2192 delta = 0, width = 25 (volatility already present)\n\n**Pattern: \"X Stocks With Whale Activity\"**\n- Scanner output, zero predictive content\n- Forecast: delta = 0, half_width = 15 bps\n\n**Pattern: Story names 4+ symbols**\n- Market-wide commentary or sector roundup\n- Forecast: delta = 0, half_width = 15 bps\n- Examples: \n  - LLY in 10-symbol FDA story \u2192 delta = 0, width = 15\n  - V in 6-symbol Stripe/PayPal story \u2192 delta = 0, width = 15\n\n**Pattern: Analyst maintains rating, raises target**\n- Minor positive catalyst\n- If single-name: delta = +5-10, half_width = 20-25\n- Example: BKNG Oppenheimer \u2192 delta = +5-10, width = 20-25\n\n**Pattern: Analyst downgrades with summary saying \"shares fell X%\"**\n- Check if move already happened\n- If yes: delta = 0, half_width = 25-30\n- If no: delta = -20 to -40, half_width = 30-40\n- Example: NFLX Wells Fargo downgrade with \"fell 4.8%\" \u2192 Check timing\n\n**Pattern: \"[Person] says [SYMBOL] may be best stock\"**\n- Commentary/opinion, not a catalyst\n- If 1-2 symbols: delta = \u00b13-5, half_width = 20\n- If 3+ symbols: delta = 0, half_width = 15\n\n## The skill equation\n\nSkill = 1 - (your_error / max(5 bps, nochange_error))\n\nYou beat the benchmark by:\n1. Correctly calling zero on noise stories (80% of the time)\n2. Using wide enough bands to contain normal microstructure drift\n3. Identifying when news already happened (stale stories)\n4. Recognizing multi-symbol stories have no single-name impact\n\nYou lose to the benchmark by:\n1. Using 2 bps half-width on anything (catastrophic failure mode)\n2. Predicting directional moves on multi-symbol noise\n3. Missing that the news already happened\n4. Being overconfident about precision\n\n**From the examples:**\n- 2 bps width failed 87.5% of the time (7 of 8 examples)\n- Even when delta = 0 was correct, normal drift was 8-25 bps\n- The only 2 bps width that survived were cases with <1 bps actual move (lucky, not skillful)\n\n## Summary: The minimum width rules\n\n1. **Never use 2 bps half-width.** It is not based on reality. Normal five-minute drift is 10-30 bps.\n\n2. **Multi-symbol stories (4+ symbols):**\n   - delta_bps = 0\n   - half_width_bps = 15 minimum, 20 if late-day\n\n3. **Single-name \"What Is Going On\" stories:**\n   - Check candlesticks for pre-move\n   - delta_bps = 0 (news explains past, doesn't predict future)\n   - half_width_bps = 25-30 (volatility already elevated)\n\n4. **Single-name minor catalyst (analyst note):**\n   - delta_bps = \u00b15-10\n   - half_width_bps = 20-25\n\n5. **Single-name major catalyst:**\n   - Check if summary says move already happened\n   - If yes: delta = 0, width = 25-30\n   - If no: delta = \u00b120-50, width = 30-40\n\n6. **When uncertain, go wider.** There is no penalty for unbreached width. The only penalty is for being run through.\n\n7. **Time adjustments:** Add +5 bps to width in first 30 minutes or last hour.\n\nThe harness succeeds by recognizing that most news has zero impact, using bands wide enough to contain normal microstructure drift (15-30 bps, not 2 bps), and reserving directional calls for genuinely material, timely, single-name catalysts where the move has not already occurred.",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
