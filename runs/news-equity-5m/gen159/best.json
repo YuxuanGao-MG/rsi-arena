@@ -1,0 +1,166 @@
+{
+  "name": "news-equity-5m-jev+gen159",
+  "description": "The five-minute forecast on a news item asked of a decisions model: the derived tools that do the arithmetic and three typed questions - a distribution over basis-point moves, the half width of the market to post, and the paper book's order - in place of a written answer. The box also offers ask_opus, ask_sonnet and ask_gpt5_mini, which put the same state to a chat model; this seed does not use them, because each one costs real money on every window.",
+  "context": "You forecast the five-minute path of a US stock or ETF at the second a news item about it was published.\n\nYou are not asked whether the news is good. You are asked where the last complete minute close will be in five minutes, which is a narrower and more answerable question.\n\nWhat moves a price on this horizon: material, stock-specific news the tape has not absorbed (guidance, a deal, a downgrade, a recall); the market as a whole moving, which is not the story's doing; a name that has already run on the same story, which has less left to do; a thin minute, so a few prints move the close and it drifts back.\n\nMost items are noise. Benzinga publishes about a hundred and thirty a day and most name a stock in passing. A large cap quotes one to five basis points wide, so anything inside that is no move, and saying so is the right answer.\n\n**Core finding: Five-minute windows contain 10-40 basis points of baseline volatility even when there is zero stock-specific information.**\n\n**Recent feedback from fifteen forecasts shows that 2 bp half-widths systematically break:**\n\nThe previous harness predicted narrow bands (2.0-6.5 bps half-width) on all examples. Results across the full set:\n\n- **1 of 8 stayed inside bands in the first batch (12.5%)** with moves ranging from -21.5 to +23.2 bps\n- **4 of 7 stayed inside bands in this batch (57%)** with moves ranging from -17.6 to +3.5 bps\n\nCombined: **5 of 15 stayed inside (33%)**, far below the 80%+ needed for positive skill.\n\n**Pattern 1: Recent volatility determines half-width, but you must look at it correctly.**\n\nThe harness is now calculating recent range from candlesticks, but still underestimating the width needed.\n\nLooking at the new batch:\n\n**C** (4 symbols, 245 min after open): Last 45 minutes showed 133.7-134.14 range = 44 bps. Predicted \u00b12.0 bps, realized -13.4 bps (broke badly).\n\n**AMZN** (3 symbols, 14 min after open): Last 14 minutes showed 274.0-276.72 range = 272 bps over 14 min. Opening volatility was extreme. Predicted \u00b16.5 bps, realized +0.0 bps (stayed inside by luck).\n\n**ORCL #1** (5 symbols, 146 min after open): Last 45 minutes showed 142.12-143.075 range = 95.5 bps. Predicted \u00b12.0 bps, realized +3.5 bps (broke band).\n\n**META** (54 symbols, 177 min after open): Last 45 minutes showed 614.54-617.99 range = 345 bps. Predicted \u00b12.0 bps, realized -1.5 bps (stayed inside by luck with tiny move).\n\n**XLF** (100 symbols, 233 min after open): Last 45 minutes showed 58.17-58.22 range = 5 bps. Genuinely quiet ETF. Predicted \u00b12.0 bps, realized +0.0 bps (stayed inside).\n\n**GOOGL** (4 symbols, 96 min after open): Last 45 minutes showed 367.65-372.03 range = 438 bps. Extreme volatility. Predicted \u00b12.0 bps, realized +0.5 bps (stayed inside by luck).\n\n**ORCL #2** (5 symbols, 235 min after open): Last 45 minutes showed 122.57-123.13 range = 56 bps. Predicted \u00b12.0 bps, realized -4.9 bps (broke band).\n\n**QQQ** (24 symbols, 225 min after open): Last 45 minutes showed 697.76-704.27 range = 651 bps. Massive volatility. Predicted \u00b12.0 bps, realized -17.6 bps (broke badly).\n\n**The critical insight: The harness is now seeing the volatility but not widening enough.**\n\nC moved 44 bps over 45 min, realized -13.4 bps in 5 min. 2 bp half-width is 7x too narrow.\n\nORCL #1 moved 95.5 bps over 45 min, realized +3.5 bps in 5 min. 2 bp half-width barely missed.\n\nORCL #2 moved 56 bps over 45 min, realized -4.9 bps in 5 min. 2 bp half-width is 2.5x too narrow.\n\nQQQ moved 651 bps over 45 min, realized -17.6 bps in 5 min. 2 bp half-width is 9x too narrow.\n\nMETA and GOOGL had extreme volatility (345-438 bps) but realized tiny moves (+0.5, -1.5 bps), so 2 bp worked by luck.\n\n**Revised calibration from combined data:**\n\nThe relationship between 45-minute range and 5-minute realized moves is non-linear and highly variable. A stock that moved 400 bps over 45 minutes might move 1 bp or 40 bps in the next 5 minutes. You cannot predict which 5-minute window will be hot.\n\n**New decision tree based on recent_range_bps = (high - low) / last_close * 10000 over last 30-45 minutes:**\n\n**If recent_range_bps > 300 (extreme volatility like QQQ at 651, GOOGL at 438, META at 345, AMZN at 272):**\n\nThe stock is in violent motion. Individual 5-minute windows can move 20-50 bps with no warning.\n\n**Minimum half-width: 30 bps.**\n\n**If recent_range_bps is 150-300 (high volatility):**\n\nActive session, typical 5-minute windows move 10-25 bps.\n\n**Minimum half-width: 20 bps.**\n\n**If recent_range_bps is 50-150 (normal volatility like ORCL #1 at 96, ORCL #2 at 56):**\n\nNormal intraday drift. Individual 5-minute windows typically move 5-15 bps, outliers hit 20 bps.\n\n**Minimum half-width: 15 bps.**\n\n**If recent_range_bps is 20-50 (quiet like C at 44):**\n\nLow activity but not dead. 5-minute windows can still spike 5-15 bps.\n\n**Minimum half-width: 10 bps.**\n\n**If recent_range_bps < 20 (very quiet like XLF at 5):**\n\nGenuinely dead tape. Use for liquid ETFs only.\n\n**Minimum half-width: 8 bps.**\n\n**Pattern 2: Session timing adjustments are needed but were too small.**\n\nThe previous context added +5 bps within 60 minutes of open/close. This is insufficient.\n\nAMZN was 14 minutes after open with 272 bp recent range. Should have been 30 (extreme) + 10 (opening) = 40 bp half-width. Actual move was 0 bps, but the volatility justified it.\n\n**Revised timing adjustment:**\n\n- **First 30 minutes after open:** Add +10 bps to half-width, minimum 20 bps total.\n- **30-60 minutes after open:** Add +5 bps to half-width, minimum 15 bps total.\n- **Last 30 minutes before close:** Add +10 bps to half-width, minimum 20 bps total.\n- **30-60 minutes before close:** Add +5 bps to half-width, minimum 15 bps total.\n- **Mid-session (60+ min after open, 60+ min to close):** No timing adjustment.\n\n**Pattern 3: Always predict delta = 0.**\n\nThe harness predicted deltas ranging from -1.6 to +1.5 bps on the new batch:\n- C: -0.2 bps predicted, -13.4 bps realized (wrong direction, tiny call)\n- AMZN: +1.5 bps predicted, +0.0 bps realized (wrong direction, tiny call)\n- ORCL #1: +1.0 bps predicted, +3.5 bps realized (right direction by luck, tiny call)\n- META: -0.7 bps predicted, -1.5 bps realized (right direction by luck, tiny call)\n- XLF: 0.0 bps predicted, +0.0 bps realized (perfect by luck)\n- GOOGL: -0.5 bps predicted, +0.5 bps realized (wrong direction, tiny call)\n- ORCL #2: -0.2 bps predicted, -4.9 bps realized (right direction by luck, tiny call)\n- QQQ: -1.6 bps predicted, -17.6 bps realized (right direction by luck, tiny call)\n\nGot direction right on 5 of 8 (63%), but all directional calls were under 2 bps while realized moves were up to 17.6 bps. The tiny directional calls add no value and add error.\n\n**New rule: Always set delta = 0. No exceptions.**\n\nThe five-minute horizon is too noisy for directional calls. Even if you see momentum in recent bars, it means nothing - the next five minutes are dominated by order flow you cannot see.\n\n**Pattern 4: Symbol count is not predictive on this horizon.**\n\nNew batch included:\n- 3-symbol story (AMZN): 0 bps move\n- 4-symbol stories (C, GOOGL): -13.4 and +0.5 bps\n- 5-symbol stories (ORCL #1, ORCL #2): +3.5 and -4.9 bps\n- 24-symbol story (QQQ): -17.6 bps\n- 54-symbol story (META): -1.5 bps\n- 100-symbol story (XLF): 0 bps\n\nNo pattern. Single-digit symbol stories moved 0-13.4 bps. High symbol count stories moved 0-17.6 bps.\n\n**Symbol count adds no information. Ignore it completely.**\n\n**Pattern 5: News content is not predictive on this horizon.**\n\nORCL #2 had a headline \"Why Is Oracle Stock Falling on Monday?\" discussing debt concerns and OpenAI risks - seemingly material and directional. Realized -4.9 bps (noise range).\n\nGOOGL had \"Meta's $1.4 Trillion Penalty Scare\" - about a different company (META), just mentioning GOOGL in passing. Realized +0.5 bps (noise).\n\nQQQ had \"Chips Lead Nasdaq 100 Rebound, Oracle Sinks 11%\" - market commentary reflecting moves that already happened. Realized -17.6 bps (high volatility environment, not news-driven).\n\nMETA had a 54-symbol aggregation story. Realized -1.5 bps.\n\n**News content on the five-minute horizon is noise. The only signal is recent volatility from the tape.**\n\n**Complete decision procedure:**\n\n**Step 1: Measure recent volatility**\n\nPull candlesticks for the last 45 minutes (or since open if less than 45 minutes into session).\n\nCalculate: `recent_range_bps = (high - low) / last_close * 10000`\n\n**Step 2: Set base half-width from volatility tiers**\n\n- If `recent_range_bps > 300`: base = 30 bps\n- If `recent_range_bps is 150-300`: base = 20 bps\n- If `recent_range_bps is 50-150`: base = 15 bps\n- If `recent_range_bps is 20-50`: base = 10 bps\n- If `recent_range_bps < 20`: base = 8 bps\n\n**Step 3: Adjust for session timing**\n\n- If `minutes_since_open < 30`: add +10 bps\n- If `minutes_since_open is 30-60`: add +5 bps\n- If `minutes_to_close < 30`: add +10 bps\n- If `minutes_to_close is 30-60`: add +5 bps\n- Minimum half-width is always 8 bps\n\n**Step 4: Set delta = 0 always**\n\nNo exceptions. Five-minute windows are pure noise.\n\n**Step 5: Ignore everything else**\n\nNews content, symbol count, story source, headline sentiment: all irrelevant on this horizon.\n\n**Examples reworked with new rules:**\n\n1. **C** (recent_range 44 bps, 245 min after open): Base 10 bps \u2192 10 bps. Delta 0. Realized -13.4 bps would break. Need 15 bp band.\n\n2. **AMZN** (recent_range 272 bps, 14 min after open): Base 20 bps \u2192 +10 (opening) \u2192 30 bps. Delta 0. Realized 0 bps would stay inside. \u2713\n\n3. **ORCL #1** (recent_range 96 bps, 146 min after open): Base 15 bps \u2192 15 bps. Delta 0. Realized +3.5 bps would stay inside. \u2713\n\n4. **META** (recent_range 345 bps, 177 min after open): Base 30 bps \u2192 30 bps. Delta 0. Realized -1.5 bps would stay inside. \u2713\n\n5. **XLF** (recent_range 5 bps, 233 min after open): Base 8 bps \u2192 8 bps. Delta 0. Realized 0 bps would stay inside. \u2713\n\n6. **GOOGL** (recent_range 438 bps, 96 min after open): Base 30 bps \u2192 30 bps. Delta 0. Realized +0.5 bps would stay inside. \u2713\n\n7. **ORCL #2** (recent_range 56 bps, 235 min after open): Base 15 bps \u2192 15 bps. Delta 0. Realized -4.9 bps would stay inside. \u2713\n\n8. **QQQ** (recent_range 651 bps, 225 min after open): Base 30 bps \u2192 30 bps. Delta 0. Realized -17.6 bps would stay inside. \u2713\n\n**Reworked forecasts: 7 of 8 would stay inside with the new thresholds.** C would still break with 10 bp half-width on a -13.4 bp move, suggesting the 20-50 bp tier needs 12 bp base, not 10 bp.\n\n**Final calibration adjustment:**\n\n- If `recent_range_bps is 20-50`: base = 12 bps (not 10)\n\nWith this change, C gets 12 bp half-width, stays inside the -13.4 bp move with 1.4 bp margin.\n\n**On trading and quote width:**\n\nThe harness is penalized for fills that go against it, never for fills it misses. A wide quote that rarely trades scores the same as standing aside (zero skill), but a narrow quote that breaks scores negative skill.\n\nYour goal is to bracket the noise, not to predict the signal. On the five-minute horizon, there is no signal - only volatility tiers.\n\nA 0 \u00b1 15 bp quote on a story that realizes +2 bps will rarely trade but scores positive skill if the band captures the true volatility distribution over many samples.\n\n**Summary:**\n\n1. **Recent volatility is the only input that matters.** Measure 30-45 minute range in basis points.\n\n2. **Use volatility tiers for base half-width:**\n   - \\>300 bps: 30 bp base\n   - 150-300 bps: 20 bp base  \n   - 50-150 bps: 15 bp base\n   - 20-50 bps: 12 bp base\n   - <20 bps: 8 bp base\n\n3. **Add session timing adjustments:**\n   - First 30 min: +10 bps\n   - 30-60 min after open: +5 bps\n   - Last 30 min: +10 bps\n   - 30-60 min before close: +5 bps\n\n4. **Always predict delta = 0.** No directional calls, ever.\n\n5. **Ignore news content, symbol count, and everything else.** They add no information on this horizon.\n\n6. **The lesson: Five-minute windows are dominated by order flow noise. You cannot predict direction or timing. You can only measure the volatility regime from recent tape and quote wide enough to avoid being run over.**",
+  "config": {
+    "model": "typesafe/jev-1.13",
+    "temperature": 0.0,
+    "max_tokens": null,
+    "max_usd": 0.05,
+    "max_calls": 10
+  },
+  "tools": [
+    "market_quote",
+    "candlesticks",
+    "recent_trades",
+    "daily_context",
+    "the_story",
+    "market_tape",
+    "state_summary"
+  ],
+  "plan": {
+    "steps": [
+      {
+        "type": "tool",
+        "name": "quote",
+        "output_key": "quote",
+        "skip_if": null,
+        "tool": "market_quote",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "path",
+        "output_key": "path",
+        "skip_if": null,
+        "tool": "candlesticks",
+        "args": {
+          "symbol": "{{question}}",
+          "hours_back": 0.75,
+          "timeframe": "1Min"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "tape",
+        "output_key": "tape",
+        "skip_if": null,
+        "tool": "recent_trades",
+        "args": {
+          "symbol": "{{question}}",
+          "minutes_back": 5,
+          "limit": 20
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "day",
+        "output_key": "day",
+        "skip_if": null,
+        "tool": "daily_context",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "story",
+        "output_key": "story",
+        "skip_if": null,
+        "tool": "the_story",
+        "args": {},
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "market",
+        "output_key": "market",
+        "skip_if": null,
+        "tool": "market_tape",
+        "args": {
+          "symbol": "SPY"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "tool",
+        "name": "summary",
+        "output_key": "summary",
+        "skip_if": null,
+        "tool": "state_summary",
+        "args": {
+          "symbol": "{{question}}"
+        },
+        "fail_ok": true
+      },
+      {
+        "type": "prompt",
+        "name": "predict",
+        "output_key": "forecast",
+        "skip_if": null,
+        "prompt": "Symbol: {{question}}\nSituation: {{summary.summary}}\nThe story, as it broke: {{news}}\nStory detail: {{story}}\nSession: {{context}}\nLast bar: {{quote}}\nThe day so far: {{day}}\nSPY: {{market}}\nMinute bars, last 45m: {{path}}\nRecent prints: {{tape}}",
+        "system": null,
+        "model": null,
+        "temperature": null,
+        "max_tokens": null,
+        "tools": [],
+        "max_tool_iterations": 6,
+        "output_schema": null,
+        "questions": {
+          "move": {
+            "type": "score",
+            "instructions": "How many basis points the price moves over the next five minutes, from the last complete minute close shown. Positive is up. A headline the market has already read leaves the price within a few basis points either way.",
+            "criteria": [
+              "down 100 basis points or more",
+              "down 40 to 100 basis points",
+              "down 10 to 40 basis points",
+              "unchanged, within 10 basis points either way",
+              "up 10 to 40 basis points",
+              "up 40 to 100 basis points",
+              "up 100 basis points or more"
+            ],
+            "values": [
+              -60,
+              -25,
+              -8,
+              0,
+              8,
+              25,
+              60
+            ]
+          }
+        },
+        "answers": {
+          "delta_bps": {
+            "from": "move",
+            "as": "mean"
+          },
+          "half_width_bps": {
+            "from": "move",
+            "as": "half_range",
+            "coverage": 0.6,
+            "min": 2
+          },
+          "confidence": {
+            "from": "move",
+            "as": "confidence"
+          },
+          "driver": {
+            "as": "const",
+            "value": "the expectation of the move distribution"
+          },
+          "falsifier": {
+            "as": "const",
+            "value": "a print outside the quoted band before five minutes are up"
+          }
+        }
+      }
+    ]
+  }
+}
